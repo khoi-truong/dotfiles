@@ -1,0 +1,103 @@
+tap "homebrew/cask"
+tap "homebrew/cask-drivers"
+tap "homebrew/cask-fonts"
+tap "homebrew/cask-versions"
+tap "homebrew/core"
+tap "homebrew/bundle"
+tap "homebrew/services"
+
+#brew "coreutils"
+
+#brew "binutils"
+#brew "diffutils"
+#brew "ed"
+#brew "findutils"
+#brew "gawk"
+#brew "gnu-indent"
+#brew "gnu-sed"
+#brew "gnu-tar"
+#brew "gnu-which"
+#brew "gnutls"
+#brew "gzip"
+#brew "watch"
+#brew "wdiff"
+
+brew "zsh"
+brew "antibody"
+brew "tmux"
+brew "git"
+#brew "svn"
+#brew "curl"
+#brew "less"
+brew "vim"
+
+#brew "gdb"
+#brew "gpatch"
+#brew "m4"
+#brew "make"
+#brew "nano"
+
+brew "tldr"
+#brew "rsync"
+#brew "rclone"
+brew "autojump"
+
+#brew "elixir"
+#brew "erlang"
+brew "go"
+#brew "jenv"
+brew "nodeenv"
+brew "pyenv"
+brew "rbenv"
+brew "bazelisk"
+brew "buildifier"
+#brew "gcc"
+brew "mas"
+
+cask "google-chrome-dev"
+cask "alfred"
+cask "vlc"
+cask "dash"
+cask "visual-studio-code"
+cask "gitkraken"
+cask "postman"
+cask "skype"
+cask "spotify"
+cask "flux"
+cask "iterm2"
+cask "figma"
+cask "gotiengviet"
+cask "qbittorrent"
+cask "sf-symbols"
+cask "appcode"
+cask "datagrip"
+cask "intellij-idea"
+cask "goland"
+
+cask "font-fira-code"
+#cask "font-fira-mono-for-powerline"
+cask "font-fira-mono"
+cask "font-fira-sans"
+cask "font-fontawesome"
+#cask "font-inconsolata-dz-for-powerline"
+#cask "font-inconsolata-for-powerline"
+#cask "font-inconsolata-g-for-powerline"
+cask "font-inconsolata-lgc"
+cask "font-inconsolata"
+#cask "font-roboto-mono-for-powerline"
+cask "font-roboto-mono"
+cask "font-roboto-slab"
+cask "font-roboto"
+#cask "font-source-sans-pro"
+#cask "font-source-serif-pro"
+
+mas "Numbers", id: 409203825
+mas "Pages", id: 409201541
+mas "Xcode", id: 497799835
+mas "Apple Configurator 2", id: 1037126344
+mas "Telegram", id: 747648890
+mas "Slack", id: 803453959
+mas "The Unarchiver", id: 425424353
+mas "Keynote", id: 409183694
+mas "Messenger", id: 1480068668
+mas "WhatsApp Desktop", id: 1147396723
