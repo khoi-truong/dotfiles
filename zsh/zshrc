@@ -63,6 +63,8 @@ COMPLETION_WAITING_DOTS="true"
 # much, much faster.
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
+# Load common-aliases by oh-my-zsh to prevent conflicts with omz_urlencode
+# https://github.com/ohmyzsh/ohmyzsh/issues/5243
 plugins=(common-aliases)
 
 source $ZSH/oh-my-zsh.sh
