@@ -1,7 +1,6 @@
 robbyrussell/oh-my-zsh
 
 robbyrussell/oh-my-zsh path:themes/robbyrussell.zsh-theme
-robbyrussell/oh-my-zsh path:plugins/common-aliases
 robbyrussell/oh-my-zsh path:plugins/compleat
 robbyrussell/oh-my-zsh path:plugins/colored-man-pages
 robbyrussell/oh-my-zsh path:plugins/dircycle
