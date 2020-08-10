@@ -1,3 +1,7 @@
+# EditorConfig helps developers define and maintain consistent
+# coding styles between different editors and IDEs
+# editorconfig.org
+
 root = true
 
 [*]
@@ -6,4 +10,25 @@ indent_style = space
 indent_size = 2
 end_of_line = lf
 insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.txt]
+indent_style = tab
+indent_size = 4
+
+[*.{diff,md}]
+trim_trailing_whitespace = false
+
+[*.{h,cc,mm,m}]
+indent_style = space
+indent_size = 4
+
+[*.{yml,json,ts,js}]
+trim_trailing_whitespace = true
+
+[Makefile]
+indent_style = tab
+indent_size = 2
+
+[*.{sh,zsh}]
 trim_trailing_whitespace = true
