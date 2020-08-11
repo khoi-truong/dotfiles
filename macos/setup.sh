@@ -611,7 +611,7 @@ defaults write com.apple.mail SpellCheckingBehavior -string "NoSpellCheckingEnab
 # sudo mdutil -E / > /dev/null
 
 ###############################################################################
-# Terminal & iTerm 2                                                          #
+# Terminal                                                                    #
 ###############################################################################
 
 # Only use UTF-8 in Terminal.app
@@ -674,13 +674,7 @@ EOD
 defaults write com.apple.terminal SecureKeyboardEntry -bool true
 
 # Disable the annoying line marks
-defaults write com.apple.Terminal ShowLineMarks -int 0
-
-# Install the Maxbrew theme for iTerm
-open "${HOME}/.dotfiles/settings/Maxbrew.itermcolors"
-
-# Don’t display the annoying prompt when quitting iTerm
-defaults write com.googlecode.iterm2 PromptOnQuit -bool false
+defaults write com.apple.terminal ShowLineMarks -int 0
 
 ###############################################################################
 # Time Machine                                                                #
