@@ -233,11 +233,14 @@ echo "  › Don’t automatically rearrange Spaces based on most recent use"
 # As done via		: System Preferences > Mission Control > Automatically rearrange Spaces based on most recent use
 defaults write com.apple.dock mru-spaces -bool false
 
-echo "  › Disable Dashboard"
+echo "  › Dashboard: disable Dashboard"
 defaults write com.apple.dashboard mcx-disabled -bool true
 
-echo "  › Don’t show Dashboard as a Space"
+echo "  › Dashboard: don’t show Dashboard as a Space"
 defaults write com.apple.dock dashboard-in-overlay -bool true
+
+# echo "  › Dashboard: enable Dashboard dev mode (allows keeping widgets on the desktop)"
+# defaults write com.apple.dashboard devmode -bool true
 
 # echo "  › Remove the auto-hiding Dock delay"
 # defaults write com.apple.dock autohide-delay -float 0
@@ -736,7 +739,7 @@ defaults write com.apple.ActivityMonitor SortColumn -string "CPUUsage"
 defaults write com.apple.ActivityMonitor SortDirection -int 0
 
 ###############################################################################
-# Address Book, Dashboard, TextEdit, and Disk Utility                   #
+# Address Book, TextEdit, and Disk Utility                                    #
 ###############################################################################
 
 echo ""
@@ -744,9 +747,6 @@ echo "› Address Book, Dashboard, TextEdit, and Disk Utility:"
 
 # echo "  › Address Book: enable the debug menu in Address Book"
 # defaults write com.apple.addressbook ABShowDebugMenu -bool true
-
-# echo "  › Dashboard: enable Dashboard dev mode (allows keeping widgets on the desktop)"
-# defaults write com.apple.dashboard devmode -bool true
 
 echo "  › TextEdit: use plain text mode for new TextEdit documents"
 defaults write com.apple.TextEdit RichText -int 0
@@ -765,6 +765,9 @@ defaults write com.apple.QuickTimePlayerX MGPlayMovieOnOpen -bool true
 ###############################################################################
 # Mac App Store                                                               #
 ###############################################################################
+
+echo ""
+echo "› App Store:"
 
 # echo "  › Enable the WebKit Developer Tools in the Mac App Store"
 # defaults write com.apple.appstore WebKitDeveloperExtras -bool true
@@ -841,6 +844,7 @@ for app in "Activity Monitor" \
 	"Terminal"; do
 	killall "${app}" &> /dev/null
 done
+
 echo ""
 echo "Configure macOS completed! Note that some of these changes require a logout/restart to take effect."
 echo "🚀🚀🚀"
