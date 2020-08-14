@@ -1,4 +1,4 @@
-#!/usr/local/bin/zsh
+#!/bin/sh
 
 # Install Homebrew casks
 echo "Homebrew Bundle..."
@@ -10,9 +10,9 @@ cd ..
 # Setup macOS defaults
 execute() {
     chmod +x "$1"; "$1";
-} 
+}
 
-for file in ./{macos,terminal,iterm}/setup.sh; do
+for file in ./{macos,terminal,iterm,alfred}/setup.sh; do
 	[ -r "$file" ] && [ -f "$file" ] && execute "$file"
 done;
 unset file;
