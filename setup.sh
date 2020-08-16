@@ -19,6 +19,7 @@ unset file;
 unset execute;
 
 # Make symbolic links
+echo ""
 echo "Link configs to ${HOME}"
 DOTFILES="$(cd "$(dirname "$0")"; pwd)";
 ln -fs "${DOTFILES}/zsh/zshrc" ~/.zshrc
@@ -28,3 +29,8 @@ ln -fs "${DOTFILES}/ssh/config" ~/.ssh/config
 
 # Remove redundant history file
 rm ~/.zsh_history 2> /dev/null
+
+echo ""
+echo "Setting up completed!"
+echo "🚀🚀🚀"
+echo ""

@@ -86,8 +86,8 @@ defaults write NSGlobalDomain AppleShowScrollBars -string "Automatic"
 
 echo "  › Set scrollbars to jump to the spot that's clicked"
 # As done via		: System Preferences > General > Click in the scrollbar to
-# Default value		: true
-defaults write NSGlobalDomain AppleScrollerPagingBehavior -bool false
+# Default value		: false
+defaults write NSGlobalDomain AppleScrollerPagingBehavior -bool true
 
 echo "  › Disable restoring windows when re-open an app"
 # As done via		: System Preferences > General > Close windows when quitting an app
@@ -840,12 +840,10 @@ for app in "Activity Monitor" \
 	"Messages" \
 	"Photos" \
 	"Safari" \
-	"SystemUIServer" \
-	"Terminal"; do
+	"SystemUIServer"; do
 	killall "${app}" &> /dev/null
 done
 
 echo ""
 echo "Configure macOS completed! Note that some of these changes require a logout/restart to take effect."
-echo "🚀🚀🚀"
 echo ""
