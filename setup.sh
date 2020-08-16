@@ -12,7 +12,7 @@ execute() {
     chmod +x "$1"; "$1";
 }
 
-for file in ./{macos,terminal,iterm,alfred}/setup.sh; do
+for file in ./{macos,terminal,iterm,alfred,misc/gotiengviet}/setup.sh; do
 	[ -r "$file" ] && [ -f "$file" ] && execute "$file"
 done;
 unset file;
