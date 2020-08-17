@@ -1,8 +1,10 @@
 #!/bin/sh
 
+DOTFILES="$(cd "$(dirname "$0")"; pwd)";
+
 # Install Homebrew casks
 echo "Homebrew Bundle..."
-cd ./macos
+cd ${DOTFILES}/macos
 brew bundle
 brew bundle cleanup -f
 cd ..
@@ -21,7 +23,6 @@ unset execute;
 # Make symbolic links
 echo ""
 echo "Link configs to ${HOME}"
-DOTFILES="$(cd "$(dirname "$0")"; pwd)";
 ln -fs "${DOTFILES}/zsh/zshrc" ~/.zshrc
 ln -fs "${DOTFILES}/git/gitconfig" ~/.gitconfig
 ln -fs "${DOTFILES}/git/gitignore" ~/.gitignore
