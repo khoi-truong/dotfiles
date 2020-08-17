@@ -317,7 +317,7 @@ defaults write NSGlobalDomain com.apple.mouse.tapBehavior -int 1
 
 echo "  › Trackpad: set fastest tracking speed"
 # As done via		: System Preferences > Trackpad > Point & Click > Tracking speed
-defaults write NSGlobalDomain com.apple.trackpad.forceClick -int 3
+defaults write NSGlobalDomain com.apple.trackpad.scaling -float 3.0
 
 echo "  › Trackpad: turn on force click"
 # As done via		: System Preferences > Trackpad > Point & Click > Force Click and haptic feedback
