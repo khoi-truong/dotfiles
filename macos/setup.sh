@@ -202,9 +202,9 @@ echo "  › Minimize windows into application icon"
 # Default value		: false
 defaults write com.apple.dock minimize-to-application -bool true
 
-echo "  › Don’t animate opening applications from the Dock"
+echo "  › Animate opening applications from the Dock"
 # As done via		: System Preferences > Dock > Animate opening applications
-defaults write com.apple.dock launchanim -bool false
+defaults write com.apple.dock launchanim -bool true
 
 echo "  › Don't automatically hide and show the Dock"
 # As done via		: System Preferences > Dock > Automatically hide and show the Dock
