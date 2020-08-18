@@ -1,5 +1,7 @@
 #!/bin/sh
 
+[ "$(uname -s)" != "Darwin" ] && exit 0
+
 echo ""
 echo "Change GoTiengViet menu bar icons"
 
