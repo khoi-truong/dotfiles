@@ -12,6 +12,7 @@
 - https://github.com/caarlos0/dotfiles
 - https://github.com/mathiasbynens/dotfiles
 - https://github.com/pawelgrzybek/dotfiles
+- https://github.com/xero/dotfiles
 
 #### MacOS settings
 
