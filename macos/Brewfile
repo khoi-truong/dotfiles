@@ -22,7 +22,6 @@ brew "vim"
 brew "zsh"
 
 cask "alfred"
-cask "appcode"
 cask "dash"
 cask "datagrip"
 cask "figma"
