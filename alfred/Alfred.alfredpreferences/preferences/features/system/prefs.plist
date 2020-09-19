@@ -8,8 +8,12 @@
 	<true/>
 	<key>emptytrashConfirm</key>
 	<true/>
+	<key>hideKeywordEnabled</key>
+	<false/>
 	<key>logoutConfirm</key>
 	<true/>
+	<key>quitKeywordEnabled</key>
+	<false/>
 	<key>quitallConfirm</key>
 	<true/>
 	<key>restartConfirm</key>
