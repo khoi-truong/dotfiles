@@ -1,6 +1,6 @@
 {
     "editor.codeActionsOnSave": {
-      "source.organizeImports": true,
+      "source.organizeImports": true
     },
     "editor.fontSize": 13,
     "editor.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
@@ -23,65 +23,10 @@
     "editor.codeLens": true,
     "editor.suggestSelection": "first",
     "editor.largeFileOptimizations": false,
-        
+
     "explorer.decorations.badges": true,
     "explorer.confirmDelete": false,
     "explorer.confirmDragAndDrop": false,
-
-    "window.closeWhenEmpty": false,
-    "window.title": "${activeEditorShort}${separator}${rootName}",
-    "window.titleBarStyle": "custom",
-    
-    "terminal.integrated.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
-    "terminal.integrated.fontSize": 13,
-    "terminal.integrated.lineHeight": 1.5,
-    "terminal.integrated.cursorStyle": "block",
-    "terminal.integrated.cursorBlinking": true,
-
-    "workbench.settings.editor": "json",
-    "workbench.settings.openDefaultSettings": true,
-    "workbench.settings.openDefaultKeybindings": true,
-    "workbench.startupEditor": "readme",
-    "workbench.iconTheme": "material-icon-theme",
-    "workbench.editor.tabSizing": "fit",
-    "workbench.sideBar.location": "left",
-    "workbench.statusBar.visible": true,
-    "workbench.statusBar.feedback.visible": false,
-    "workbench.activityBar.visible": true,
-    "workbench.view.alwaysShowHeaderActions": false,
-    "workbench.colorCustomizations": {
-      "[Material Theme]": {
-        "titleBar.activeBackground": "#141c20",
-        "titleBar.activeForeground": "#83a1af",
-        "titleBar.border": "#141c20",
-        "editorGroupHeader.tabsBackground": "#192227",
-        "editorGroupHeader.noTabsBackground": "#192227",
-        "tab.border": "#141c20",
-        "tab.activeBorder": "#263238",
-        "tab.unfocusedActiveBorder": "#263238",
-        "tab.activeBackground": "#263238",
-        "tab.inactiveBackground": "#192227",
-        "tab.hoverBackground": "#21292e",
-        "statusBar.background": "#0078cf",
-        "statusBar.foreground": "#ffffff",
-        "statusBar.border": "#0078cf",
-        "statusBar.noFolderBackground": "#6a1f7c",
-        "statusBar.noFolderForeground": "#ffffff",
-        "statusBar.noFolderBorder": "#6a1f7c",
-        "statusBar.debuggingBackground": "#ce662a",
-        "statusBar.debuggingForeground": "#ffffff",
-        "statusBar.debuggingBorder": "#ce662a",
-        "sideBar.border": "#141c20",
-        "sideBar.background": "#1e2a30",
-        "panelTitle.activeBorder": "#80cbc4",
-        "panel.border": "#141c20",
-        "panel.background": "#192227",
-        "editorOverviewRuler.border": "#141c20",
-      },
-    },
-
-    "telemetry.enableCrashReporter": false,
-    "telemetry.enableTelemetry": false,
 
     "files.associations": {
       "Fastfile": "ruby",
@@ -125,7 +70,74 @@
       "**/env": true,
       "**/venv": true
     },
-    
+
+    "telemetry.enableCrashReporter": false,
+    "telemetry.enableTelemetry": false,
+
+    "terminal.integrated.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
+    "terminal.integrated.fontSize": 13,
+    "terminal.integrated.lineHeight": 1.5,
+    "terminal.integrated.cursorStyle": "block",
+    "terminal.integrated.cursorBlinking": true,
+
+    "window.closeWhenEmpty": false,
+    "window.title": "${activeEditorShort}${separator}${rootName}",
+    "window.titleBarStyle": "custom",
+
+    "workbench.colorTheme": "Material Theme Darker High Contrast",
+    "workbench.settings.editor": "json",
+    "workbench.settings.openDefaultSettings": true,
+    "workbench.settings.openDefaultKeybindings": true,
+    "workbench.startupEditor": "readme",
+    "workbench.iconTheme": "material-icon-theme",
+    "workbench.editor.tabSizing": "fit",
+    "workbench.sideBar.location": "left",
+    "workbench.statusBar.visible": true,
+    "workbench.statusBar.feedback.visible": false,
+    "workbench.activityBar.visible": true,
+    "workbench.view.alwaysShowHeaderActions": false,
+    "workbench.colorCustomizations": {
+      "[Material Theme]": {
+        "titleBar.activeBackground": "#141c20",
+        "titleBar.activeForeground": "#83a1af",
+        "titleBar.border": "#141c20",
+        "editorGroupHeader.tabsBackground": "#192227",
+        "editorGroupHeader.noTabsBackground": "#192227",
+        "tab.border": "#141c20",
+        "tab.activeBorder": "#263238",
+        "tab.unfocusedActiveBorder": "#263238",
+        "tab.activeBackground": "#263238",
+        "tab.inactiveBackground": "#192227",
+        "tab.hoverBackground": "#21292e",
+        "statusBar.background": "#0078cf",
+        "statusBar.foreground": "#ffffff",
+        "statusBar.border": "#0078cf",
+        "statusBar.noFolderBackground": "#6a1f7c",
+        "statusBar.noFolderForeground": "#ffffff",
+        "statusBar.noFolderBorder": "#6a1f7c",
+        "statusBar.debuggingBackground": "#ce662a",
+        "statusBar.debuggingForeground": "#ffffff",
+        "statusBar.debuggingBorder": "#ce662a",
+        "sideBar.border": "#141c20",
+        "sideBar.background": "#1e2a30",
+        "panelTitle.activeBorder": "#80cbc4",
+        "panel.border": "#141c20",
+        "panel.background": "#192227",
+        "editorOverviewRuler.border": "#141c20"
+      },
+      "[Material Theme Darker High Contrast]": {
+        "statusBar.background": "#0078cf",
+        "statusBar.foreground": "#ffffff",
+        "statusBar.border": "#0078cf",
+        "statusBar.noFolderBackground": "#6a1f7c",
+        "statusBar.noFolderForeground": "#ffffff",
+        "statusBar.noFolderBorder": "#6a1f7c",
+        "statusBar.debuggingBackground": "#ce662a",
+        "statusBar.debuggingForeground": "#ffffff",
+        "statusBar.debuggingBorder": "#ce662a"
+      }
+    },
+
     "git.enabled": true,
     "git.autofetch": true,
 
@@ -138,29 +150,34 @@
     // PEP 8 implementations. Read more: https://www.python.org/dev/peps/pep-0008/
     "[python]": {
       "editor.tabSize": 4,
-      "editor.wordWrapColumn": 79,
+      "editor.wordWrapColumn": 79
     },
 
     "[swift]": {
-      "editor.tabSize": 4,
+      "editor.tabSize": 4
     },
 
-    "gitlens.views.repositories.location": "scm",
     "gitlens.views.fileHistory.location": "explorer",
     "gitlens.views.lineHistory.location": "explorer",
     "gitlens.views.compare.location": "gitlens",
     "gitlens.views.search.location": "gitlens",
-  
+    "gitlens.views.repositories.location": "scm",
+    "gitlens.currentLine.enabled": false,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.codeLens.enabled": false,
+
     // "customizeUI.activityBar": "regular",
     // "customizeUI.titleBar": "inline",
     "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
-    "workbench.colorTheme": "Material Theme",
+
     "java.semanticHighlighting.enabled": true,
+    "java.project.importHint": false,
+
     "emmet.includeLanguages": {
       "wxml": "html"
     },
+
     "minapp-vscode.disableAutoConfig": true,
-    "java.project.importHint": false,
 
     "beautify.language": {
       "html": [
@@ -170,5 +187,5 @@
       ],
       "css": [],
       "js": []
-    }
+    },
   }

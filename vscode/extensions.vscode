@@ -2,7 +2,6 @@ BazelBuild.vscode-bazel
 castwide.solargraph
 DavidAnson.vscode-markdownlint
 deerawan.vscode-dash
-dracula-theme.theme-dracula
 eamodio.gitlens
 EditorConfig.EditorConfig
 Equinusocio.vsc-material-theme
@@ -15,8 +14,9 @@ PKief.material-icon-theme
 rebornix.ruby
 redhat.vscode-yaml
 sidneys1.gitconfig
-tomphilbin.gruvbox-themes
 Tyriar.sort-lines
 vscode-icons-team.vscode-icons
 wingrunr21.vscode-ruby
 zhouronghui.propertylist
+jdinhlife.gruvbox
+visualstudioexptteam.vscodeintellicode
