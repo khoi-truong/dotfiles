@@ -27,6 +27,7 @@ brew "yarn"
 brew "zsh"
 
 cask "alfred"
+cask "cloudflare-warp"
 cask "dash"
 cask "datagrip"
 cask "discord"
