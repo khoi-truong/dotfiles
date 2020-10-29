@@ -2,19 +2,19 @@
   "entries": {
     "tap": {
       "homebrew/cask": {
-        "revision": "d8ca0da1bb46e818ac41a2732d31e4400bdf9336"
+        "revision": "f1c4de88e2fcab8144d207e9c9f160533abcf957"
       },
       "homebrew/cask-drivers": {
-        "revision": "cc24b00bf6d9a9fd3f27b9ea786053bdf60974db"
+        "revision": "4333bd92ffa3cbd37c7695090bab8a80a06c5a25"
       },
       "homebrew/cask-fonts": {
         "revision": "1edb51d9775ba2c1287905d2e973156ed00dfeb2"
       },
       "homebrew/cask-versions": {
-        "revision": "6e2f3e3c86b2a0da841fa3d3d4900edfd1fcd531"
+        "revision": "a52fdbcc27bad8759a67d1289f9257298bf367a0"
       },
       "homebrew/core": {
-        "revision": "dec3145c0d25905e1756b955a7b5ff734cd1e736"
+        "revision": "728bc354e90155771b9fc7cd3187b46023a85a1a"
       },
       "homebrew/bundle": {
         "revision": "fac685a042d875fdfff45a6dd2b3067bc1b96296"
@@ -406,6 +406,27 @@
             }
           }
         }
+      },
+      "carthage": {
+        "version": "0.36.0",
+        "bottle": {
+          "cellar": ":any_skip_relocation",
+          "prefix": "/usr/local",
+          "files": {
+            "catalina": {
+              "url": "https://homebrew.bintray.com/bottles/carthage-0.36.0.catalina.bottle.tar.gz",
+              "sha256": "2ea99e7a332fc6a76a1ca43b087f56534e2c658e7155c0751ffa6407c5e0a528"
+            },
+            "mojave": {
+              "url": "https://homebrew.bintray.com/bottles/carthage-0.36.0.mojave.bottle.tar.gz",
+              "sha256": "334d9982e33f71850b1f467a170ab5c7c050f49a3c9f2429d7db4ac1450d975b"
+            },
+            "high_sierra": {
+              "url": "https://homebrew.bintray.com/bottles/carthage-0.36.0.high_sierra.bottle.tar.gz",
+              "sha256": "962d60c36c3bd904cdd7b1ae0c7199b3de617b84ba7cfee7fdc91e46a413ccb9"
+            }
+          }
+        }
       }
     },
     "cask": {
@@ -611,7 +632,7 @@
       "catalina": {
         "HOMEBREW_VERSION": "2.5.7",
         "HOMEBREW_PREFIX": "/usr/local",
-        "Homebrew/homebrew-core": "dec3145c0d25905e1756b955a7b5ff734cd1e736",
+        "Homebrew/homebrew-core": "728bc354e90155771b9fc7cd3187b46023a85a1a",
         "CLT": "12.0.32.2",
         "Xcode": "12.1",
         "macOS": "10.15.7"
