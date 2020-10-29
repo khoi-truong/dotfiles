@@ -2,19 +2,19 @@
   "entries": {
     "tap": {
       "homebrew/cask": {
-        "revision": "f1c4de88e2fcab8144d207e9c9f160533abcf957"
+        "revision": "7e8dc8500eaecf97ae4e8f76a3b0e4c2aa3ad876"
       },
       "homebrew/cask-drivers": {
-        "revision": "4333bd92ffa3cbd37c7695090bab8a80a06c5a25"
+        "revision": "b14f0861fb028beb26a4e694a15e88949639ad9b"
       },
       "homebrew/cask-fonts": {
-        "revision": "1edb51d9775ba2c1287905d2e973156ed00dfeb2"
+        "revision": "3b6e154e4b7d964cc3e2caede507ac2b1ed7bae6"
       },
       "homebrew/cask-versions": {
-        "revision": "a52fdbcc27bad8759a67d1289f9257298bf367a0"
+        "revision": "a9900ab685b685e5bbe6e0a118bc1714b1c2ea8c"
       },
       "homebrew/core": {
-        "revision": "728bc354e90155771b9fc7cd3187b46023a85a1a"
+        "revision": "a26270f26cf7ad4589908bf0064ead8a7ff4a07f"
       },
       "homebrew/bundle": {
         "revision": "fac685a042d875fdfff45a6dd2b3067bc1b96296"
@@ -427,6 +427,27 @@
             }
           }
         }
+      },
+      "fastlane": {
+        "version": "2.165.0",
+        "bottle": {
+          "cellar": ":any",
+          "prefix": "/usr/local",
+          "files": {
+            "catalina": {
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.165.0.catalina.bottle.1.tar.gz",
+              "sha256": "cb2d0f03aa4f1069e08c28f27720a4610faba819f829ef2f515aad7e6fac0f21"
+            },
+            "mojave": {
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.165.0.mojave.bottle.1.tar.gz",
+              "sha256": "79fd33983785c863d43336cda949a7d4d0f6f800e1218ee96d5b5c288598edd6"
+            },
+            "high_sierra": {
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.165.0.high_sierra.bottle.1.tar.gz",
+              "sha256": "6eb3c0e5d92b7e8d08e5c9e1283259c9d19fa754ee513cf7baaddc71f59c8c4f"
+            }
+          }
+        }
       }
     },
     "cask": {
@@ -632,7 +653,7 @@
       "catalina": {
         "HOMEBREW_VERSION": "2.5.7",
         "HOMEBREW_PREFIX": "/usr/local",
-        "Homebrew/homebrew-core": "728bc354e90155771b9fc7cd3187b46023a85a1a",
+        "Homebrew/homebrew-core": "a26270f26cf7ad4589908bf0064ead8a7ff4a07f",
         "CLT": "12.0.32.2",
         "Xcode": "12.1",
         "macOS": "10.15.7"
