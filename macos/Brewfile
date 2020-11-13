@@ -58,6 +58,7 @@ cask "font-fontawesome"
 cask "font-inconsolata"
 
 mas "Apple Configurator 2", id: 1037126344
+mas "Apple Developer", id: 640199958
 mas "Keynote", id: 409183694
 mas "Messenger", id: 1480068668
 mas "Numbers", id: 409203825
