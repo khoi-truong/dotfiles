@@ -211,5 +211,6 @@
       ],
       "css": [],
       "js": []
-    }
+    },
+    "workbench.productIconTheme": "material-product-icons"
   }
