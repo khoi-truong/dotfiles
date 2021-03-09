@@ -159,7 +159,7 @@
         "editor.findMatchBorder": "#64FFDA",
         "selection.background": "#64FFDA40",
         "statusBarItem.remoteBackground": "#64FFDA"
-      },
+      }
     },
 
     "git.enabled": true,
@@ -186,7 +186,6 @@
     "gitlens.views.compare.location": "gitlens",
     "gitlens.views.search.location": "gitlens",
     "gitlens.views.repositories.location": "scm",
-    "gitlens.currentLine.enabled": false,
     "gitlens.hovers.currentLine.over": "line",
     "gitlens.codeLens.enabled": false,
 
@@ -212,5 +211,6 @@
       "css": [],
       "js": []
     },
-    "workbench.productIconTheme": "fluent-icons"
+    "workbench.productIconTheme": "fluent-icons",
+    "gitlens.currentLine.enabled": false
   }

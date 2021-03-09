@@ -30,6 +30,7 @@ brew "yarn"
 brew "zsh"
 
 cask "alfred"
+cask "android-studio"
 cask "cloudflare-warp"
 cask "dash"
 cask "datagrip"
