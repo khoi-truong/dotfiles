@@ -2,19 +2,19 @@
   "entries": {
     "tap": {
       "homebrew/cask": {
-        "revision": "52fb83002ceccfafdedf9bb06de0568a38c1836a"
+        "revision": "021048dd3515481b9f0f4b5b18dc551a58b7ccd8"
       },
       "homebrew/cask-drivers": {
         "revision": "0abe09f7c66968738f5c969fb5b17a4081d987a6"
       },
       "homebrew/cask-fonts": {
-        "revision": "de82e5c295491dd0abc0275f04cc2dc1504b8009"
+        "revision": "9899ab349852a15fbc634721356bec10e05d5f11"
       },
       "homebrew/cask-versions": {
-        "revision": "9253a62f96c0253719632c750f290fd8c0141f3d"
+        "revision": "fc3589743b4cd6ad179b6e64ed6da695f1666007"
       },
       "homebrew/core": {
-        "revision": "6de8c1455224f0c7949aa103a6cf5721a7dcdde5"
+        "revision": "f9c968b2cfbbca307530b8aed297ed7d82b576af"
       },
       "homebrew/bundle": {
         "revision": "3fbca9f51db8e7255f4b2f48daba1e04a2d99ad6"
@@ -218,7 +218,7 @@
         }
       },
       "fastlane": {
-        "version": "2.176.0",
+        "version": "2.177.0",
         "bottle": {
           "rebuild": 0,
           "cellar": ":any",
@@ -226,20 +226,20 @@
           "root_url": "https://homebrew.bintray.com/bottles",
           "files": {
             "arm64_big_sur": {
-              "url": "https://homebrew.bintray.com/bottles/fastlane-2.176.0.arm64_big_sur.bottle.tar.gz",
-              "sha256": "71c3d76952314627a7d08bc2239314d3d1649b3079d8858b2da916402bda2a9a"
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.177.0.arm64_big_sur.bottle.tar.gz",
+              "sha256": "50fa19fcdfb47169d3d692827283b048074588f2d51d1dd0f2d86153162d1243"
             },
             "big_sur": {
-              "url": "https://homebrew.bintray.com/bottles/fastlane-2.176.0.big_sur.bottle.tar.gz",
-              "sha256": "ca135fe59180785254545addf34ca887961c16664c5a5b735a87f525d22fa7ed"
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.177.0.big_sur.bottle.tar.gz",
+              "sha256": "1d3b87229fefe94ddbd9d9860bcf2af41dced3db9e715ad8d1324f9108d6d2f0"
             },
             "catalina": {
-              "url": "https://homebrew.bintray.com/bottles/fastlane-2.176.0.catalina.bottle.tar.gz",
-              "sha256": "0e67dd9aab27c07e06d33e5547cafa74e74d13806cd9411f16c00a6061e62455"
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.177.0.catalina.bottle.tar.gz",
+              "sha256": "ac5e76f63a527770964a6c11dce39fe959dc864304c08ece8d7eee3fd9d6ec54"
             },
             "mojave": {
-              "url": "https://homebrew.bintray.com/bottles/fastlane-2.176.0.mojave.bottle.tar.gz",
-              "sha256": "b425cee27fc586de4df0e84cc060e9fb4eb1c3181dbd32f71ba9213a39024c82"
+              "url": "https://homebrew.bintray.com/bottles/fastlane-2.177.0.mojave.bottle.tar.gz",
+              "sha256": "1392efa64011706ca7010190139ddf8c9407ddba6180b74272416ee84499d847"
             }
           }
         }
@@ -618,6 +618,33 @@
       "brew-cask-completion": {
         "version": "2.1_1",
         "bottle": false
+      },
+      "gpg": {
+        "version": "2.2.27",
+        "bottle": {
+          "rebuild": 0,
+          "cellar": "/usr/local/Cellar",
+          "prefix": "/usr/local",
+          "root_url": "https://homebrew.bintray.com/bottles",
+          "files": {
+            "arm64_big_sur": {
+              "url": "https://homebrew.bintray.com/bottles/gnupg-2.2.27.arm64_big_sur.bottle.tar.gz",
+              "sha256": "e43d39b6d1eb7ed8451ef71fd9ccc37a2505e0c04a68e89290fcd9add362f228"
+            },
+            "big_sur": {
+              "url": "https://homebrew.bintray.com/bottles/gnupg-2.2.27.big_sur.bottle.tar.gz",
+              "sha256": "6726388722ce3b72733bb9b685c7325a42bfa277b54fadf5c5994a3396b3c35f"
+            },
+            "catalina": {
+              "url": "https://homebrew.bintray.com/bottles/gnupg-2.2.27.catalina.bottle.tar.gz",
+              "sha256": "f7e22bee02f43a65794ab1b2bb44bc9650a634fdc2002a102106e78b6c32d2a8"
+            },
+            "mojave": {
+              "url": "https://homebrew.bintray.com/bottles/gnupg-2.2.27.mojave.bottle.tar.gz",
+              "sha256": "7250d3b3429e984579c1a1cde3455f63981c3a29d17d23eadce5c45079199bbf"
+            }
+          }
+        }
       }
     },
     "cask": {
@@ -700,7 +727,7 @@
         }
       },
       "postman": {
-        "version": "8.0.6",
+        "version": "8.0.7",
         "options": {
           "full_name": "postman"
         }
@@ -852,12 +879,12 @@
   "system": {
     "macos": {
       "big_sur": {
-        "HOMEBREW_VERSION": "3.0.4",
+        "HOMEBREW_VERSION": "3.0.5",
         "HOMEBREW_PREFIX": "/usr/local",
-        "Homebrew/homebrew-core": "6de8c1455224f0c7949aa103a6cf5721a7dcdde5",
-        "CLT": "12.4.0.0.1.1610135815",
+        "Homebrew/homebrew-core": "f9c968b2cfbbca307530b8aed297ed7d82b576af",
+        "CLT": "",
         "Xcode": "12.4",
-        "macOS": "11.2.2"
+        "macOS": "11.2.3"
       }
     }
   }
