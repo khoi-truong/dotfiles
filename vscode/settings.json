@@ -89,7 +89,7 @@
 
   "minapp-vscode.disableAutoConfig": true,
 
-  "python.pythonPath": "/Users/khoitm/.pyenv/versions/3.8.1/bin/python3.8",
+  "python.pythonPath": "~/.pyenv/shims",
   "python.linting.pylintEnabled": true,
   "python.linting.enabled": true,
   "python.jediEnabled": false,
