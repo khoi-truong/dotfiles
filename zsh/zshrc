@@ -4,10 +4,10 @@
 # Paths
 export DOTFILES="${HOME}/.dotfiles"
 export ANTIBODY_HOME="${DOTFILES}/antibody"
-export ZSH="${ANTIBODY_HOME}/https-COLON--SLASH--SLASH-github.com-SLASH-robbyrussell-SLASH-oh-my-zsh"
-export ZSH_COMPDUMP="$ZSH/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
+export OMZ="${ANTIBODY_HOME}/https-COLON--SLASH--SLASH-github.com-SLASH-robbyrussell-SLASH-oh-my-zsh"
+export ZSH_COMPDUMP="$OMZ/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
 export ZSH_CONFIGS="${DOTFILES}/zsh"
-export HISTFILE="$ZSH/history"
+export HISTFILE="$OMZ/history"
 
 # Load the shell dotfiles, and then some:
 # * ~/.path can be used to extend `$PATH`.
@@ -63,11 +63,7 @@ COMPLETION_WAITING_DOTS="true"
 # much, much faster.
 # DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-# Load common-aliases by oh-my-zsh to prevent conflicts with omz_urlencode
-# https://github.com/ohmyzsh/ohmyzsh/issues/5243
-plugins=(common-aliases)
-
-source $ZSH/oh-my-zsh.sh
+source $OMZ/oh-my-zsh.sh
 
 # rbenv
 eval "$(rbenv init -)"
