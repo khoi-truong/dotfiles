@@ -2,19 +2,19 @@
   "entries": {
     "tap": {
       "homebrew/cask": {
-        "revision": "6393ad777d524ec426cfd519a1e4e65bbfd80c9b"
+        "revision": "5fd490f5a90392bea9b4c8b5e3b06871c59e1a76"
       },
       "homebrew/cask-drivers": {
-        "revision": "6f0b7628a214a49cd1e42006f038dc6f19478385"
+        "revision": "44420d92bbcb73b8c60dcf93454dd43ffa88bf74"
       },
       "homebrew/cask-fonts": {
         "revision": "9109a71902f61425cbedb59dc796b99e26ee50f8"
       },
       "homebrew/cask-versions": {
-        "revision": "7352de599b6d95800b59296820a1eb49f0dfc3d4"
+        "revision": "66c77cf75ab6a2092440f2823f05695a340f5edf"
       },
       "homebrew/core": {
-        "revision": "19386d12ac8edf2f72aafb3782004c99eb7487c6"
+        "revision": "000be78c4e9cdb1bdedab9229c0e7728fc7a6d4d"
       },
       "homebrew/bundle": {
         "revision": "c786ab13fc24f373225c399941bdb95358676e01"
@@ -720,7 +720,7 @@
         }
       },
       "docker": {
-        "version": "3.3.2,63878",
+        "version": "3.3.3,64133",
         "options": {
           "full_name": "docker"
         }
@@ -909,7 +909,7 @@
       "big_sur": {
         "HOMEBREW_VERSION": "3.1.5",
         "HOMEBREW_PREFIX": "/usr/local",
-        "Homebrew/homebrew-core": "19386d12ac8edf2f72aafb3782004c99eb7487c6",
+        "Homebrew/homebrew-core": "000be78c4e9cdb1bdedab9229c0e7728fc7a6d4d",
         "CLT": "12.5.0.22.9",
         "Xcode": "12.5",
         "macOS": "11.3.1"
