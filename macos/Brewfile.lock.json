@@ -706,12 +706,6 @@
           "full_name": "cloudflare-warp"
         }
       },
-      "dash": {
-        "version": "6.0.5,976",
-        "options": {
-          "full_name": "dash"
-        }
-      },
       "datagrip": {
         "version": "2021.1.1,211.7142.37",
         "options": {
