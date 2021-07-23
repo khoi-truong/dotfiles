@@ -75,9 +75,13 @@
   "git.enabled": true,
   "git.autofetch": true,
 
-  "gitlens.hovers.currentLine.over": "line",
+  "git-graph.repository.commits.fetchAvatars": true,
+  "git-graph.repository.fetchAndPrune": true,
+
   "gitlens.codeLens.enabled": false,
   "gitlens.currentLine.enabled": false,
+  "gitlens.hovers.currentLine.over": "line",
+  "gitlens.views.repositories.files.layout": "tree",
 
   "java.semanticHighlighting.enabled": true,
   "java.project.importHint": false,
@@ -192,7 +196,7 @@
       // "activityBar.activeBackground": "#151819",
       // "activityBar.activeBorder": "#080808",
       // "activityBar.activeFocusBorder": "#080808",
-      "activityBar.background": "#151819",
+      "activityBar.background": "#141617",
       "activityBar.border": "#101010",
       // "activityBarBadge.background": "#64FFDA",
       "badge.background": "#101010",
@@ -213,7 +217,10 @@
       // "list.activeSelectionForeground": "#64FFDA",
       // "list.highlightForeground": "#64FFDA",
       // "list.deemphasizedForeground": "",
+      // "list.focusBackground": "",
       // "list.inactiveSelectionForeground": "#64FFDA",
+      "listFilterWidget.background": "#1d2021",
+      "listFilterWidget.outline": "#3c3836",
       "gitDecoration.ignoredResourceForeground": "#504945",
       // "menu.selectionForeground": "#64FFDA",
       // "menubar.selectionForeground": "#64FFDA",
@@ -230,6 +237,8 @@
       "sideBar.border": "#101010",
       "sideBar.background": "#151819",
       "sideBar.foreground": "#928374",
+      "sideBarSectionHeader.background": "#141617",
+      "sideBarSectionHeader.border": "#101010",
       "statusBar.background": "#076678",
       "statusBar.foreground": "#ffffff",
       "statusBar.border": "#076678",
@@ -286,6 +295,6 @@
     "editor.tabSize": 4
   },
   "redhat.telemetry.enabled": true,
-  
+
   "react-native-tools.networkInspector.consoleLogsColorTheme": "Dark"
 }
