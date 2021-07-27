@@ -2,8 +2,8 @@
   "Code snipped": {
     "prefix": "code",
     "body": [
-      "```$1",
-      "$2",
+      "```${1:language}",
+      "${2:code}",
       "```"
     ]
   }
