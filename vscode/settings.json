@@ -1,4 +1,6 @@
 {
+  "bazel.buildifierFixOnFormat": true,
+  
   "beautify.language": {
     "css": [],
     "html": ["html", "php", "erb"],
@@ -209,13 +211,13 @@
       "sideBarSectionHeader.border": "#101010",
       "statusBar.background": "#076678",
       "statusBar.foreground": "#ffffff",
-      "statusBar.border": "#076678",
+      "statusBar.border": "#07667800",
       "statusBar.noFolderBackground": "#8f3f71",
       "statusBar.noFolderForeground": "#ffffff",
-      "statusBar.noFolderBorder": "#8f3f71",
+      "statusBar.noFolderBorder": "#8f3f7100",
       "statusBar.debuggingBackground": "#af3a03",
       "statusBar.debuggingForeground": "#ffffff",
-      "statusBar.debuggingBorder": "#af3a03",
+      "statusBar.debuggingBorder": "#af3a0300",
       "tab.activeBackground": "#1d2021",
       "tab.activeBorder": "#00000000",
       "tab.border": "#00000000",
