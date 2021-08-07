@@ -1,6 +1,7 @@
 {
+  "bazel.buildifierExecutable": "/usr/local/bin/buildifier",
   "bazel.buildifierFixOnFormat": true,
-  
+
   "beautify.language": {
     "css": [],
     "html": ["html", "php", "erb"],
