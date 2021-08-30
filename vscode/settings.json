@@ -8,6 +8,11 @@
     "js": []
   },
 
+  "bsv.bzl.invocation.enabled": false,
+  "bsv.bzl.invocation.invokeWithBuildEventStreaming": false,
+  "bsv.bzl.invocation.hideOutputPanelOnSuccess": false,
+  "bsv.bzl.invocation.buildEventPublishAllActions": false,
+
   "editor.codeActionsOnSave": {
     "source.fixAll": true,
     "source.organizeImports": true
@@ -95,10 +100,16 @@
   "prettier.jsxBracketSameLine": true,
   "prettier.jsxSingleQuote": true,
 
-  "python.pythonPath": "~/.pyenv/shims",
+  "python.analysis.completeFunctionParens": true,
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.typeCheckingMode": "basic",
+  "python.autoComplete.addBrackets": true,
+  "python.diagnostics.sourceMapsEnabled": true,
   "python.linting.pylintEnabled": true,
   "python.linting.enabled": true,
   "python.languageServer": "Jedi",
+  "python.pythonPath": "~/.pyenv/shims",
+  "python.terminal.activateEnvInCurrentTerminal": true,
 
   "react-native-tools.networkInspector.consoleLogsColorTheme": "Dark",
 
@@ -110,6 +121,8 @@
     "**/env": true,
     "**/venv": true
   },
+
+  "tabnine.experimentalAutoImports": true,
 
   "telemetry.enableCrashReporter": false,
   "telemetry.enableTelemetry": false,
@@ -243,6 +256,10 @@
   "workbench.statusBar.visible": true,
   "workbench.view.alwaysShowHeaderActions": false,
 
+  "[bazel]": {
+    "editor.defaultFormatter": "StackBuild.bazel-stack-vscode"
+  },
+
   "[dart]": {
     "editor.formatOnSave": true,
     "editor.formatOnType": true,
@@ -262,9 +279,8 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
 
-  // PEP 8 implementations. Read more: https://www.python.org/dev/peps/pep-0008/
   "[python]": {
-    "editor.tabSize": 4,
+    "editor.tabSize": 4, // PEP 8 implementations. Read more: https://www.python.org/dev/peps/pep-0008/
     "editor.wordWrapColumn": 79
   },
 
