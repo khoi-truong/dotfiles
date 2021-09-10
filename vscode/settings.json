@@ -115,6 +115,8 @@
 
   "redhat.telemetry.enabled": true,
 
+  "remote.SSH.configFile": "~/.ssh/config.local",
+
   "search.exclude": {
     "**/node_modules": true,
     "**/bower_components": true,
