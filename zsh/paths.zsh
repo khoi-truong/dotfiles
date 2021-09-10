@@ -1,15 +1,17 @@
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
+export PATH="/usr/local/sbin:$PATH"
+
 export GOPATH="$HOME/Code/go"
 export GOBIN="$GOPATH/bin"
-export PATH=$PATH:$GOPATH
-export PATH=$PATH:$GOBIN
+export PATH=$GOPATH:$PATH
+export PATH=$GOBIN:$PATH
 
-export PATH=$PATH:"$HOME/.cargo/bin"
+export PATH="$HOME/.cargo/bin:$PATH"
 
-export PATH=$PATH:"$HOME/.config/carthage/bin"
+export PATH="$HOME/.config/carthage/bin:$PATH"
 
 export PYENV_ROOT="$HOME/.pyenv"
-export PATH=$PATH:"$PYENV_ROOT/bin"
+export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init --path)"
