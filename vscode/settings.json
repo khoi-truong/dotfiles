@@ -13,6 +13,7 @@
   "bsv.bzl.invocation.hideOutputPanelOnSuccess": false,
   "bsv.bzl.invocation.buildEventPublishAllActions": false,
 
+  "editor.bracketPairColorization.enabled": false,
   "editor.codeActionsOnSave": {
     "source.fixAll": true,
     "source.organizeImports": true
@@ -50,6 +51,7 @@
     "Matchfile": "ruby",
     "Appfile": "ruby",
     "Deliverfile": "ruby",
+    "Pluginfile": "ruby",
     "*.tulsigen": "json",
     "*.tulsiconf": "json",
     "*.cjson": "jsonc",
@@ -68,7 +70,11 @@
     "**/node_modules": true,
     "venv": true,
     "*.sublime-*": true,
-    "env*": true
+    "env*": true,
+    "**/.classpath": true,
+    "**/.project": true,
+    "**/.settings": true,
+    "**/.factorypath": true
   },
   "files.watcherExclude": {
     "**/.git/objects/**": true,
@@ -91,6 +97,13 @@
   "gitlens.currentLine.enabled": false,
   "gitlens.hovers.currentLine.over": "line",
   "gitlens.views.repositories.files.layout": "tree",
+  "gitlens.views.commits.pullRequests.showForBranches": false,
+  "gitlens.views.commits.pullRequests.enabled": false,
+  "gitlens.views.commits.showBranchComparison": false,
+  "gitlens.views.showRelativeDateMarkers": false,
+  "gitlens.views.worktrees.showBranchComparison": false,
+  "gitlens.views.worktrees.pullRequests.showForBranches": false,
+  "gitlens.views.worktrees.pullRequests.enabled": false,
 
   "java.semanticHighlighting.enabled": true,
   "java.project.importHint": false,
@@ -141,7 +154,6 @@
   "window.title": "${activeEditorShort}${separator}${rootName}",
   "window.titleBarStyle": "custom",
 
-  "workbench.activityBar.visible": true,
   "workbench.colorCustomizations": {
     "[Material Theme]": {
       "titleBar.activeBackground": "#141c20",
@@ -255,7 +267,6 @@
   "workbench.settings.openDefaultKeybindings": true,
   "workbench.sideBar.location": "left",
   "workbench.startupEditor": "readme",
-  "workbench.statusBar.visible": true,
   "workbench.view.alwaysShowHeaderActions": false,
 
   "[bazel]": {
