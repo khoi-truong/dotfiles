@@ -104,7 +104,7 @@
 			<key>text</key>
 			<string>Search LibGen for '{query}'</string>
 			<key>url</key>
-			<string>http://gen.lib.rus.ec/search.php?req={query}</string>
+			<string>http://libgen.li/index.php?req={query}</string>
 			<key>utf8</key>
 			<true/>
 		</dict>
