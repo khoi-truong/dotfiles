@@ -19,8 +19,10 @@ brew "git"
 brew "go"
 brew "gopls"
 brew "gpg"
+brew "java"
 brew "llvm"
 brew "mas"
+brew "nvim"
 brew "nvm"
 brew "pyenv"
 brew "rbenv"
@@ -43,9 +45,10 @@ cask "flux"
 cask "gitkraken"
 cask "goland"
 cask "google-chrome"
-cask "gotiengviet"
+cask "evkey"
 cask "intellij-idea"
 cask "iterm2"
+cask "karabiner-elements"
 cask "notion"
 cask "postman"
 cask "pycharm"
@@ -68,8 +71,6 @@ mas "Apple Configurator 2", id: 1037126344
 mas "Apple Developer", id: 640199958
 mas "Keynote", id: 409183694
 mas "Messenger", id: 1480068668
-mas "Numbers", id: 409203825
-mas "Pages", id: 409201541
 mas "Slack", id: 803453959
 mas "Telegram", id: 747648890
 mas "The Unarchiver", id: 425424353

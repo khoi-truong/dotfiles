@@ -5,7 +5,7 @@ DOTFILES="$(cd "$(dirname "$0")"; pwd)";
 # Install Homebrew casks
 echo "Homebrew Bundle..."
 cd ${DOTFILES}/macos
-brew bundle
+brew bundle install -f --verbose
 brew bundle cleanup -f
 cd ..
 
@@ -14,7 +14,7 @@ execute() {
     chmod +x "$1"; "$1";
 }
 
-for file in ./{macos,terminal,iterm,alfred,misc,vscode}/setup.sh; do
+for file in ./{brew,macos,terminal,iterm,alfred,misc,vscode}/setup.sh; do
 	[ -r "$file" ] && [ -f "$file" ] && execute "$file"
 done;
 unset file;
