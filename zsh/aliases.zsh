@@ -156,3 +156,6 @@ alias path='echo -e ${PATH//:/\\n}'
 
 # Fix issue with homebrew and pyenv
 alias brew="env PATH=${PATH//$(pyenv root)\/shims:/} brew"
+
+alias vi="nocorrect vi"
+alias nvim="nocorrect nvim"
