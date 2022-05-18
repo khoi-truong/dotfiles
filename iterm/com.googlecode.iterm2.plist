@@ -681,13 +681,13 @@
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.40392157435417175</real>
+				<real>1</real>
 				<key>Color Space</key>
 				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.98039215803146362</real>
+				<real>1</real>
 				<key>Red Component</key>
-				<real>0.36862745881080627</real>
+				<real>0.99999600649999998</real>
 			</dict>
 			<key>Character Encoding</key>
 			<integer>4</integer>
@@ -757,13 +757,13 @@
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.0</real>
+				<real>0.78104829789999997</real>
 				<key>Color Space</key>
 				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.818359375</real>
+				<real>0.7810582519</real>
 				<key>Red Component</key>
-				<real>0.0</real>
+				<real>0.78103977440000005</real>
 			</dict>
 			<key>Guid</key>
 			<string>4CF06BF5-BAF0-4180-A24F-CBEA73655A0F</string>
@@ -1531,7 +1531,7 @@
 			<key>Use Tab Color</key>
 			<false/>
 			<key>Vertical Spacing</key>
-			<real>1</real>
+			<real>1.2</real>
 			<key>Visual Bell</key>
 			<true/>
 			<key>Window Type</key>

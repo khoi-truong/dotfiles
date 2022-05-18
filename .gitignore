@@ -10,8 +10,11 @@ Thumbs.db
 .Spotlight-V100
 .Trashes
 
-# Antibody
-antibody/
+# Antidote
+antidote/
+
+# Local zsh generated files
+zsh/local
 
 # Local files
 *.local

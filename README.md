@@ -24,8 +24,7 @@
 #### ZSH plugins
 
 - https://github.com/unixorn/awesome-zsh-plugins
-- https://getantibody.github.io/
-- https://github.com/yanyingwang/antibody
+- https://getantidote.github.io/
 - https://gist.github.com/laggardkernel/4a4c4986ccdcaf47b91e8227f9868ded
 - https://github.com/zdharma/zinit
 - http://zdharma.org/zinit/wiki/INTRODUCTION/
