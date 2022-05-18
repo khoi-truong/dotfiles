@@ -1,5 +1,4 @@
 robbyrussell/oh-my-zsh
-
 robbyrussell/oh-my-zsh path:themes/robbyrussell.zsh-theme
 robbyrussell/oh-my-zsh path:plugins/common-aliases
 robbyrussell/oh-my-zsh path:plugins/compleat
@@ -9,6 +8,9 @@ robbyrussell/oh-my-zsh path:plugins/dirhistory
 robbyrussell/oh-my-zsh path:plugins/gem
 robbyrussell/oh-my-zsh path:plugins/git
 robbyrussell/oh-my-zsh path:plugins/history
+robbyrussell/oh-my-zsh path:plugins/tmux
+robbyrussell/oh-my-zsh path:plugins/z
 
 zsh-users/zsh-autosuggestions
 zdharma-continuum/fast-syntax-highlighting
+changyuheng/fz
