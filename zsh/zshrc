@@ -3,22 +3,22 @@
 
 # Paths
 export DOTFILES="${HOME}/.dotfiles"
-export ZDOTDIR="${DOTFILES}/zsh"
-export ANTIDOTE_HOME="${ZDOTDIR}/antidote"
-export ZSH_LOCAL="$ZDOTDIR/local"
+ZSH_DIR="${DOTFILES}/zsh"
+export ANTIDOTE_HOME="${ZSH_DIR}/antidote"
+ZSH_LOCAL="$ZSH_DIR/local"
 mkdir -p $ZSH_LOCAL
 export ZSH_COMPDUMP="$ZSH_LOCAL/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
 export HISTFILE="$ZSH_LOCAL/history"
 
 # clone antidote if necessary and generate a static plugin file
 zstyle ':antidote:bundle' use-friendly-names 'yes'
-if [[ ! $ZSH_LOCAL/plugins.zsh -nt $ZDOTDIR/zsh.plugins ]]; then
+if [[ ! $ZSH_LOCAL/plugins.zsh -nt $ZSH_DIR/zsh.plugins ]]; then
   [[ -e $ANTIDOTE_HOME ]] \
     || git clone --depth=1 https://github.com/mattmc3/antidote.git $ANTIDOTE_HOME
-  [[ -e $ZDOTDIR/zsh.plugins ]] || touch $ZDOTDIR/zsh.plugins
+  [[ -e $ZSH_DIR/zsh.plugins ]] || touch $ZSH_DIR/zsh.plugins
   (
     source $ANTIDOTE_HOME/antidote.zsh
-    antidote bundle <$ZDOTDIR/zsh.plugins >$ZSH_LOCAL/plugins.zsh
+    antidote bundle <$ZSH_DIR/zsh.plugins >$ZSH_LOCAL/plugins.zsh
   )
 fi
 
@@ -31,7 +31,7 @@ source $ZSH_LOCAL/plugins.zsh
 # Load the shell dotfiles, and then some:
 # * ~/.path can be used to extend `$PATH`.
 # * ~/.extra can be used for other settings you don’t want to commit.
-for file in ${ZDOTDIR}/{paths,config,aliases,omz}.zsh; do
+for file in ${ZSH_DIR}/{paths,config,aliases,omz}.zsh; do
 	[ -r "$file" ] && [ -f "$file" ] && source "$file";
 done;
 unset file;
@@ -56,7 +56,7 @@ fi
 if [[ $FSH_CURRENT_THEME != $FSH_THEME ]]; then
   fast-theme $FSH_THEME
   echo $FSH_THEME > "$ZSH_LOCAL/theme.fsh"
-  FSH_OVERLAY="$ZDOTDIR/plugin-configs/fast-syntax-highlighting/$FSH_THEME-overlay.ini"
+  FSH_OVERLAY="$ZSH_DIR/plugin-configs/fast-syntax-highlighting/$FSH_THEME-overlay.ini"
   if [[ -e $FSH_OVERLAY ]]; then
     fast-theme $FSH_OVERLAY
   fi
@@ -66,3 +66,4 @@ unset FSH_THEME
 unset FSH_CURRENT_THEME
 
 unset ZSH_LOCAL
+unset ZSH_DIR
