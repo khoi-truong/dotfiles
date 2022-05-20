@@ -30,7 +30,7 @@
   "editor.minimap.maxColumn": 120,
   "editor.minimap.showSlider": "always",
   "editor.overviewRulerBorder": false,
-  "editor.rulers": [120],
+  "editor.rulers": [80, 120],
   "editor.scrollBeyondLastLine": false,
   "editor.smoothScrolling": true,
   "editor.suggestSelection": "first",
@@ -116,11 +116,11 @@
   "python.analysis.completeFunctionParens": true,
   "python.analysis.diagnosticMode": "workspace",
   "python.analysis.typeCheckingMode": "basic",
-  "python.autoComplete.addBrackets": true,
   "python.diagnostics.sourceMapsEnabled": true,
   "python.linting.pylintEnabled": true,
   "python.linting.enabled": true,
-  "python.languageServer": "Jedi",
+  "python.linting.lintOnSave": true,
+  "python.languageServer": "Pylance",
   "python.pythonPath": "~/.pyenv/shims",
   "python.terminal.activateEnvInCurrentTerminal": true,
 
@@ -137,10 +137,7 @@
     "**/venv": true
   },
 
-  "tabnine.experimentalAutoImports": true,
-
-  "telemetry.enableCrashReporter": false,
-  "telemetry.enableTelemetry": false,
+  "telemetry.telemetryLevel": "off",
 
   "terminal.integrated.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
   "terminal.integrated.fontSize": 13,
@@ -299,5 +296,6 @@
 
   "[swift]": {
     "editor.tabSize": 4
-  }
+  },
+  "python.autoComplete.extraPaths": []
 }
