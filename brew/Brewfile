@@ -33,6 +33,7 @@ brew "watchman"
 brew "yarn"
 brew "zsh"
 
+cask "adguard"
 cask "alfred"
 cask "discord"
 cask "docker"
