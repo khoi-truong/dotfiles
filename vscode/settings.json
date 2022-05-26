@@ -298,5 +298,11 @@
 
   "[swift]": {
     "editor.tabSize": 4
+  },
+  "github.copilot.enable": {
+    "*": true,
+    "yaml": true,
+    "plaintext": false,
+    "markdown": false
   }
 }
