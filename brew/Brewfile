@@ -54,6 +54,7 @@ cask "spotify"
 cask "surfshark"
 cask "visual-studio-code"
 cask "vlc"
+cask "warp"
 cask "zoom"
 
 cask "font-fira-code"
