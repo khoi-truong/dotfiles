@@ -9,6 +9,7 @@ ZSH_LOCAL="$ZSH_DIR/local"
 mkdir -p $ZSH_LOCAL
 export ZSH_COMPDUMP="$ZSH_LOCAL/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
 export HISTFILE="$ZSH_LOCAL/history"
+export _Z_DATA="${ZSH_LOCAL}/z"
 
 # clone antidote if necessary and generate a static plugin file
 zstyle ':antidote:bundle' use-friendly-names 'yes'

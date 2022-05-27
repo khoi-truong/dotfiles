@@ -13,4 +13,5 @@ robbyrussell/oh-my-zsh path:plugins/z
 
 zsh-users/zsh-autosuggestions
 zdharma-continuum/fast-syntax-highlighting
+rupa/z
 changyuheng/fz
