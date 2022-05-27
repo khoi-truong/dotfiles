@@ -24,6 +24,7 @@
   "editor.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
   "editor.fontLigatures": false,
   "editor.formatOnPaste": true,
+  "editor.inlineSuggest.enabled": true,
   "editor.largeFileOptimizations": false,
   "editor.minimap.enabled": true,
   "editor.minimap.renderCharacters": false,
@@ -302,7 +303,7 @@
   "github.copilot.enable": {
     "*": true,
     "yaml": true,
-    "plaintext": false,
+    "plaintext": true,
     "markdown": false
   }
 }
