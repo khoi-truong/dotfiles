@@ -1299,7 +1299,7 @@
 		<integer>8395520</integer>
 	</dict>
 	<key>shouldRestoreTabs</key>
-	<true/>
+	<false/>
 	<key>shouldShowStatusIcon</key>
 	<true/>
 	<key>shouldStartAtLogin</key>
