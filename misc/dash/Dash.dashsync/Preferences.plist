@@ -954,6 +954,46 @@
 					<string>React_Native</string>
 				</dict>
 			</dict>
+			<key>RxSwift</key>
+			<dict>
+				<key>date</key>
+				<date>2022-06-02T14:45:21Z</date>
+				<key>entry</key>
+				<dict>
+					<key>aliases</key>
+					<array/>
+					<key>authorLinkHref</key>
+					<string>https://github.com/Kapeli/Dash-User-Contributions/tree/master/docsets/RxSwift#readme</string>
+					<key>authorLinkText</key>
+					<string>Petr Zvonicek</string>
+					<key>name</key>
+					<string>RxSwift</string>
+					<key>platform</key>
+					<string>usercontribRxSwift</string>
+					<key>uniqueIdentifier</key>
+					<string>RxSwift</string>
+				</dict>
+			</dict>
+			<key>Zsh</key>
+			<dict>
+				<key>date</key>
+				<date>2022-06-02T14:44:32Z</date>
+				<key>entry</key>
+				<dict>
+					<key>aliases</key>
+					<array/>
+					<key>authorLinkHref</key>
+					<string>https://github.com/Kapeli/Dash-User-Contributions/tree/master/docsets/Zsh#readme</string>
+					<key>authorLinkText</key>
+					<string>bosr</string>
+					<key>name</key>
+					<string>Zsh</string>
+					<key>platform</key>
+					<string>usercontribZsh</string>
+					<key>uniqueIdentifier</key>
+					<string>Zsh</string>
+				</dict>
+			</dict>
 		</dict>
 		<key>uninstalled</key>
 		<dict>
@@ -1038,26 +1078,6 @@
 					<string>usercontribStorm</string>
 					<key>uniqueIdentifier</key>
 					<string>Storm</string>
-				</dict>
-			</dict>
-			<key>Zsh</key>
-			<dict>
-				<key>date</key>
-				<date>2021-05-28T09:58:21Z</date>
-				<key>entry</key>
-				<dict>
-					<key>aliases</key>
-					<array/>
-					<key>authorLinkHref</key>
-					<string>https://github.com/Kapeli/Dash-User-Contributions/tree/master/docsets/Zsh#readme</string>
-					<key>authorLinkText</key>
-					<string>bosr</string>
-					<key>name</key>
-					<string>Zsh</string>
-					<key>platform</key>
-					<string>usercontribZsh</string>
-					<key>uniqueIdentifier</key>
-					<string>Zsh</string>
 				</dict>
 			</dict>
 		</dict>
@@ -1261,6 +1281,8 @@
 	</dict>
 	<key>isPinned</key>
 	<true/>
+	<key>menuIconBehavior</key>
+	<integer>1</integer>
 	<key>placeholderDelimiter</key>
 	<string>__</string>
 	<key>profiles</key>
