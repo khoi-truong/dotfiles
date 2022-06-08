@@ -4,7 +4,7 @@ DOTFILES="$(cd "$(dirname "$0")"; pwd)";
 
 # Install Homebrew casks
 echo "Homebrew Bundle..."
-cd ${DOTFILES}/macos
+cd ${DOTFILES}/brew
 brew bundle install -f --verbose
 brew bundle cleanup -f
 cd ..
@@ -27,6 +27,7 @@ ln -fs "${DOTFILES}/zsh/zshenv" ~/.zshenv
 ln -fs "${DOTFILES}/zsh/zshrc" ~/.zshrc
 ln -fs "${DOTFILES}/git/gitconfig" ~/.gitconfig
 ln -fs "${DOTFILES}/git/gitignore" ~/.gitignore
+mkdir -p ~/.ssh
 ln -fs "${DOTFILES}/ssh/config" ~/.ssh/config
 
 # Remove redundant history file
