@@ -1,7 +1,4 @@
 {
-  "bazel.buildifierExecutable": "/usr/local/bin/buildifier",
-  "bazel.buildifierFixOnFormat": true,
-
   "beautify.language": {
     "css": [],
     "html": ["html", "php", "erb"],
@@ -94,6 +91,13 @@
   "git-graph.repository.commits.fetchAvatars": true,
   "git-graph.repository.fetchAndPrune": true,
 
+  "github.copilot.enable": {
+    "*": true,
+    "yaml": true,
+    "plaintext": true,
+    "markdown": false
+  },
+
   "gitlens.codeLens.enabled": false,
   "gitlens.currentLine.enabled": false,
   "gitlens.hovers.currentLine.over": "line",
@@ -109,8 +113,6 @@
   "java.semanticHighlighting.enabled": true,
   "java.project.importHint": false,
 
-  "minapp-vscode.disableAutoConfig": true,
-
   "prettier.jsxBracketSameLine": true,
   "prettier.jsxSingleQuote": true,
 
@@ -124,7 +126,6 @@
   "python.linting.enabled": true,
   "python.linting.lintOnSave": true,
   "python.languageServer": "Pylance",
-  "python.pythonPath": "~/.pyenv/shims",
   "python.terminal.activateEnvInCurrentTerminal": true,
 
   "react-native-tools.networkInspector.consoleLogsColorTheme": "Dark",
@@ -299,11 +300,5 @@
 
   "[swift]": {
     "editor.tabSize": 4
-  },
-  "github.copilot.enable": {
-    "*": true,
-    "yaml": true,
-    "plaintext": true,
-    "markdown": false
   }
 }
