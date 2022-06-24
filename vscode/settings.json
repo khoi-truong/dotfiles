@@ -95,7 +95,8 @@
     "*": true,
     "yaml": true,
     "plaintext": true,
-    "markdown": false
+    "markdown": false,
+    "python": false
   },
 
   "gitlens.codeLens.enabled": false,
