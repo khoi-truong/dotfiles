@@ -15,3 +15,5 @@ export PATH="$HOME/.config/carthage/bin:$PATH"
 export PYENV_ROOT="$HOME/.pyenv"
 export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init --path)"
+
+export PATH="$HOME/.jenv/bin:$PATH"
