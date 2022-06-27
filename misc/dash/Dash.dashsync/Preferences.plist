@@ -9,7 +9,7 @@
 			<key>ASCII_Tables</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:18Z</date>
+				<date>2022-06-25T01:36:18Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -25,7 +25,7 @@
 			<key>Bash_Test_Operators</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:19Z</date>
+				<date>2022-06-25T01:36:18Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -43,7 +43,7 @@
 			<key>CSS_Device_Media_Queries</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:26Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -59,7 +59,7 @@
 			<key>CSS_Named_Colors</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:25Z</date>
+				<date>2022-06-25T01:36:16Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -75,7 +75,7 @@
 			<key>Git</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:17Z</date>
+				<date>2022-06-25T01:36:16Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -96,7 +96,7 @@
 			<key>Git_Flow</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:26Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -117,7 +117,7 @@
 			<key>HTML_Entities</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:18Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -133,7 +133,7 @@
 			<key>HTML_Head_Elements</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:19Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -149,7 +149,7 @@
 			<key>HTTP_Header_Fields</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:18Z</date>
+				<date>2022-06-25T01:36:15Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -165,7 +165,7 @@
 			<key>HTTP_Status_Codes</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:19Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -181,7 +181,7 @@
 			<key>MIME_Types</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:23Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -197,7 +197,7 @@
 			<key>Mac_Startup_Keys</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:26Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -216,7 +216,7 @@
 			<key>NSDateFormatter</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:27:47Z</date>
+				<date>2022-06-25T01:36:14Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -245,7 +245,7 @@
 			<key>Oh-My-Zsh_Git</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:20Z</date>
+				<date>2022-06-25T01:36:14Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -268,7 +268,7 @@
 			<key>Python_Format_Strings</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:24Z</date>
+				<date>2022-06-25T01:36:15Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -284,7 +284,7 @@
 			<key>Regular_Expressions</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:21Z</date>
+				<date>2022-06-25T01:36:14Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -303,7 +303,7 @@
 			<key>Unix_File_Permissions</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:20Z</date>
+				<date>2022-06-25T01:36:16Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -321,7 +321,7 @@
 			<key>Vim</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:30Z</date>
+				<date>2022-06-25T01:36:16Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -337,7 +337,7 @@
 			<key>Visual_Studio_Code</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:24Z</date>
+				<date>2022-06-25T01:36:16Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -353,7 +353,7 @@
 			<key>iOS_Design</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:23Z</date>
+				<date>2022-06-25T01:36:15Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -380,7 +380,7 @@
 			<key>iTerm2</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:30Z</date>
+				<date>2022-06-25T01:36:17Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -401,7 +401,7 @@
 			<key>openssl</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:25Z</date>
+				<date>2022-06-25T01:36:16Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -417,7 +417,7 @@
 			<key>tmux</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:24:19Z</date>
+				<date>2022-06-25T01:36:15Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -857,7 +857,7 @@
 			<key>ecto</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-04T09:06:18Z</date>
+				<date>2022-06-25T01:36:21Z</date>
 				<key>entry</key>
 				<dict>
 					<key>name</key>
@@ -871,7 +871,7 @@
 			<key>phoenix</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-02T04:27:27Z</date>
+				<date>2022-06-25T01:36:20Z</date>
 				<key>entry</key>
 				<dict>
 					<key>name</key>
@@ -928,7 +928,7 @@
 			<key>React_Native</key>
 			<dict>
 				<key>date</key>
-				<date>2021-07-19T06:55:00Z</date>
+				<date>2022-06-25T01:37:11Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -957,7 +957,7 @@
 			<key>RxSwift</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-02T14:45:21Z</date>
+				<date>2022-06-25T01:36:20Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -977,7 +977,7 @@
 			<key>Zsh</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-02T14:44:32Z</date>
+				<date>2022-06-25T01:36:20Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -1177,52 +1177,52 @@
 			<key>http://kapeli.com/feeds/Apple_API_Reference.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T11:13:43Z</date>
+				<date>2022-06-25T01:53:48Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Bash.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2022-05-26T16:27:23Z</date>
+				<date>2022-06-25T01:36:21Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Django.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T09:59:01Z</date>
+				<date>2022-06-25T01:36:59Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Elixir.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T09:58:56Z</date>
+				<date>2022-06-25T01:36:29Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Erlang.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T11:12:21Z</date>
+				<date>2022-06-25T01:53:52Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Go.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T09:59:20Z</date>
+				<date>2022-06-25T01:36:30Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Man_Pages.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T09:59:02Z</date>
+				<date>2022-06-25T01:36:21Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/Python_3.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T11:11:46Z</date>
+				<date>2022-06-25T01:37:53Z</date>
 			</dict>
 			<key>http://kapeli.com/feeds/React.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-07-19T06:53:14Z</date>
+				<date>2022-06-25T01:38:10Z</date>
 			</dict>
 			<key>https://alamofire.github.io/Alamofire/docsets/Alamofire.xml</key>
 			<dict>
 				<key>date</key>
-				<date>2021-05-28T11:11:41Z</date>
+				<date>2022-06-25T01:37:01Z</date>
 			</dict>
 		</dict>
 		<key>uninstalled</key>
