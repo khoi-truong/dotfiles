@@ -1,10 +1,4 @@
 {
-  "beautify.language": {
-    "css": [],
-    "html": ["html", "php", "erb"],
-    "js": []
-  },
-
   "bsv.bzl.invocation.enabled": false,
   "bsv.bzl.invocation.invokeWithBuildEventStreaming": false,
   "bsv.bzl.invocation.hideOutputPanelOnSuccess": false,
@@ -126,7 +120,7 @@
   "python.linting.pylintEnabled": true,
   "python.linting.enabled": true,
   "python.linting.lintOnSave": true,
-  "python.languageServer": "Pylance",
+  "python.languageServer": "Default",
   "python.terminal.activateEnvInCurrentTerminal": true,
 
   "react-native-tools.networkInspector.consoleLogsColorTheme": "Dark",
