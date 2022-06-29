@@ -20,7 +20,7 @@ execute() {
     chmod +x "$1"; "$1";
 }
 
-for file in ./{brew,macos,terminal,iterm,warp,alfred,misc,vscode}/setup.sh; do
+for file in ./{brew,macos,terminal,iterm,warp,alfred,misc,vscode,git}/setup.sh; do
 	[ -r "$file" ] && [ -f "$file" ] && execute "$file"
 done;
 unset file;
@@ -31,8 +31,6 @@ echo ""
 echo "Link configs to ${HOME}"
 ln -fs "${DOTFILES}/zsh/zshenv" ~/.zshenv
 ln -fs "${DOTFILES}/zsh/zshrc" ~/.zshrc
-ln -fs "${DOTFILES}/git/gitconfig" ~/.gitconfig
-ln -fs "${DOTFILES}/git/gitignore" ~/.gitignore
 mkdir -p ~/.ssh
 ln -fs "${DOTFILES}/ssh/config" ~/.ssh/config
 
