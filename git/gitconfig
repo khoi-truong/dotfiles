@@ -184,5 +184,3 @@
 [init]
 
 	templateDir = ~/.config/git/template/
-[gpg]
-	program = /usr/local/bin/gpg
