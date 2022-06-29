@@ -10,6 +10,10 @@ echo ""
 echo "Setting up macOS and system applications preferences..."
 osascript -e 'tell application "System Preferences" to quit'
 
+execute() {
+    chmod +x "$1"; "$1";
+}
+
 # Ask for the administrator password upfront
 sudo -v
 
@@ -20,16 +24,7 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 # System                                                                      #
 ###############################################################################
 
-COMPUTER_NAME="MATRIX"
-echo ""
-echo "› System:"
-
-echo "  › Set computer name and host name to ${COMPUTER_NAME}"
-# As done via		: System Preferences > Sharing
-sudo scutil --set ComputerName "${COMPUTER_NAME}"
-sudo scutil --set HostName "${COMPUTER_NAME}"
-sudo scutil --set LocalHostName "${COMPUTER_NAME}"
-sudo defaults write /Library/Preferences/SystemConfiguration/com.apple.smb.server NetBIOSName -string "${COMPUTER_NAME}"
+execute(./macos/set_computer_name.sh)
 
 echo "  › Disable the sound effects on boot"
 sudo nvram SystemAudioVolume=" "
