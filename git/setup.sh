@@ -10,6 +10,7 @@ ln -fs "${DOTFILES}/git/gitignore" ~/.gitignore
 mkdir -p ~/.config/git
 touch ~/.config/git/gitconfig.local
 echo "[gpg]" >> ~/.config/git/gitconfig.local
+echo "" >> ~/.config/git/gitconfig.local
 if [[ $(uname -m) == 'arm64' ]]; then
   echo "  program = /opt/homebrew/bin/gpg" >> ~/.config/git/gitconfig.local
 else
