@@ -97,6 +97,7 @@
   "gitlens.currentLine.enabled": false,
   "gitlens.hovers.currentLine.over": "line",
   "gitlens.views.repositories.files.layout": "tree",
+  "gitlens.views.commitDetails.files.layout": "tree",
   "gitlens.views.commits.pullRequests.showForBranches": false,
   "gitlens.views.commits.pullRequests.enabled": false,
   "gitlens.views.commits.showBranchComparison": false,
@@ -147,6 +148,7 @@
   "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
 
   "window.closeWhenEmpty": false,
+  "window.commandCenter": true,
   "window.title": "${activeEditorShort}${separator}${rootName}",
   "window.titleBarStyle": "custom",
 
