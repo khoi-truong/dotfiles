@@ -245,7 +245,7 @@
 			<key>Oh-My-Zsh_Git</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-25T01:36:14Z</date>
+				<date>2022-10-11T15:49:38Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
@@ -857,7 +857,7 @@
 			<key>ecto</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-25T01:36:21Z</date>
+				<date>2022-12-21T23:20:14Z</date>
 				<key>entry</key>
 				<dict>
 					<key>name</key>
@@ -871,7 +871,7 @@
 			<key>phoenix</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-25T01:36:20Z</date>
+				<date>2022-11-09T15:22:06Z</date>
 				<key>entry</key>
 				<dict>
 					<key>name</key>
@@ -957,7 +957,7 @@
 			<key>RxSwift</key>
 			<dict>
 				<key>date</key>
-				<date>2022-06-25T01:36:20Z</date>
+				<date>2022-08-18T04:04:33Z</date>
 				<key>entry</key>
 				<dict>
 					<key>aliases</key>
