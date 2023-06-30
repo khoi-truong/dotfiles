@@ -2,6 +2,7 @@
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 export PATH="/usr/local/sbin:$PATH"
+export PATH="/opt/homebrew/bin:$PATH"
 
 export GOPATH="$HOME/Code/go"
 export GOBIN="$GOPATH/bin"
@@ -17,3 +18,7 @@ export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init --path)"
 
 export PATH="$HOME/.jenv/bin:$PATH"
+
+# Android SDK
+export ANDROID_HOME=$HOME/Library/Android/sdk
+export PATH=$PATH:$ANDROID_HOME
