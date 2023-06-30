@@ -4,6 +4,10 @@
   "bsv.bzl.invocation.hideOutputPanelOnSuccess": false,
   "bsv.bzl.invocation.buildEventPublishAllActions": false,
 
+  "dart.debugExternalPackageLibraries": false,
+  "dart.debugSdkLibraries": false,
+  "dart.openDevTools": "flutter",
+
   "editor.bracketPairColorization.enabled": false,
   "editor.codeActionsOnSave": {
     "source.fixAll": true,
@@ -26,7 +30,44 @@
   "editor.scrollBeyondLastLine": false,
   "editor.smoothScrolling": true,
   "editor.suggestSelection": "first",
+  "editor.semanticHighlighting.enabled": true,
   "editor.tabSize": 2,
+  "editor.tokenColorCustomizations": {
+    "[Gruvbox Dark Hard]": {
+      "textMateRules": [
+        {
+          "scope": ["variable.other.readwrite"],
+          "settings": {
+            "foreground": "#fbf1c7"
+          }
+        },
+        {
+          "scope": ["variable.parameter"],
+          "settings": {
+            "foreground": "#8ec07c"
+          }
+        },
+        {
+          "scope": ["entity.name.function", "variable.other"],
+          "settings": {
+            "foreground": "#83a598"
+          }
+        },
+        {
+          "scope": ["entity.name.type"],
+          "settings": {
+            "foreground": "#fabd2f"
+          }
+        },
+        {
+          "scope": ["variable.language"],
+          "settings": {
+            "foreground": "#fb4934"
+          }
+        }
+      ]
+    }
+  },
   "editor.wordWrap": "on",
   "editor.wordWrapColumn": 100,
 
@@ -82,32 +123,40 @@
   "git.enabled": true,
   "git.autofetch": true,
 
-  "git-graph.repository.commits.fetchAvatars": true,
-  "git-graph.repository.fetchAndPrune": true,
-
   "github.copilot.enable": {
     "*": true,
-    "yaml": true,
     "plaintext": true,
     "markdown": false,
-    "python": false
+    "scminput": false,
+    "yaml": true,
+    "python": false,
+    "jsonc": true
   },
 
   "gitlens.codeLens.enabled": false,
   "gitlens.currentLine.enabled": false,
+  "gitlens.graph.dimMergeCommits": true,
   "gitlens.hovers.currentLine.over": "line",
-  "gitlens.views.repositories.files.layout": "tree",
+  "gitlens.sortBranchesBy": "name:asc",
+  "gitlens.views.branches.pullRequests.enabled": false,
+  "gitlens.views.branches.pullRequests.showForBranches": false,
+  "gitlens.views.branches.showBranchComparison": false,
   "gitlens.views.commitDetails.files.layout": "tree",
   "gitlens.views.commits.pullRequests.showForBranches": false,
   "gitlens.views.commits.pullRequests.enabled": false,
   "gitlens.views.commits.showBranchComparison": false,
+  "gitlens.views.remotes.pullRequests.enabled": false,
+  "gitlens.views.remotes.pullRequests.showForBranches": false,
+  "gitlens.views.repositories.files.layout": "tree",
   "gitlens.views.showRelativeDateMarkers": false,
-  "gitlens.views.worktrees.showBranchComparison": false,
-  "gitlens.views.worktrees.pullRequests.showForBranches": false,
   "gitlens.views.worktrees.pullRequests.enabled": false,
+  "gitlens.views.worktrees.pullRequests.showForBranches": false,
+  "gitlens.views.worktrees.showBranchComparison": false,
 
-  "java.semanticHighlighting.enabled": true,
+  "go.toolsManagement.autoUpdate": true,
+
   "java.project.importHint": false,
+  "java.semanticHighlighting.enabled": true,
 
   "prettier.jsxBracketSameLine": true,
   "prettier.jsxSingleQuote": true,
@@ -136,6 +185,8 @@
     "**/env": true,
     "**/venv": true
   },
+
+  "solidity.telemetry": true,
 
   "telemetry.telemetryLevel": "off",
 
@@ -257,8 +308,8 @@
     }
   },
   "workbench.colorTheme": "Gruvbox Dark Hard",
-  "workbench.iconTheme": "material-icon-theme",
   "workbench.editor.tabSizing": "fit",
+  "workbench.iconTheme": "material-icon-theme",
   "workbench.productIconTheme": "fluent-icons",
   "workbench.settings.editor": "json",
   "workbench.settings.openDefaultSettings": true,
