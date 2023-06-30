@@ -8,19 +8,16 @@ sudo -v
 # Keep-alive: update existing `sudo` time stamp until `.setup.sh` has finished
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
-# Install Homebrew casks
-echo "Homebrew Bundle..."
-cd ${DOTFILES}/brew
-brew bundle install -f --verbose
-brew bundle cleanup -f
-cd ..
+# Install Homebrew
+echo ""
+echo "Download and install Homebrew..."
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Setup macOS defaults
 execute() {
-    chmod +x "$1"; "$1";
+  chmod +x "$1"; "$1";
 }
 
-for file in ./{brew,macos,terminal,iterm,alfred,misc,vscode,git}/setup.sh; do
+for file in ./{git,brew,macos,terminal,iterm,alfred,misc}/setup.sh; do
 	[ -r "$file" ] && [ -f "$file" ] && execute "$file"
 done;
 unset file;
