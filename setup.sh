@@ -20,7 +20,7 @@ execute() {
     chmod +x "$1"; "$1";
 }
 
-for file in ./{brew,macos,terminal,iterm,warp,alfred,misc,vscode,git}/setup.sh; do
+for file in ./{brew,macos,terminal,iterm,alfred,misc,vscode,git}/setup.sh; do
 	[ -r "$file" ] && [ -f "$file" ] && execute "$file"
 done;
 unset file;
