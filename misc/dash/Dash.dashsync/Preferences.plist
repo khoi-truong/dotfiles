@@ -871,7 +871,7 @@
 			<key>phoenix</key>
 			<dict>
 				<key>date</key>
-				<date>2022-11-09T15:22:06Z</date>
+				<date>2023-02-16T03:16:03Z</date>
 				<key>entry</key>
 				<dict>
 					<key>name</key>
@@ -1325,7 +1325,7 @@
 	<key>shouldShowStatusIcon</key>
 	<true/>
 	<key>shouldStartAtLogin</key>
-	<true/>
+	<false/>
 	<key>shouldSyncBookmarks</key>
 	<true/>
 	<key>shouldSyncDocsets</key>
