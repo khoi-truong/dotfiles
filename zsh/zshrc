@@ -26,9 +26,6 @@ fi
 # uncomment if you want your session to have commands like `antidote update`
 autoload -Uz $ANTIDOTE_HOME/functions/antidote
 
-# source static plugins file
-source $ZSH_LOCAL/plugins.zsh
-
 # Load the shell dotfiles, and then some:
 # * ~/.path can be used to extend `$PATH`.
 # * ~/.extra can be used for other settings you don’t want to commit.
@@ -36,6 +33,9 @@ for file in ${ZSH_DIR}/{paths,config,aliases,omz}.zsh; do
 	[ -r "$file" ] && [ -f "$file" ] && source "$file";
 done;
 unset file;
+
+# source static plugins file
+source $ZSH_LOCAL/plugins.zsh
 
 # rbenv
 eval "$(rbenv init -)"
