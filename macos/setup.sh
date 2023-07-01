@@ -24,7 +24,7 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 # System                                                                      #
 ###############################################################################
 
-execute(./macos/set_computer_name.sh)
+execute "./set_computer_name.sh"
 unset execute
 
 echo "  › Disable the sound effects on boot"
