@@ -1349,6 +1349,12 @@
         "options": {
           "full_name": "flutter"
         }
+      },
+      "logi-options-plus": {
+        "version": "1.44.415782",
+        "options": {
+          "full_name": "logi-options-plus"
+        }
       }
     },
     "mas": {
