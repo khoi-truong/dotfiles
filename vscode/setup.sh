@@ -6,7 +6,7 @@ echo ""
 echo "Setting up Visual Studio Code..."
 
 VSCODE_CLI="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
-[ -x "${VSCODE_CLI}" ] && ln -fs "${VSCODE_CLI}" "/usr/local/bin/code"
+[ -x "${VSCODE_CLI}" ] && ln -fs "${VSCODE_CLI}" "/opt/homebrew/bin/code"
 
 CURRENT_DIR="$(cd "$(dirname "$0")"; pwd)";
 
