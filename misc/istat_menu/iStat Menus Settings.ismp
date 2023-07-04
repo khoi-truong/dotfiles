@@ -3,14 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>build</key>
-	<real>1020</real>
-	<key>license</key>
-	<dict>
-		<key>email</key>
-		<string>982092332@qq.com</string>
-		<key>serial</key>
-		<string>GAWAE-FCWQ3-P8NYB-C7GF7-NEDRT-Q5DTB-MFZG6-6NEQC-CRMUD-8MZ2K-66SRB-SU8EW-EDLZ9-TGH3S-8SGA</string>
-	</dict>
+	<string>1216</string>
 	<key>preferences</key>
 	<dict>
 		<key>Battery_DropdownOrderDisabled</key>
@@ -60,7 +53,7 @@
 		<key>CPU_MenubarGraphUser</key>
 		<string>1.00 1.00 1.00 1.00</string>
 		<key>CPU_MenubarGraphWidth</key>
-		<real>40</real>
+		<real>20</real>
 		<key>CPU_MenubarGroupItems</key>
 		<integer>1</integer>
 		<key>CPU_MenubarMode</key>
@@ -69,7 +62,7 @@
 				<key>key</key>
 				<string>0</string>
 				<key>uuid</key>
-				<string>56E2CD5E-42B5-436A-89AA-0A33317D3D7F</string>
+				<string>0E390605-ED54-44C1-A462-47158F1023D7</string>
 			</dict>
 		</array>
 		<key>CPU_MenubarSingleHistoryGraph</key>
@@ -106,9 +99,9 @@
 				<key>boot</key>
 				<true/>
 				<key>key</key>
-				<string>E3BF9B9D-27A3-3DDC-8FBE-92CEB2746C72</string>
+				<string>81A91C6A-2945-4339-9E68-826776022E34</string>
 				<key>name</key>
-				<string>Sierra</string>
+				<string>Macintosh HD</string>
 			</dict>
 			<dict>
 				<key>key</key>
@@ -181,7 +174,7 @@
 		<array>
 			<dict>
 				<key>model</key>
-				<string>MacBookPro14,2</string>
+				<string>MacBookPro18,1</string>
 				<key>name</key>
 				<string>Medium</string>
 				<key>speeds</key>
@@ -190,99 +183,64 @@
 						<key>fan</key>
 						<string>F0Ac</string>
 						<key>high</key>
-						<integer>6336</integer>
+						<integer>4296</integer>
 						<key>low</key>
-						<integer>1250</integer>
+						<integer>1499</integer>
 						<key>percentage</key>
-						<real>0.34000000000000002</real>
+						<integer>50</integer>
 						<key>speed</key>
-						<real>3000</real>
+						<integer>2897</integer>
 					</dict>
 					<dict>
 						<key>fan</key>
 						<string>F1Ac</string>
 						<key>high</key>
-						<integer>6864</integer>
+						<integer>4744</integer>
 						<key>low</key>
-						<integer>1350</integer>
+						<integer>1499</integer>
 						<key>percentage</key>
-						<real>0.34999999999999998</real>
+						<integer>50</integer>
 						<key>speed</key>
-						<real>3300</real>
+						<integer>3121</integer>
 					</dict>
 				</array>
 				<key>uuid</key>
-				<string>2D6B1DC9-E80D-412B-94ED-A766FAC32E3B</string>
+				<string>F46D4D28-291E-4565-BB13-086F95F78951</string>
 			</dict>
 			<dict>
 				<key>model</key>
-				<string>MacBookPro14,2</string>
+				<string>MacBookPro18,1</string>
 				<key>name</key>
-				<string>Max</string>
+				<string>High</string>
 				<key>speeds</key>
 				<array>
 					<dict>
 						<key>fan</key>
 						<string>F0Ac</string>
 						<key>high</key>
-						<integer>6336</integer>
+						<integer>4296</integer>
 						<key>low</key>
-						<integer>1250</integer>
+						<integer>1499</integer>
 						<key>percentage</key>
-						<real>1</real>
+						<integer>100</integer>
 						<key>speed</key>
-						<real>6336</real>
+						<integer>4296</integer>
 					</dict>
 					<dict>
 						<key>fan</key>
 						<string>F1Ac</string>
 						<key>high</key>
-						<integer>6864</integer>
+						<integer>4744</integer>
 						<key>low</key>
-						<integer>1350</integer>
+						<integer>1499</integer>
 						<key>percentage</key>
-						<real>1</real>
+						<integer>100</integer>
 						<key>speed</key>
-						<real>6864</real>
+						<integer>4744</integer>
 					</dict>
 				</array>
 				<key>uuid</key>
-				<string>33F6DC6C-1A8A-4ED5-9158-0882D9B536B0</string>
-			</dict>
-			<dict>
-				<key>model</key>
-				<string>MacBookPro14,2</string>
-				<key>name</key>
-				<string>Min</string>
-				<key>speeds</key>
-				<array>
-					<dict>
-						<key>fan</key>
-						<string>F0Ac</string>
-						<key>high</key>
-						<integer>6336</integer>
-						<key>low</key>
-						<integer>1250</integer>
-						<key>percentage</key>
-						<real>0.0</real>
-						<key>speed</key>
-						<real>1250</real>
-					</dict>
-					<dict>
-						<key>fan</key>
-						<string>F1Ac</string>
-						<key>high</key>
-						<integer>6864</integer>
-						<key>low</key>
-						<integer>1350</integer>
-						<key>percentage</key>
-						<real>0.0</real>
-						<key>speed</key>
-						<real>1350</real>
-					</dict>
-				</array>
-				<key>uuid</key>
-				<string>5F78D7D1-2CBC-4D2A-BF3B-54A909A458C3</string>
+				<string>63C1D644-A489-46B2-939E-D56C2181D491</string>
 			</dict>
 		</array>
 		<key>Memory_DisplayFormat</key>
@@ -330,6 +288,16 @@
 		<true/>
 		<key>Migrated_6.0</key>
 		<true/>
+		<key>Migrated_6.22</key>
+		<true/>
+		<key>Migrated_6.5</key>
+		<true/>
+		<key>Migrated_6.52</key>
+		<true/>
+		<key>Migrated_6.60_ARM</key>
+		<true/>
+		<key>Migrated_WeatherProvider</key>
+		<true/>
 		<key>Network_AppSort</key>
 		<integer>0</integer>
 		<key>Network_DataFormat</key>
@@ -358,19 +326,21 @@
 				<key>key</key>
 				<string>0</string>
 				<key>uuid</key>
-				<string>EF9BA759-7525-45A4-8752-7BC972E0B70C</string>
+				<string>392C5A7C-F405-4E74-893A-CF1E984449F2</string>
 			</dict>
 			<dict>
 				<key>key</key>
 				<string>100</string>
 				<key>uuid</key>
-				<string>06964051-9136-4843-94FB-C7F4F1364DD1</string>
+				<string>9EE41755-7282-4629-ACFD-0D4B3D8E7B30</string>
 			</dict>
 		</array>
+		<key>Network_MenubarUnitLevel</key>
+		<integer>3</integer>
 		<key>Network_TextBold</key>
 		<integer>0</integer>
 		<key>Network_TextUploadColor-Dark</key>
-		<string>0.57 0.57 0.57 1.00</string>
+		<string>0.81 0.81 0.81 1.00</string>
 		<key>Notifications-Enabled</key>
 		<true/>
 		<key>Notifications-Items</key>
@@ -491,12 +461,11 @@
 		<integer>0</integer>
 		<key>StatusItems-Order</key>
 		<array>
-			<integer>3</integer>
 			<integer>1</integer>
+			<integer>7</integer>
+			<integer>9</integer>
 			<integer>2</integer>
 			<integer>4</integer>
-			<integer>5</integer>
-			<integer>7</integer>
 		</array>
 		<key>Theme-SeperateStyles</key>
 		<integer>1</integer>
@@ -669,19 +638,6 @@
 				<key>format</key>
 				<array>
 					<array>
-						<string>' '</string>
-						<string>EE</string>
-						<string>' '</string>
-						<string>MMM</string>
-						<string>' '</string>
-						<string>d</string>
-						<string>'  '</string>
-						<string>h</string>
-						<string>':'</string>
-						<string>mm</string>
-						<string>' '</string>
-						<string>a</string>
-						<string>' '</string>
 						<string>___ICON__MOON___</string>
 					</array>
 					<array>
@@ -702,25 +658,46 @@
 		<true/>
 		<key>UpdateCheckerDisabled</key>
 		<true/>
+		<key>Weather_AvailableProviders</key>
+		<array>
+			<dict>
+				<key>key</key>
+				<string>apple</string>
+				<key>name</key>
+				<string>Apple Weather</string>
+			</dict>
+			<dict>
+				<key>key</key>
+				<string>accuweather</string>
+				<key>name</key>
+				<string>AccuWeather</string>
+			</dict>
+			<dict>
+				<key>key</key>
+				<string>aeris</string>
+				<key>name</key>
+				<string>Aeris Weather</string>
+			</dict>
+			<dict>
+				<key>key</key>
+				<string>environmentcanada</string>
+				<key>name</key>
+				<string>Environment Canada - Canada Only</string>
+			</dict>
+			<dict>
+				<key>key</key>
+				<string>willyweather</string>
+				<key>name</key>
+				<string>WillyWeather (BoM) - Australia Only</string>
+			</dict>
+		</array>
 		<key>Weather_DropdownOrderDisabled</key>
 		<string></string>
 		<key>Weather_Locations</key>
 		<array>
 			<dict>
-				<key>country</key>
-				<string>Vietnam</string>
 				<key>identifier</key>
-				<integer>1581130</integer>
-				<key>latitude</key>
-				<real>21.0245</real>
-				<key>longitude</key>
-				<real>105.84117000000001</real>
-				<key>name</key>
-				<string>Hanoi</string>
-				<key>state</key>
-				<string>Ha Nội</string>
-				<key>timezone</key>
-				<string>Asia/Ho_Chi_Minh</string>
+				<string>-7</string>
 			</dict>
 		</array>
 		<key>Weather_MenubarMode</key>
@@ -731,12 +708,6 @@
 				<key>uuid</key>
 				<string>53562917-C18A-4A11-8568-9F45AF82BBB2</string>
 			</dict>
-			<dict>
-				<key>mode</key>
-				<integer>0</integer>
-				<key>uuid</key>
-				<string>28173F91-F587-4DA0-9948-44B8797A986A</string>
-			</dict>
 		</array>
 		<key>Weather_Mode</key>
 		<integer>0</integer>
@@ -745,14 +716,14 @@
 		<key>Zarya-TLE</key>
 		<dict>
 			<key>time</key>
-			<real>1542622736.1978769</real>
+			<real>1688418302.3877439</real>
 			<key>tle</key>
 			<string>ISS (ZARYA)             
-1 25544U 98067A   18270.91364365  .00001907  00000-0  36522-4 0  9994
-2 25544  51.6407 226.7808 0003984 211.9488 195.1232 15.53741532134495</string>
+1 25544U 98067A   23184.70990191  .00010129  00000+0  18119-3 0  9999
+2 25544  51.6418 246.6181 0004736  98.2457  48.5828 15.50625415404355</string>
 		</dict>
 	</dict>
 	<key>version</key>
-	<real>6.1999998092651367</real>
+	<string>6.70</string>
 </dict>
 </plist>
