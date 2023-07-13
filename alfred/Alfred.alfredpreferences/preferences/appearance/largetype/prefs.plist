@@ -4,5 +4,7 @@
 <dict>
 	<key>font</key>
 	<string>System</string>
+	<key>style</key>
+	<integer>0</integer>
 </dict>
 </plist>
