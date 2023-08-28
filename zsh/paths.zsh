@@ -1,28 +1,32 @@
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
-export PATH="/usr/local/bin:$PATH"
-export PATH="/usr/local/sbin:$PATH"
-export PATH="/opt/homebrew/bin:$PATH"
-export PATH="/opt/homebrew/sbin:$PATH"
+export PATH=$PATH:/usr/local/bin
+export PATH=$PATH:/usr/local/sbin
+export PATH=$PATH:/opt/homebrew/bin
+export PATH=$PATH:/opt/homebrew/sbin
 
-export GOPATH="$HOME/Code/go"
-export GOBIN="$GOPATH/bin"
-export PATH=$GOPATH:$PATH
-export PATH=$GOBIN:$PATH
+export GOPATH=$HOME/Code/go
+export GOBIN=$GOPATH/bin
+export PATH=$PATH:$GOBIN:$GOPATH
 
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH=$PATH:$HOME/.cargo/bin
 
-export PATH="$HOME/.config/carthage/bin:$PATH"
+export PATH=$PATH:$HOME/.config/carthage/bin
 
-export PYENV_ROOT="$HOME/.pyenv"
-export PATH="$PYENV_ROOT/bin:$PATH"
+export PYENV_ROOT=$HOME/.pyenv
+export PATH=$PATH:$PYENV_ROOT/bin
 eval "$(pyenv init --path)"
 
-export PATH="$HOME/.jenv/bin:$PATH"
+export PATH=$PATH:$HOME/.jenv/bin
 
 # Android SDK
 export ANDROID_HOME=$HOME/Library/Android/sdk
 export PATH=$PATH:$ANDROID_HOME
 
+# Flutter
+export PATH=$PATH:$HOME/.pub-cache/bin
 export FVM_HOME="$HOME/.fvm"
+
+# Pipx
+export PATH=$PATH:/Users/khoi/.local/bin
