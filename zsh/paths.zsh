@@ -26,7 +26,7 @@ export PATH=$PATH:$ANDROID_HOME
 
 # Flutter
 export PATH=$PATH:$HOME/.pub-cache/bin
-export FVM_HOME="$HOME/.fvm"
+export FVM_CACHE_PATH="$HOME/.fvm"
 
 # Pipx
 export PATH=$PATH:/Users/khoi/.local/bin

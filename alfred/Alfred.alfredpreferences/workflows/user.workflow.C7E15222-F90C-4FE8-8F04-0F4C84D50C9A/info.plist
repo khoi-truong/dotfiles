@@ -8,6 +8,19 @@
 	<string>Internet</string>
 	<key>connections</key>
 	<dict>
+		<key>4397E2C7-6C13-4328-B17B-23B4F5F6B524</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>63F60794-BB56-4415-9372-BAF974C3A7E1</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
 		<key>63F60794-BB56-4415-9372-BAF974C3A7E1</key>
 		<array>
 			<dict>
@@ -32,6 +45,34 @@
 	<string>Google Suggest</string>
 	<key>objects</key>
 	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>browser</key>
+				<string></string>
+				<key>searcher</key>
+				<integer>1635215215</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.systemwebsearch</string>
+			<key>uid</key>
+			<string>B8FFA3AB-AD7D-4316-A84F-5958A671D4FF</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>text</key>
+				<string>Search Google with Suggestions for '{query}'</string>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.trigger.fallback</string>
+			<key>uid</key>
+			<string>4397E2C7-6C13-4328-B17B-23B4F5F6B524</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
 		<dict>
 			<key>config</key>
 			<dict>
@@ -107,6 +148,8 @@ function run(argv) {
 				<integer>1</integer>
 				<key>scriptfile</key>
 				<string></string>
+				<key>skipuniversalaction</key>
+				<true/>
 				<key>subtext</key>
 				<string>Search Google with suggestions</string>
 				<key>title</key>
@@ -123,45 +166,39 @@ function run(argv) {
 			<key>version</key>
 			<integer>3</integer>
 		</dict>
-		<dict>
-			<key>config</key>
-			<dict>
-				<key>browser</key>
-				<string></string>
-				<key>searcher</key>
-				<integer>1635215215</integer>
-			</dict>
-			<key>type</key>
-			<string>alfred.workflow.action.systemwebsearch</string>
-			<key>uid</key>
-			<string>B8FFA3AB-AD7D-4316-A84F-5958A671D4FF</string>
-			<key>version</key>
-			<integer>1</integer>
-		</dict>
 	</array>
 	<key>readme</key>
 	<string>## Usage
 
-Get in-line suggestions from Google’s search results via the `g` keyword ([configurable](https://www.alfredapp.com/help/workflows/user-configuration/)). Press &lt;kbd&gt;↩&lt;/kbd&gt; to open the search results page in the default web browser.
+Get in-line suggestions from Google’s search results via the `g` keyword. Press &lt;kbd&gt;↩&lt;/kbd&gt; to open the search results page in the default web browser.
 
 ![Google in-line results](images/about/google-search-results.png)</string>
 	<key>uidata</key>
 	<dict>
+		<key>4397E2C7-6C13-4328-B17B-23B4F5F6B524</key>
+		<dict>
+			<key>note</key>
+			<string>Optionally set it as a Fallback Search in Features → Default Results</string>
+			<key>xpos</key>
+			<real>50</real>
+			<key>ypos</key>
+			<real>35</real>
+		</dict>
 		<key>63F60794-BB56-4415-9372-BAF974C3A7E1</key>
 		<dict>
 			<key>note</key>
 			<string>Set your keyword via the "Configure workflow..." button.</string>
 			<key>xpos</key>
-			<real>45</real>
+			<real>230</real>
 			<key>ypos</key>
-			<real>40</real>
+			<real>35</real>
 		</dict>
 		<key>B8FFA3AB-AD7D-4316-A84F-5958A671D4FF</key>
 		<dict>
 			<key>xpos</key>
-			<real>265</real>
+			<real>405</real>
 			<key>ypos</key>
-			<real>40</real>
+			<real>35</real>
 		</dict>
 	</dict>
 	<key>userconfigurationconfig</key>
@@ -189,7 +226,7 @@ Get in-line suggestions from Google’s search results via the `g` keyword ([con
 		</dict>
 	</array>
 	<key>version</key>
-	<string>2023.1</string>
+	<string>2024.2</string>
 	<key>webaddress</key>
 	<string>https://github.com/alfredapp/google-suggest-workflow/</string>
 </dict>

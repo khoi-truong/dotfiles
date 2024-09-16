@@ -1308,18 +1308,20 @@
 readonly prefs="${alfred_preferences}/preferences/features/defaultresults/prefs.plist"
 
 # If Preference Panes are already ignored, exit
-if /usr/libexec/PlistBuddy -c 'Print :showPreferences' "${prefs}"; then
+if /usr/libexec/PlistBuddy -c 'Print :showPreferences' "${prefs}"
+then
   exit 0
 fi
 
 # Add key (and create file) if it does not exist
+/bin/mkdir -p "$(/usr/bin/dirname "${prefs}")"
 /usr/libexec/PlistBuddy -c 'Add :showPreferences bool false' "${prefs}"</string>
 				<key>scriptargtype</key>
 				<integer>1</integer>
 				<key>scriptfile</key>
 				<string></string>
 				<key>type</key>
-				<integer>5</integer>
+				<integer>11</integer>
 			</dict>
 			<key>type</key>
 			<string>alfred.workflow.action.script</string>
@@ -3818,7 +3820,7 @@ Open System Settings panes via the workflow’s keywords: `about`, `accessibilit
 	<key>userconfigurationconfig</key>
 	<array/>
 	<key>version</key>
-	<string>2023.1</string>
+	<string>2023.3</string>
 	<key>webaddress</key>
 	<string>https://github.com/alfredapp/system-settings-workflow/</string>
 </dict>

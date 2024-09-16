@@ -10,6 +10,7 @@ robbyrussell/oh-my-zsh path:plugins/git
 robbyrussell/oh-my-zsh path:plugins/history
 robbyrussell/oh-my-zsh path:plugins/tmux
 robbyrussell/oh-my-zsh path:plugins/z
+robbyrussell/oh-my-zsh path:plugins/direnv
 
 zsh-users/zsh-autosuggestions
 zdharma-continuum/fast-syntax-highlighting
