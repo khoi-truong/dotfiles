@@ -1,17 +1,15 @@
 {
-  "bsv.bzl.invocation.enabled": false,
-  "bsv.bzl.invocation.invokeWithBuildEventStreaming": false,
-  "bsv.bzl.invocation.hideOutputPanelOnSuccess": false,
-  "bsv.bzl.invocation.buildEventPublishAllActions": false,
+  "black-formatter.importStrategy": "fromEnvironment",
 
-  "dart.debugExternalPackageLibraries": false,
-  "dart.debugSdkLibraries": false,
-  "dart.openDevTools": "flutter",
+  "dart.debugExternalPackageLibraries": true,
+  "dart.debugSdkLibraries": true,
+  "dart.openDevTools": "never",
+  "dart.renameFilesWithClasses": "prompt",
 
   "editor.bracketPairColorization.enabled": false,
   "editor.codeActionsOnSave": {
-    "source.fixAll": true,
-    "source.organizeImports": true
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
   },
   "editor.codeLens": true,
   "editor.colorDecorators": true,
@@ -60,7 +58,7 @@
           }
         },
         {
-          "scope": ["variable.language"],
+          "scope": ["variable.parameter.function.language.special.self.python"],
           "settings": {
             "foreground": "#fb4934"
           }
@@ -97,7 +95,7 @@
     "**/.hg": true,
     "**/CVS": true,
     "**/.DS_Store": true,
-    "**/.vscode": true,
+    "**/.vscode": false,
     "**/__pycache__": true,
     "**/.pytest_cache": true,
     "**/node_modules": true,
@@ -115,27 +113,30 @@
     "**/node_modules/**": true,
     "**/env/**": true,
     "**/venv/**": true,
-    "env-*": true
+    "env-*": true,
+    "**/.fvm": true
   },
   "files.autoSave": "afterDelay",
   "files.trimFinalNewlines": true,
 
   "git.enabled": true,
+  "git.allowForcePush": true,
+  "git.allowNoVerifyCommit": true,
   "git.autofetch": true,
 
+  "github.copilot.editor.enableAutoCompletions": true,
   "github.copilot.enable": {
     "*": true,
     "plaintext": true,
-    "markdown": false,
+    "markdown": true,
     "scminput": false,
     "yaml": true,
-    "python": false,
+    "python": true,
     "jsonc": true
   },
-
-  "gitlens.codeLens.enabled": false,
   "gitlens.currentLine.enabled": false,
   "gitlens.graph.dimMergeCommits": true,
+  "gitlens.graph.minimap.additionalTypes": [],
   "gitlens.hovers.currentLine.over": "line",
   "gitlens.sortBranchesBy": "name:asc",
   "gitlens.views.branches.pullRequests.enabled": false,
@@ -158,37 +159,36 @@
   "java.project.importHint": false,
   "java.semanticHighlighting.enabled": true,
 
-  "prettier.jsxBracketSameLine": true,
-  "prettier.jsxSingleQuote": true,
+  "lldb.launch.expressions": "native",
+  "lldb.library": "/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/LLDB",
 
+  "python.analysis.autoFormatStrings": true,
+  "python.analysis.autoImportCompletions": true,
   "python.analysis.completeFunctionParens": true,
   "python.analysis.diagnosticMode": "workspace",
-  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.importFormat": "relative",
+  "python.analysis.typeCheckingMode": "strict",
   "python.autoComplete.extraPaths": [],
   "python.analysis.extraPaths": [],
   "python.diagnostics.sourceMapsEnabled": true,
-  "python.linting.pylintEnabled": true,
-  "python.linting.enabled": true,
-  "python.linting.lintOnSave": true,
   "python.languageServer": "Default",
   "python.terminal.activateEnvInCurrentTerminal": true,
-
-  "react-native-tools.networkInspector.consoleLogsColorTheme": "Dark",
 
   "redhat.telemetry.enabled": true,
 
   "remote.SSH.configFile": "~/.ssh/config.local",
 
+  "rubyLsp.rubyExecutablePath": "/Users/khoi/.rbenv/shims/ruby",
+
   "search.exclude": {
     "**/node_modules": true,
     "**/bower_components": true,
     "**/env": true,
-    "**/venv": true
+    "**/venv": true,
+    "**/.fvm": true
   },
 
   "solidity.telemetry": true,
-
-  "telemetry.telemetryLevel": "off",
 
   "terminal.integrated.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
   "terminal.integrated.fontSize": 13,
@@ -271,6 +271,7 @@
       "activityBar.border": "#101010",
       "badge.background": "#101010",
       "badge.foreground": "#a89984",
+      "commandCenter.border": "#141617",
       "editorGroup.border": "#101010",
       "editorGroupHeader.tabsBackground": "#151819",
       "editorGroupHeader.tabsBorder": "#10101000",
@@ -310,11 +311,9 @@
   "workbench.colorTheme": "Gruvbox Dark Hard",
   "workbench.editor.tabSizing": "fit",
   "workbench.iconTheme": "material-icon-theme",
-  "workbench.productIconTheme": "fluent-icons",
   "workbench.settings.editor": "json",
   "workbench.settings.openDefaultSettings": true,
   "workbench.settings.openDefaultKeybindings": true,
-  "workbench.sideBar.location": "left",
   "workbench.startupEditor": "readme",
   "workbench.view.alwaysShowHeaderActions": false,
 
@@ -330,7 +329,7 @@
     "editor.suggest.snippetsPreventQuickSuggestions": false,
     "editor.suggestSelection": "first",
     "editor.tabCompletion": "onlySnippets",
-    "editor.wordBasedSuggestions": false
+    "editor.wordBasedSuggestions": "off"
   },
 
   "[javascript]": {
@@ -342,11 +341,95 @@
   },
 
   "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true,
     "editor.tabSize": 4, // PEP 8 implementations. Read more: https://www.python.org/dev/peps/pep-0008/
     "editor.wordWrapColumn": 79
   },
 
   "[swift]": {
     "editor.tabSize": 4
-  }
+  },
+  "gitlens.graph.minimap.enabled": false,
+  "gitlens.graph.scrollMarkers.additionalTypes": [
+    "localBranches",
+    "stashes",
+    "tags"
+  ],
+  "gitlens.codeLens.enabled": false,
+  "gitlens.blame.toggleMode": "window",
+  "gitlens.terminalLinks.enabled": false,
+  "gitlens.menus": {
+    "editor": {
+      "blame": true,
+      "clipboard": true,
+      "compare": true,
+      "history": true,
+      "remote": true
+    },
+    "editorGroup": {
+      "blame": true,
+      "compare": true
+    },
+    "editorGutter": {
+      "compare": true,
+      "remote": true,
+      "share": true
+    },
+    "editorTab": {
+      "clipboard": true,
+      "compare": true,
+      "history": true,
+      "remote": true
+    },
+    "explorer": {
+      "clipboard": true,
+      "compare": true,
+      "history": true,
+      "remote": true
+    },
+    "ghpr": {
+      "worktree": true
+    },
+    "scm": {
+      "graph": true
+    },
+    "scmRepositoryInline": {
+      "graph": true,
+      "stash": true
+    },
+    "scmRepository": {
+      "authors": true,
+      "generateCommitMessage": true,
+      "patch": true,
+      "graph": false
+    },
+    "scmGroupInline": {
+      "stash": true
+    },
+    "scmGroup": {
+      "compare": true,
+      "openClose": true,
+      "patch": true,
+      "stash": true
+    },
+    "scmItem": {
+      "clipboard": true,
+      "compare": true,
+      "history": true,
+      "remote": true,
+      "share": true,
+      "stash": true
+    }
+  },
+  "gitlens.views.repositories.showCommits": false,
+  "gitlens.views.repositories.showBranches": false,
+  "gitlens.views.repositories.showStashes": false,
+  "gitlens.views.repositories.showWorktrees": false,
+  "gitlens.views.repositories.showContributors": false,
+  "gitlens.views.repositories.showTags": false,
+  "gitlens.views.repositories.showRemotes": false,
+  "gitlens.ai.experimental.model": "vscode",
+  "gitlens.ai.experimental.vscode.model": "copilot:gpt-4-turbo",
+  "gitlens.graph.layout": "editor"
 }
