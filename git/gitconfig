@@ -35,6 +35,9 @@
 	# Amend the currently staged files to the latest commit.
 	amend = commit --amend --reuse-message=HEAD
 
+  # Stage all files and amend to the latest commit, then force push to the remote
+  pushamendall = !git add -A && git commit --amend --reuse-message=HEAD && git push --force-with-lease
+
 	# Credit an author on the latest commit.
 	credit = "!f() { git commit --amend --author \"$1 <$2>\" -C HEAD; }; f"
 

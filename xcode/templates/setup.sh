@@ -1,13 +1,16 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
+# Xcode file templates — run every templates/*/setup.sh.
+set -euo pipefail
 
-# Configuration
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/../.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+require_macos
 
-for dir in "$SCRIPT_DIR"/*
-do
-    if [[ -d "$dir" ]]; then
-        ( cd "$dir" && ./setup.sh )
-    fi
+CURRENT_DIR="$(module_dir)"
+
+for script in "${CURRENT_DIR}"/*/setup.sh; do
+  [ -f "${script}" ] || continue
+  bash "${script}"
 done
 
-echo "==> Completed!"
+ok "Xcode templates installed."

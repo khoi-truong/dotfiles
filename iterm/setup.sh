@@ -1,10 +1,19 @@
-#!/bin/sh
+#!/usr/bin/env bash
+# iTerm2 — point the app at this repo's prefs folder.
+#
+# iTerm2 has no dotfile: it reads com.googlecode.iterm2.plist out of whatever
+# folder "Load preferences from a custom folder" is set to. Pointing that at
+# iterm/ makes the committed plist live. Changes made in iTerm's UI are written
+# back to iterm/com.googlecode.iterm2.plist on quit, so commit them from there.
+set -euo pipefail
 
-[ "$(uname -s)" != "Darwin" ] && exit 0
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+require_macos
 
-echo ""
-echo "Setting up iTerm2..."
+CURRENT_DIR="$(module_dir)"
 
-[ "$(uname -s)" != "Darwin" ] && exit 0
-defaults write com.googlecode.iterm2 "PrefsCustomFolder" -string "$DOTFILES/iterm"
-defaults write com.googlecode.iterm2 "LoadPrefsFromCustomFolder" -bool true
+info "Setting up iTerm2..."
+defaults write com.googlecode.iterm2 PrefsCustomFolder -string "${CURRENT_DIR}"
+defaults write com.googlecode.iterm2 LoadPrefsFromCustomFolder -bool true
+ok "iTerm2 prefs folder -> ${CURRENT_DIR}"
