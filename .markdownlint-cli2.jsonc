@@ -1,0 +1,39 @@
+// Read by both the VS Code markdownlint extension and `markdownlint-cli2`.
+{
+  "config": {
+    "default": true,
+
+    // Prose here is hand-wrapped at ~80 but tables, links and code references
+    // regularly run over. Not worth enforcing.
+    "MD013": false,
+
+    // Badges and the odd <details> block are fine.
+    "MD033": false,
+
+    // Duplicate headings are legitimate under different parents (e.g. a
+    // "Usage" section per module).
+    "MD024": { "siblings_only": true },
+
+    // Bare URLs are fine in reference lists.
+    "MD034": false,
+
+    // Require a language on fenced code blocks; use `text` when there isn't one.
+    "MD040": true,
+
+    // The first line need not be a top-level heading (CLAUDE.md starts with
+    // front matter-ish prose).
+    "MD041": false,
+
+    // Consistent list markers and ordered-list numbering.
+    "MD004": { "style": "dash" },
+    "MD029": { "style": "ordered" }
+  },
+
+  "globs": ["**/*.md"],
+  "ignores": [
+    "zsh/antidote/**",
+    "alfred/**",
+    ".omc/**",
+    "node_modules/**"
+  ]
+}
