@@ -1,11 +1,18 @@
-###############################################################################
-# Terminal                                                                    #
-###############################################################################
+#!/usr/bin/env bash
+# Terminal.app theme + preferences.
+#
+# Kept for the rare case Terminal.app is used (iTerm2 is the daily driver), so
+# this module is NOT in the default set — run `./setup.sh terminal` or
+# `./setup.sh --all`.
+set -uo pipefail
 
-[ "$(uname -s)" != "Darwin" ] && exit 0
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+require_macos
 
-echo ""
-echo "Setting up Terminal app..."
+CURRENT_DIR="$(module_dir)"
+
+info "Setting up Terminal.app..."
 
 # Only use UTF-8 in Terminal.app
 defaults write com.apple.terminal StringEncodings -array 4
@@ -26,7 +33,7 @@ tell application "Terminal"
 	(* Open the custom theme so that it gets added to the list
 	   of available terminal themes (note: this will open two
 	   additional terminal windows). *)
-	do shell script "open '$HOME/.dotfiles/terminal/" & themeName & ".terminal'"
+	do shell script "open '${CURRENT_DIR}/" & themeName & ".terminal'"
 
 	(* Wait a little bit to ensure that the custom theme is added. *)
 	delay 1

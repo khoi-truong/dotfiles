@@ -1,0 +1,129 @@
+{
+  "cleanupPeriodDays": 365,
+  "model": "opusplan",
+  "env": {
+    "CLAUDE_CODE_EFFORT_LEVEL": "medium",
+    "CLAUDE_CODE_ENABLE_AUTO_MODE": "1",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "32768",
+    "MAX_THINKING_TOKENS": "8192",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard*)",
+      "Bash(:(){ :|:& };:)",
+      "Bash(curl * | sh)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | sh)",
+      "Bash(wget * | bash)",
+      "Read(**/id_rsa)",
+      "Read(**/id_ed25519)",
+      "Read(**/.ssh/**)",
+      "Bash(docker rm *)",
+      "Bash(docker rmi *)",
+      "Bash(helm uninstall *)",
+      "Bash(helm upgrade *)",
+      "Bash(kubectl apply *)",
+      "Bash(kubectl delete *)",
+      "Bash(sudo *)",
+      "Bash(terraform apply *)",
+      "Bash(terraform destroy *)",
+      "Read(**/*.key)",
+      "Read(**/*.pem)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(./**/*.env)",
+      "Read(./**/*.env.*)",
+      "Read(./**/cacerts)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ],
+    "defaultMode": "auto"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs"
+  },
+  "enabledPlugins": {
+    "clangd-lsp@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "oh-my-claudecode@omc": true
+  },
+  "extraKnownMarketplaces": {
+    "omc": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/Yeachan-Heo/oh-my-claudecode.git"
+      }
+    }
+  },
+  "autoCompactWindow": 190000,
+  "tui": "default",
+  "autoMemoryEnabled": true,
+  "skipDangerousModePermissionPrompt": true,
+  "skipWorkflowUsageWarning": true,
+  "teammateMode": "in-process",
+  "skipAutoPermissionPrompt": true,
+  "omcHud": {
+    "elements": {
+      "activeSkills": true,
+      "agents": true,
+      "agentsFormat": "multiline",
+      "agentsMaxLines": 5,
+      "apiKeySource": false,
+      "autopilot": true,
+      "backgroundTasks": true,
+      "contextBar": true,
+      "cwd": false,
+      "gitBranch": false,
+      "gitInfoPosition": "above",
+      "gitRepo": false,
+      "lastSkill": false,
+      "maxOutputLines": 8,
+      "model": true,
+      "modelFormat": "versioned",
+      "omcLabel": false,
+      "permissionStatus": false,
+      "prdStory": true,
+      "promptTime": true,
+      "ralph": true,
+      "rateLimits": false,
+      "safeMode": false,
+      "sessionHealth": true,
+      "showHealthIndicator": false,
+      "showCallCounts": true,
+      "showTokens": false,
+      "thinking": true,
+      "thinkingFormat": "bubble",
+      "todos": true,
+      "useBars": true
+    },
+    "labels": {
+      "context": "ctx",
+      "background": "bg"
+    },
+    "layout": {
+      "line1": ["profile", "gitStatus", "contextBar"],
+      "main": ["model", "thinking", "promptTime", "session", "ralph", "autopilot", "prd", "skills", "agents", "background", "callCounts"]
+    },
+    "maxWidth": 120,
+    "preset": "full",
+    "thresholds": {
+      "contextCompactSuggestion": 80,
+      "contextCritical": 85,
+      "contextWarning": 75
+    }
+  }
+}

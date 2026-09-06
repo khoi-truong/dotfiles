@@ -1,15 +1,19 @@
-#!/bin/sh
+#!/usr/bin/env bash
+# Regenerate vscode/extensions.vscode from the currently installed extensions.
+set -euo pipefail
 
-set -e
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+require_macos
 
-if [ "$(uname -s)" = "Darwin" ]; then
-	VSCODE_HOME="$HOME/Library/Application Support/Code"
-else
-	VSCODE_HOME="$HOME/.config/Code"
+CURRENT_DIR="$(module_dir)"
+VSCODE_CLI="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+
+if [ -x "${VSCODE_CLI}" ]; then
+  link "${VSCODE_CLI}" "$(brew_prefix)/bin/code"
 fi
 
-VSCODE_CLI="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
-[ -x "${VSCODE_CLI}" ] && ln -fs "${VSCODE_CLI}" "/usr/local/bin/code"
+command -v code >/dev/null 2>&1 || die "code CLI not found."
 
-CURRENT_DIR="$(cd "$(dirname "$0")"; pwd)";
 code --list-extensions >"${CURRENT_DIR}/extensions.vscode"
+ok "Wrote ${CURRENT_DIR}/extensions.vscode"

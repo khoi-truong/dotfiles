@@ -1,18 +1,20 @@
+# Antidote plugin list. Regenerates zsh/local/plugins.zsh whenever this file is
+# newer. Force a rebuild with: touch zsh/zsh.plugins && exec zsh
+#
+# Keep this list short — every entry is startup time. The theme is robbyrussell
+# (see omz.zsh) and the directory jumper is zoxide (set up in zshrc, not here).
+
+# oh-my-zsh core (lib/, and the omz plugin loader)
 robbyrussell/oh-my-zsh
-robbyrussell/oh-my-zsh path:themes/robbyrussell.zsh-theme
-robbyrussell/oh-my-zsh path:plugins/common-aliases
-robbyrussell/oh-my-zsh path:plugins/compleat
+
+# oh-my-zsh plugins
 robbyrussell/oh-my-zsh path:plugins/colored-man-pages
+robbyrussell/oh-my-zsh path:plugins/direnv
 robbyrussell/oh-my-zsh path:plugins/dircycle
 robbyrussell/oh-my-zsh path:plugins/dirhistory
-robbyrussell/oh-my-zsh path:plugins/gem
 robbyrussell/oh-my-zsh path:plugins/git
 robbyrussell/oh-my-zsh path:plugins/history
-robbyrussell/oh-my-zsh path:plugins/tmux
-robbyrussell/oh-my-zsh path:plugins/z
-robbyrussell/oh-my-zsh path:plugins/direnv
 
+# standalone plugins (fast-syntax-highlighting MUST stay last)
 zsh-users/zsh-autosuggestions
 zdharma-continuum/fast-syntax-highlighting
-rupa/z
-changyuheng/fz

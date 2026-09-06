@@ -1,11 +1,7 @@
 {
-  "black-formatter.importStrategy": "fromEnvironment",
+  // ─── Editor ───
 
-  "dart.debugExternalPackageLibraries": true,
-  "dart.debugSdkLibraries": true,
-  "dart.openDevTools": "never",
-  "dart.renameFilesWithClasses": "prompt",
-
+  "editor.accessibilitySupport": "off",
   "editor.bracketPairColorization.enabled": false,
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit",
@@ -13,55 +9,46 @@
   },
   "editor.codeLens": true,
   "editor.colorDecorators": true,
-  "editor.fontSize": 13,
   "editor.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
   "editor.fontLigatures": false,
+  "editor.fontSize": 13,
   "editor.formatOnPaste": true,
+  "editor.inlayHints.enabled": "onUnlessPressed",
   "editor.inlineSuggest.enabled": true,
   "editor.largeFileOptimizations": false,
   "editor.minimap.enabled": true,
-  "editor.minimap.renderCharacters": false,
   "editor.minimap.maxColumn": 120,
   "editor.minimap.showSlider": "always",
+  "editor.minimap.renderCharacters": false,
   "editor.overviewRulerBorder": false,
   "editor.rulers": [80, 120],
   "editor.scrollBeyondLastLine": false,
+  "editor.semanticHighlighting.enabled": true,
   "editor.smoothScrolling": true,
   "editor.suggestSelection": "first",
-  "editor.semanticHighlighting.enabled": true,
   "editor.tabSize": 2,
   "editor.tokenColorCustomizations": {
     "[Gruvbox Dark Hard]": {
       "textMateRules": [
         {
-          "scope": ["variable.other.readwrite"],
-          "settings": {
-            "foreground": "#fbf1c7"
-          }
+          "scope": "variable.other.readwrite",
+          "settings": [{ "foreground": "#fbf1c7" }]
         },
         {
-          "scope": ["variable.parameter"],
-          "settings": {
-            "foreground": "#8ec07c"
-          }
+          "scope": "variable.parameter",
+          "settings": [{ "foreground": "#8ec07c" }]
         },
         {
-          "scope": ["entity.name.function", "variable.other"],
-          "settings": {
-            "foreground": "#83a598"
-          }
+          "scope": "entity.name.function, variable.other",
+          "settings": [{ "foreground": "#83a598" }]
         },
         {
-          "scope": ["entity.name.type"],
-          "settings": {
-            "foreground": "#fabd2f"
-          }
+          "scope": "entity.name.type",
+          "settings": [{ "foreground": "#fabd2f" }]
         },
         {
-          "scope": ["variable.parameter.function.language.special.self.python"],
-          "settings": {
-            "foreground": "#fb4934"
-          }
+          "scope": "variable.parameter.function.language.special.self.python",
+          "settings": [{ "foreground": "#fb4934" }]
         }
       ]
     }
@@ -69,14 +56,11 @@
   "editor.wordWrap": "on",
   "editor.wordWrapColumn": 100,
 
-  "emmet.includeLanguages": {
-    "wxml": "html"
-  },
+  // ─── Files, Explorer & Search ───
 
-  "explorer.decorations.badges": true,
   "explorer.confirmDelete": false,
   "explorer.confirmDragAndDrop": false,
-
+  "explorer.decorations.badges": true,
   "files.associations": {
     "Fastfile": "ruby",
     "Matchfile": "ruby",
@@ -89,6 +73,7 @@
     "*.wxss": "css",
     "*.wxs": "javascript"
   },
+  "files.autoSave": "afterDelay",
   "files.exclude": {
     "**/.git": true,
     "**/.svn": true,
@@ -107,6 +92,7 @@
     "**/.settings": true,
     "**/.factorypath": true
   },
+  "files.trimFinalNewlines": true,
   "files.watcherExclude": {
     "**/.git/objects/**": true,
     "**/.git/subtree-cache/**": true,
@@ -116,70 +102,6 @@
     "env-*": true,
     "**/.fvm": true
   },
-  "files.autoSave": "afterDelay",
-  "files.trimFinalNewlines": true,
-
-  "git.enabled": true,
-  "git.allowForcePush": true,
-  "git.allowNoVerifyCommit": true,
-  "git.autofetch": true,
-
-  "github.copilot.editor.enableAutoCompletions": true,
-  "github.copilot.enable": {
-    "*": true,
-    "plaintext": true,
-    "markdown": true,
-    "scminput": false,
-    "yaml": true,
-    "python": true,
-    "jsonc": true
-  },
-  "gitlens.currentLine.enabled": false,
-  "gitlens.graph.dimMergeCommits": true,
-  "gitlens.graph.minimap.additionalTypes": [],
-  "gitlens.hovers.currentLine.over": "line",
-  "gitlens.sortBranchesBy": "name:asc",
-  "gitlens.views.branches.pullRequests.enabled": false,
-  "gitlens.views.branches.pullRequests.showForBranches": false,
-  "gitlens.views.branches.showBranchComparison": false,
-  "gitlens.views.commitDetails.files.layout": "tree",
-  "gitlens.views.commits.pullRequests.showForBranches": false,
-  "gitlens.views.commits.pullRequests.enabled": false,
-  "gitlens.views.commits.showBranchComparison": false,
-  "gitlens.views.remotes.pullRequests.enabled": false,
-  "gitlens.views.remotes.pullRequests.showForBranches": false,
-  "gitlens.views.repositories.files.layout": "tree",
-  "gitlens.views.showRelativeDateMarkers": false,
-  "gitlens.views.worktrees.pullRequests.enabled": false,
-  "gitlens.views.worktrees.pullRequests.showForBranches": false,
-  "gitlens.views.worktrees.showBranchComparison": false,
-
-  "go.toolsManagement.autoUpdate": true,
-
-  "java.project.importHint": false,
-  "java.semanticHighlighting.enabled": true,
-
-  "lldb.launch.expressions": "native",
-  "lldb.library": "/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Versions/A/LLDB",
-
-  "python.analysis.autoFormatStrings": true,
-  "python.analysis.autoImportCompletions": true,
-  "python.analysis.completeFunctionParens": true,
-  "python.analysis.diagnosticMode": "workspace",
-  "python.analysis.importFormat": "relative",
-  "python.analysis.typeCheckingMode": "strict",
-  "python.autoComplete.extraPaths": [],
-  "python.analysis.extraPaths": [],
-  "python.diagnostics.sourceMapsEnabled": true,
-  "python.languageServer": "Default",
-  "python.terminal.activateEnvInCurrentTerminal": true,
-
-  "redhat.telemetry.enabled": true,
-
-  "remote.SSH.configFile": "~/.ssh/config.local",
-
-  "rubyLsp.rubyExecutablePath": "/Users/khoi/.rbenv/shims/ruby",
-
   "search.exclude": {
     "**/node_modules": true,
     "**/bower_components": true,
@@ -188,177 +110,170 @@
     "**/.fvm": true
   },
 
-  "solidity.telemetry": true,
+  // ─── Workbench, Window & Theme ───
 
-  "terminal.integrated.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
-  "terminal.integrated.fontSize": 13,
-  "terminal.integrated.lineHeight": 1.5,
-  "terminal.integrated.cursorStyle": "block",
-  "terminal.integrated.cursorBlinking": true,
-
-  "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
-
+  "material-icon-theme.activeIconPack": "react_redux",
+  "material-icon-theme.hidesExplorerArrows": false,
+  "symbols.hidesExplorerArrows": false,
+  "update.mode": "none",
   "window.closeWhenEmpty": false,
   "window.commandCenter": true,
+  "window.density.layout": "compact",
   "window.title": "${activeEditorShort}${separator}${rootName}",
   "window.titleBarStyle": "custom",
-
+  "workbench.activityBar.compact": true,
+  "workbench.activityBar.location": "top",
   "workbench.colorCustomizations": {
-    "[Material Theme]": {
-      "titleBar.activeBackground": "#141c20",
-      "titleBar.activeForeground": "#83a1af",
-      "titleBar.border": "#141c20",
-      "editorGroupHeader.tabsBackground": "#192227",
-      "editorGroupHeader.noTabsBackground": "#192227",
-      "tab.border": "#141c20",
-      "tab.activeBorder": "#263238",
-      "tab.unfocusedActiveBorder": "#263238",
-      "tab.activeBackground": "#263238",
-      "tab.inactiveBackground": "#192227",
-      "tab.hoverBackground": "#21292e",
-      "statusBar.background": "#0078cf",
-      "statusBar.foreground": "#ffffff",
-      "statusBar.border": "#0078cf",
-      "statusBar.noFolderBackground": "#6a1f7c",
-      "statusBar.noFolderForeground": "#ffffff",
-      "statusBar.noFolderBorder": "#6a1f7c",
-      "statusBar.debuggingBackground": "#ce662a",
-      "statusBar.debuggingForeground": "#ffffff",
-      "statusBar.debuggingBorder": "#ce662a",
-      "sideBar.border": "#141c20",
-      "sideBar.background": "#1e2a30",
-      "panelTitle.activeBorder": "#80cbc4",
-      "panel.border": "#141c20",
-      "panel.background": "#192227",
-      "editorOverviewRuler.border": "#141c20"
-    },
-    "[Material Theme Darker High Contrast]": {
-      "statusBar.background": "#0078cf",
-      "statusBar.foreground": "#ffffff",
-      "statusBar.border": "#0078cf",
-      "statusBar.noFolderBackground": "#6a1f7c",
-      "statusBar.noFolderForeground": "#ffffff",
-      "statusBar.noFolderBorder": "#6a1f7c",
-      "statusBar.debuggingBackground": "#ce662a",
-      "statusBar.debuggingForeground": "#ffffff",
-      "statusBar.debuggingBorder": "#ce662a",
-      "activityBarBadge.background": "#64FFDA",
-      "activityBar.activeBorder": "#64FFDA",
-      "list.activeSelectionForeground": "#64FFDA",
-      "list.inactiveSelectionForeground": "#64FFDA",
-      "list.highlightForeground": "#64FFDA",
-      "scrollbarSlider.activeBackground": "#64FFDA50",
-      "editorSuggestWidget.highlightForeground": "#64FFDA",
-      "textLink.foreground": "#64FFDA",
-      "progressBar.background": "#64FFDA",
-      "pickerGroup.foreground": "#64FFDA",
-      "tab.activeBorder": "#64FFDA",
-      "notificationLink.foreground": "#64FFDA",
-      "editorWidget.resizeBorder": "#64FFDA",
-      "editorWidget.border": "#64FFDA",
-      "settings.modifiedItemIndicator": "#64FFDA",
-      "settings.headerForeground": "#64FFDA",
-      "panelTitle.activeBorder": "#64FFDA",
-      "breadcrumb.activeSelectionForeground": "#64FFDA",
-      "menu.selectionForeground": "#8fdfcc",
-      "menubar.selectionForeground": "#64FFDA",
-      "editor.findMatchBorder": "#64FFDA",
-      "selection.background": "#64FFDA40",
-      "statusBarItem.remoteBackground": "#64FFDA"
-    },
-    "[Gruvbox Dark Hard]": {
-      "activityBar.background": "#141617",
-      "activityBar.border": "#101010",
-      "badge.background": "#101010",
-      "badge.foreground": "#a89984",
-      "commandCenter.border": "#141617",
-      "editorGroup.border": "#101010",
-      "editorGroupHeader.tabsBackground": "#151819",
-      "editorGroupHeader.tabsBorder": "#10101000",
-      "editorGroupHeader.noTabsBackground": "#151819",
-      "focusBorder": "#00000000",
-      "listFilterWidget.background": "#1d2021",
-      "listFilterWidget.outline": "#3c3836",
-      "gitDecoration.ignoredResourceForeground": "#504945",
-      "panel.border": "#101010",
-      "panel.background": "#151819",
-      "sideBar.border": "#101010",
-      "sideBar.background": "#151819",
-      "sideBar.foreground": "#928374",
-      "sideBarSectionHeader.background": "#141617",
-      "sideBarSectionHeader.border": "#101010",
-      "statusBar.background": "#076678",
-      "statusBar.foreground": "#ffffff",
-      "statusBar.border": "#07667800",
-      "statusBar.noFolderBackground": "#8f3f71",
-      "statusBar.noFolderForeground": "#ffffff",
-      "statusBar.noFolderBorder": "#8f3f7100",
-      "statusBar.debuggingBackground": "#af3a03",
-      "statusBar.debuggingForeground": "#ffffff",
-      "statusBar.debuggingBorder": "#af3a0300",
-      "tab.activeBackground": "#1d2021",
-      "tab.activeBorder": "#00000000",
-      "tab.border": "#00000000",
-      "tab.hoverBackground": "#1d2021",
-      "tab.inactiveBackground": "#151819",
-      "terminal.background": "#151819",
-      "titleBar.activeBackground": "#141617",
-      "titleBar.inactiveBackground": "#141617",
-      "titleBar.border": "#101010",
-      "widget.shadow": "#1a1a1a"
-    }
+    "titleBar.activeBackground": "#141617",
+    "titleBar.inactiveBackground": "#141617",
+    "titleBar.activeForeground": "#a89984",
+    "titleBar.inactiveForeground": "#665c54",
+    "titleBar.border": "#14161700",
+    "commandCenter.background": "#14161700",
+    "commandCenter.foreground": "#928374",
+    "commandCenter.border": "#14161700",
+    "commandCenter.activeBackground": "#1d202180",
+    "commandCenter.activeForeground": "#ebdbb2",
+    "commandCenter.activeBorder": "#14161700",
+    "activityBar.background": "#141617",
+    "activityBar.foreground": "#ebdbb2",
+    "activityBar.inactiveForeground": "#665c54",
+    "activityBar.border": "#3c3836",
+    "activityBar.activeBorder": "#d79921",
+    "badge.background": "#d79921",
+    "badge.foreground": "#1d2021",
+    "editorGroup.border": "#3c3836",
+    "editorGroupHeader.tabsBackground": "#1d2021",
+    "editorGroupHeader.tabsBorder": "#282828",
+    "editorGroupHeader.noTabsBackground": "#141617",
+    "editorGroupHeader.border": "#282828",
+    "tab.activeBackground": "#141617",
+    "tab.activeForeground": "#ebdbb2",
+    "tab.activeBorderTop": "#00000000",
+    "tab.activeBorder": "#00000000",
+    "tab.selectedBackground": "#141617",
+    "tab.selectedForeground": "#ebdbb2",
+    "tab.selectedBorderTop": "#00000000",
+    "tab.border": "#00000000",
+    "tab.hoverBackground": "#3c3836",
+    "tab.hoverForeground": "#ebdbb2",
+    "tab.inactiveBackground": "#1d2021",
+    "tab.inactiveForeground": "#7c6f64",
+    "tab.unfocusedActiveBackground": "#141617",
+    "tab.unfocusedActiveForeground": "#a89984",
+    "tab.unfocusedInactiveForeground": "#665c54",
+    "tab.lastPinnedBorder": "#3c3836",
+    "sideBar.background": "#141617",
+    "sideBar.foreground": "#928374",
+    "sideBar.border": "#282828",
+    "secondarySideBar.foreground": "#fbf1c7",
+    "descriptionForeground": "#d5c4a1",
+    "sideBarTitle.background": "#141617",
+    "sideBarTitle.foreground": "#a89984",
+    "sideBarSectionHeader.background": "#141617",
+    "sideBarSectionHeader.foreground": "#a89984",
+    "sideBarSectionHeader.border": "#282828",
+    "panel.background": "#141617",
+    "panel.border": "#3c3836",
+    "panelTitle.activeBorder": "#d79921",
+    "panelTitle.activeForeground": "#ebdbb2",
+    "panelTitle.inactiveForeground": "#665c54",
+    "statusBar.background": "#2d5658",
+    "statusBar.foreground": "#fbf1c7",
+    "statusBar.border": "#2d5658",
+    "statusBarItem.hoverBackground": "#83a59833",
+    "statusBarItem.activeBackground": "#83a59855",
+    "statusBar.noFolderBackground": "#8f3f71",
+    "statusBar.noFolderForeground": "#ffffff",
+    "statusBar.noFolderBorder": "#8f3f7100",
+    "statusBar.debuggingBackground": "#af3a03",
+    "statusBar.debuggingForeground": "#ffffff",
+    "statusBar.debuggingBorder": "#af3a0300",
+    "terminal.background": "#141617",
+    "terminal.selectionBackground": "#504945",
+    "editor.background": "#141617",
+    "editor.lineHighlightBackground": "#282828",
+    "editor.lineHighlightBorder": "#00000000",
+    "editor.selectionBackground": "#504945",
+    "editor.inactiveSelectionBackground": "#3c383680",
+    "editor.selectionHighlightBackground": "#68956840",
+    "editorWidget.background": "#1d2021",
+    "editorWidget.border": "#282828",
+    "input.background": "#1d2021",
+    "input.border": "#282828",
+    "list.activeSelectionBackground": "#3c3836",
+    "list.activeSelectionForeground": "#ebdbb2",
+    "list.inactiveSelectionBackground": "#282828",
+    "list.hoverBackground": "#28282880",
+    "list.focusBackground": "#3c3836",
+    "quickInputList.focusBackground": "#3c3836",
+    "quickInputList.focusForeground": "#ebdbb2",
+    "listFilterWidget.background": "#1d2021",
+    "listFilterWidget.outline": "#3c3836",
+    "gitDecoration.ignoredResourceForeground": "#504945",
+    "gitDecoration.untrackedResourceForeground": "#8ec07c",
+    "breadcrumb.background": "#141617",
+    "breadcrumb.foreground": "#665c54",
+    "breadcrumb.focusForeground": "#a89984",
+    "breadcrumb.activeSelectionForeground": "#ebdbb2",
+    "editorStickyScroll.background": "#141617",
+    "editorStickyScrollHover.background": "#1d2021",
+    "minimap.background": "#14161780",
+    "scrollbar.shadow": "#00000000",
+    "editorOverviewRuler.border": "#14161700",
+    "quickInput.background": "#1d2021",
+    "quickInput.foreground": "#ebdbb2",
+    "dropdown.background": "#1d2021",
+    "dropdown.border": "#282828",
+    "widget.shadow": "#00000040",
+    "focusBorder": "#d7992100",
+    "sash.hoverBorder": "#d79921"
   },
   "workbench.colorTheme": "Gruvbox Dark Hard",
+  "workbench.editor.tabScrollbarVisibility": "never",
   "workbench.editor.tabSizing": "fit",
   "workbench.iconTheme": "material-icon-theme",
+  "workbench.productIconTheme": "material-product-icons",
+  "workbench.secondarySideBar.showLabels": false,
   "workbench.settings.editor": "json",
-  "workbench.settings.openDefaultSettings": true,
   "workbench.settings.openDefaultKeybindings": true,
+  "workbench.settings.openDefaultSettings": true,
   "workbench.startupEditor": "readme",
   "workbench.view.alwaysShowHeaderActions": false,
 
-  "[bazel]": {
-    "editor.defaultFormatter": "StackBuild.bazel-stack-vscode"
-  },
+  // ─── Terminal ───
 
-  "[dart]": {
-    "editor.formatOnSave": true,
-    "editor.formatOnType": true,
-    "editor.rulers": [80],
-    "editor.selectionHighlight": false,
-    "editor.suggest.snippetsPreventQuickSuggestions": false,
-    "editor.suggestSelection": "first",
-    "editor.tabCompletion": "onlySnippets",
-    "editor.wordBasedSuggestions": "off"
-  },
+  "terminal.integrated.cursorBlinking": true,
+  "terminal.integrated.cursorStyle": "block",
+  "terminal.integrated.gpuAcceleration": "off",
+  "terminal.integrated.mouseWheelScrollSensitivity": 3,
+  "terminal.integrated.fontFamily": "SF Mono, Menlo, Monaco, 'Courier New', monospace",
+  "terminal.integrated.fontSize": 13,
+  "terminal.integrated.lineHeight": 1.5,
+  "terminal.integrated.shellIntegration.enabled": true,
 
-  "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
+  // ─── Git, GitLens & Blame ───
 
-  "[jsonc]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.black-formatter",
-    "editor.formatOnSave": true,
-    "editor.tabSize": 4, // PEP 8 implementations. Read more: https://www.python.org/dev/peps/pep-0008/
-    "editor.wordWrapColumn": 79
-  },
-
-  "[swift]": {
-    "editor.tabSize": 4
-  },
+  "git.allowForcePush": true,
+  "git.allowNoVerifyCommit": true,
+  "git.autofetch": true,
+  "git.blame.editorDecoration.enabled": false,
+  "git.enabled": true,
+  "gitlens.ai.gitkraken.model": "gemini:gemini-2.0-flash",
+  "gitlens.ai.model": "gitkraken",
+  "gitlens.blame.toggleMode": "window",
+  "gitlens.codeLens.enabled": false,
+  "gitlens.currentLine.enabled": false,
+  "gitlens.graph.dimMergeCommits": true,
+  "gitlens.graph.layout": "editor",
+  "gitlens.graph.minimap.additionalTypes": [],
   "gitlens.graph.minimap.enabled": false,
   "gitlens.graph.scrollMarkers.additionalTypes": [
     "localBranches",
     "stashes",
     "tags"
   ],
-  "gitlens.codeLens.enabled": false,
-  "gitlens.blame.toggleMode": "window",
-  "gitlens.terminalLinks.enabled": false,
+  "gitlens.hovers.currentLine.over": "line",
   "gitlens.menus": {
     "editor": {
       "blame": true,
@@ -422,14 +337,194 @@
       "stash": true
     }
   },
-  "gitlens.views.repositories.showCommits": false,
+  "gitlens.sortBranchesBy": "name:asc",
+  "gitlens.terminalLinks.enabled": false,
+  "gitlens.views.branches.pullRequests.enabled": false,
+  "gitlens.views.branches.pullRequests.showForBranches": false,
+  "gitlens.views.branches.showBranchComparison": false,
+  "gitlens.views.commitDetails.files.layout": "tree",
+  "gitlens.views.commits.pullRequests.enabled": false,
+  "gitlens.views.commits.pullRequests.showForBranches": false,
+  "gitlens.views.commits.showBranchComparison": false,
+  "gitlens.views.remotes.pullRequests.enabled": false,
+  "gitlens.views.remotes.pullRequests.showForBranches": false,
+  "gitlens.views.repositories.files.layout": "tree",
   "gitlens.views.repositories.showBranches": false,
-  "gitlens.views.repositories.showStashes": false,
-  "gitlens.views.repositories.showWorktrees": false,
+  "gitlens.views.repositories.showCommits": false,
   "gitlens.views.repositories.showContributors": false,
-  "gitlens.views.repositories.showTags": false,
   "gitlens.views.repositories.showRemotes": false,
-  "gitlens.ai.experimental.model": "vscode",
-  "gitlens.ai.experimental.vscode.model": "copilot:gpt-4-turbo",
-  "gitlens.graph.layout": "editor"
+  "gitlens.views.repositories.showStashes": false,
+  "gitlens.views.repositories.showTags": false,
+  "gitlens.views.repositories.showWorktrees": false,
+  "gitlens.views.scm.grouped.views": {
+    "commits": true,
+    "branches": true,
+    "remotes": true,
+    "stashes": true,
+    "tags": true,
+    "worktrees": true,
+    "contributors": true,
+    "fileHistory": false,
+    "repositories": true,
+    "searchAndCompare": false,
+    "launchpad": true
+  },
+  "gitlens.views.showRelativeDateMarkers": false,
+  "gitlens.views.worktrees.pullRequests.enabled": false,
+  "gitlens.views.worktrees.pullRequests.showForBranches": false,
+  "gitlens.views.worktrees.showBranchComparison": false,
+
+  // ─── AI: Copilot, Chat & Claude Code ───
+
+  "chat.agent.maxRequests": 100,
+  "chat.commandCenter.enabled": false,
+  "chat.mcp.gallery.enabled": true,
+  "chat.planAgent.defaultModel": "Auto (copilot)",
+  "chat.tools.global.autoApprove": true,
+  "chat.tools.terminal.autoApprove": {
+    "pnpm": true,
+    "nocorrect": true,
+    "mkdir": true,
+    "cp": true,
+    "mv": true,
+    "git rev-parse": true,
+    "/^node -e \"const fs=require\\('fs'\\);const p='\\.claude/settings\\.local\\.json';const j=JSON\\.parse\\(fs\\.readFileSync\\(p,'utf8'\\)\\);const a=j\\.permissions\\?\\.allow\\|\\|\\[\\];const map=new Map\\(\\);for\\(const x of a\\) map\\.set\\(x,\\(map\\.get\\(x\\)\\|\\|0\\)\\+1\\);const d=\\[\\.\\.\\.map\\.entries\\(\\)\\]\\.filter\\(\\(\\[,c\\]\\)=>c>1\\);console\\.log\\('total',a\\.length,'unique',map\\.size,'dups',d\\.length\\);if\\(d\\.length\\)\\{for\\(const \\[k,c\\] of d\\) console\\.log\\(c\\+'x',k\\)\\}\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "git add": true,
+    "git commit": true,
+    "uniq": true,
+    "npx tsc": true,
+    "npx jest": true,
+    "git check-ignore": true,
+    "true": true,
+    "git ls-tree": true,
+    "gh": true,
+    "git rm": true,
+    "git checkout": true,
+    "git stash": true,
+    "diff": true,
+    "/^node -e \"console\\.log\\(require\\('\\./apps/monaco/package\\.json'\\)\\.name\\)\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^for d in features/accounts/accounts features/cfd/cfd features/crypto-basket/crypto-basket features/earn/earn features/equity/equity features/market/market features/predict/predict; do node -e \"console\\.log\\(require\\('\\./\\$d/package\\.json'\\)\\.name\\)\"; done$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "lsof": true,
+    "/^node -e \"const s=require\\('\\./apps/monaco/package\\.json'\\)\\.scripts; for \\(const k of Object\\.keys\\(s\\)\\) if \\(/start\\|metro/\\.test\\(k\\)\\) console\\.log\\(k\\+': '\\+s\\[k\\]\\)\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "git config": true,
+    "git push": true,
+    "git fetch": true,
+    "git rebase": true,
+    "git pull": true,
+    "npx turbo": true,
+    "/^python3 - <<'EOF'\nimport json, os\np = os\\.path\\.expanduser\\('~/\\.claude/settings\\.json'\\)\nd = json\\.load\\(open\\(p\\)\\)\nprint\\(json\\.dumps\\(d\\.get\\('hooks'\\), indent=2\\)\\)\nEOF$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^ls \\.omc/state/\\*\\.json \\.omc/state/\\*\\.md 2>/dev/null; echo '---'; grep -c stop_hook_active ~/\\.claude/hooks/persistent-mode\\.mjs; echo '---'; grep -n \"activeMode\\\\\\|ralph\\\\\\|ultrawork\\\\\\|autopilot\" \\.omc/state/mission-state\\.json \\| head -5; echo '---'; python3 -c \"import json; d=json\\.load\\(open\\('\\.omc/state/mission-state\\.json'\\)\\); print\\(list\\(d\\.keys\\(\\)\\)\\); print\\(d\\.get\\('mode'\\), d\\.get\\('active'\\), d\\.get\\('status'\\)\\)\" 2>&1 \\| head$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  },
+  "claudeCode.disableLoginPrompt": true,
+  "claudeCode.hideOnboarding": true,
+  "claudeCode.preferredLocation": "panel",
+  "claudeCode.useCtrlEnterToSend": false,
+  "claudeCode.useTerminal": true,
+  "github.copilot.editor.enableAutoCompletions": true,
+  "github.copilot.enable": {
+    "*": true,
+    "plaintext": true,
+    "markdown": true,
+    "scminput": false,
+    "yaml": true,
+    "python": true,
+    "jsonc": true
+  },
+  "github.copilot.nextEditSuggestions.enabled": true,
+
+  // ─── Languages & Tools ───
+
+  "black-formatter.importStrategy": "fromEnvironment",
+  "dart.debugExternalPackageLibraries": true,
+  "dart.debugSdkLibraries": true,
+  "dart.openDevTools": "never",
+  "dart.renameFilesWithClasses": "prompt",
+  "emmet.includeLanguages": {
+    "wxml": "html"
+  },
+  "go.toolsManagement.autoUpdate": true,
+  "java.project.importHint": false,
+  "java.semanticHighlighting.enabled": true,
+  "js/ts.updateImportsOnFileMove.enabled": "always",
+  "lldb.launch.expressions": "native",
+  "lldb.library": "/Library/Developer/CommandLineTools/Library/PrivateFrameworks/LLDB.framework/Versions/A/LLDB",
+  "python.analysis.autoFormatStrings": true,
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.completeFunctionParens": true,
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.extraPaths": [],
+  "python.analysis.importFormat": "relative",
+  "python.analysis.typeCheckingMode": "strict",
+  "python.autoComplete.extraPaths": [],
+  "python.diagnostics.sourceMapsEnabled": true,
+  "python.languageServer": "None",
+  "python.terminal.activateEnvInCurrentTerminal": true,
+  "redhat.telemetry.enabled": true,
+  "remote.SSH.configFile": "~/.ssh/config.local",
+  "rubyLsp.rubyExecutablePath": "/Users/khoi/.rbenv/shims/ruby",
+  "solidity.telemetry": true,
+  "swift.disableAutoResolve": true,
+  "swift.disableSwiftPackageManagerIntegration": true,
+  "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+
+  // ─── Language-specific overrides ───
+
+  "[bazel]": {
+    "editor.formatOnSave": true,
+    "editor.formatOnPaste": true,
+    "editor.defaultFormatter": "StackBuild.bazel-stack-vscode"
+  },
+  "[dart]": {
+    "editor.formatOnSave": true,
+    "editor.formatOnType": true,
+    "editor.rulers": [80],
+    "editor.selectionHighlight": false,
+    "editor.suggest.snippetsPreventQuickSuggestions": false,
+    "editor.suggestSelection": "first",
+    "editor.tabCompletion": "onlySnippets",
+    "editor.wordBasedSuggestions": "off"
+  },
+  "[dockercompose]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "editor.autoIndent": "advanced",
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "editor.wordWrapColumn": 79
+  },
+  "[swift]": {
+    "editor.tabSize": 4,
+    "editor.defaultFormatter": "sweetpad.sweetpad"
+  }
 }

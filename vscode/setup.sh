@@ -1,24 +1,36 @@
-#!/bin/sh
+#!/usr/bin/env bash
+# Visual Studio Code — link user settings and install extensions.
+# Not run by ./setup.sh by default; use `./setup.sh vscode` or `--all`.
+set -euo pipefail
 
-[ "$(uname -s)" != "Darwin" ] && exit 0
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+require_macos
 
-echo ""
-echo "Setting up Visual Studio Code..."
-
+CURRENT_DIR="$(module_dir)"
+VSCODE_HOME="${HOME}/Library/Application Support/Code/User"
 VSCODE_CLI="/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
-[ -x "${VSCODE_CLI}" ] && ln -fs "${VSCODE_CLI}" "/opt/homebrew/bin/code"
 
-CURRENT_DIR="$(cd "$(dirname "$0")"; pwd)";
+info "Setting up Visual Studio Code..."
 
-if command -v code >/dev/null; then
-	VSCODE_HOME="$HOME/Library/Application Support/Code"
-	mkdir -p "$VSCODE_HOME/User"
-
-	ln -sf "$CURRENT_DIR/settings.json" "$VSCODE_HOME/User/settings.json"
-	ln -sf "$CURRENT_DIR/keybindings.json" "$VSCODE_HOME/User/keybindings.json"
-	ln -sf "$CURRENT_DIR/snippets" "$VSCODE_HOME/User/snippets"
-
-	while read -r module; do
-		code --install-extension "$module" || true
-	done <"$CURRENT_DIR/extensions.vscode"
+# The app bundle ships the `code` CLI but doesn't put it on $PATH.
+if [ -x "${VSCODE_CLI}" ]; then
+  link "${VSCODE_CLI}" "$(brew_prefix)/bin/code"
 fi
+
+if ! command -v code >/dev/null 2>&1; then
+  warn "code CLI unavailable — is Visual Studio Code installed? Skipping."
+  exit 0
+fi
+
+link "${CURRENT_DIR}/settings.json" "${VSCODE_HOME}/settings.json"
+link "${CURRENT_DIR}/keybindings.json" "${VSCODE_HOME}/keybindings.json"
+link "${CURRENT_DIR}/snippets" "${VSCODE_HOME}/snippets"
+
+info "Installing extensions..."
+while read -r extension; do
+  [ -n "${extension}" ] || continue
+  code --install-extension "${extension}" || warn "failed: ${extension}"
+done <"${CURRENT_DIR}/extensions.vscode"
+
+ok "Visual Studio Code configured."

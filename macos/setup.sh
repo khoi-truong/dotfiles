@@ -1,31 +1,40 @@
-#!/bin/sh
+#!/usr/bin/env bash
+#
+# macOS system preferences via `defaults`.
+# Lineage: https://mths.be/macos and https://github.com/kevinSuttle/macOS-Defaults
+#
+# NOTE: deliberately no `set -e`. Hundreds of `defaults`/`killall` calls follow
+# and a single missing domain must not abort the whole run.
+set -uo pipefail
 
-# ~/.macos — https://mths.be/macos
-# https://github.com/kevinSuttle/macOS-Defaults
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+require_macos
 
-# Close any open System Preferences panes, to prevent them from overriding
-# settings we’re about to change
+CURRENT_DIR="$(module_dir)"
 
-echo ""
-echo "Setting up macOS and system applications preferences..."
-osascript -e 'tell application "System Preferences" to quit'
+info "Setting up macOS and system application preferences..."
 
-execute() {
-    chmod +x "$1"; "$1";
-}
+# Close any open System Settings panes so they can't overwrite what we change.
+osascript -e 'tell application "System Settings" to quit' 2>/dev/null \
+  || osascript -e 'tell application "System Preferences" to quit' 2>/dev/null
 
-# Ask for the administrator password upfront
+# Ask for the administrator password upfront.
 sudo -v
 
-# Keep-alive: update existing `sudo` time stamp until `.setup.sh` has finished
-while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+# Keep-alive: refresh the `sudo` timestamp until this script finishes.
+while true; do
+  sudo -n true
+  sleep 60
+  kill -0 "$$" || exit
+done 2>/dev/null &
 
 ###############################################################################
 # System                                                                      #
 ###############################################################################
 
-execute "./set_computer_name.sh"
-unset execute
+# Absolute path so this works regardless of the caller's working directory.
+bash "${CURRENT_DIR}/set_computer_name.sh"
 
 echo "  › Disable the sound effects on boot"
 sudo nvram SystemAudioVolume=" "
