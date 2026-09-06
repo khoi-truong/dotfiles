@@ -71,7 +71,9 @@
     "*.tulsiconf": "json",
     "*.cjson": "jsonc",
     "*.wxss": "css",
-    "*.wxs": "javascript"
+    "*.wxs": "javascript",
+    "curlrc": "properties",
+    ".curlrc": "properties"
   },
   "files.autoSave": "afterDelay",
   "files.exclude": {
