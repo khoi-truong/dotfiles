@@ -39,9 +39,6 @@ brew "llvm"
 # cloud
 brew "awscli"
 
-# network debugging
-brew "mitmproxy"   # intercepting HTTP(S) proxy; see `mitm`/`curlm` in functions.zsh
-
 # ---------------------------------------------------------------- casks -----
 
 # ai
@@ -56,6 +53,7 @@ cask "docker-desktop"
 cask "gitkraken"
 # cask "goland"
 # cask "intellij-idea"
+cask "mitmproxy"
 # cask "pycharm"
 cask "postman"
 cask "sf-symbols"
