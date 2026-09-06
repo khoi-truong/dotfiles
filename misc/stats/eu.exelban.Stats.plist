@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Battery_state</key>
+	<false/>
+	<key>Bluetooth_state</key>
+	<false/>
+	<key>CPU_barChart_position</key>
+	<integer>3</integer>
+	<key>CPU_label_position</key>
+	<integer>2</integer>
+	<key>CPU_lineChart_position</key>
+	<integer>1</integer>
+	<key>CPU_line_chart_box</key>
+	<false/>
+	<key>CPU_line_chart_color</key>
+	<string>monochrome</string>
+	<key>CPU_line_chart_frame</key>
+	<false/>
+	<key>CPU_line_chart_label</key>
+	<false/>
+	<key>CPU_line_chart_scale</key>
+	<string>none</string>
+	<key>CPU_line_chart_value</key>
+	<false/>
+	<key>CPU_line_chart_valueColor</key>
+	<false/>
+	<key>CPU_mini_alignment</key>
+	<string>left</string>
+	<key>CPU_mini_color</key>
+	<string>monochrome</string>
+	<key>CPU_mini_label</key>
+	<true/>
+	<key>CPU_mini_position</key>
+	<integer>0</integer>
+	<key>CPU_oneView</key>
+	<true/>
+	<key>CPU_pieChart_position</key>
+	<integer>4</integer>
+	<key>CPU_state</key>
+	<true/>
+	<key>CPU_tachometer_position</key>
+	<integer>5</integer>
+	<key>CPU_widget</key>
+	<string>mini,line_chart</string>
+	<key>Clock_state</key>
+	<false/>
+	<key>Disk_state</key>
+	<false/>
+	<key>Disk_widget</key>
+	<string>bar_chart</string>
+	<key>GPU_state</key>
+	<false/>
+	<key>LaunchAtLoginNext</key>
+	<true/>
+	<key>NSSplitView Subview Frames NSColorPanelSplitView</key>
+	<array>
+		<string>0.000000, 0.000000, 230.000000, 262.000000, NO, NO</string>
+		<string>0.000000, 263.000000, 230.000000, 67.000000, NO, NO</string>
+	</array>
+	<key>NSStatusItem Preferred Position CPU</key>
+	<integer>586</integer>
+	<key>NSStatusItem Preferred Position Network_speed</key>
+	<real>470</real>
+	<key>NSStatusItem Preferred Position RAM_pie_chart</key>
+	<real>671</real>
+	<key>NSStatusItem Preferred Position Sensors_sensors</key>
+	<real>541</real>
+	<key>NSToolbar Configuration com.apple.NSColorPanel</key>
+	<dict>
+		<key>TB Is Shown</key>
+		<integer>1</integer>
+	</dict>
+	<key>NSToolbar Configuration eu.exelban.Stats.Settings.Toolbar</key>
+	<dict>
+		<key>TB Display Mode</key>
+		<integer>1</integer>
+		<key>TB Icon Size Mode</key>
+		<integer>1</integer>
+		<key>TB Is Shown</key>
+		<true/>
+		<key>TB Size Mode</key>
+		<integer>1</integer>
+	</dict>
+	<key>NSWindow Frame NSColorPanel</key>
+	<string>0 159 250 297 0 0 2048 1249 </string>
+	<key>NSWindow Frame eu.exelban.Stats.Settings.WindowFrame</key>
+	<string>2366 139 921 851 2048 0 2560 1409 </string>
+	<key>Network_speedUnit</key>
+	<string>auto</string>
+	<key>Network_speed_displayValue</key>
+	<string>oi</string>
+	<key>Network_speed_downloadColor</key>
+	<string>secondBlue</string>
+	<key>Network_speed_iconAlignment</key>
+	<string>left</string>
+	<key>Network_speed_monochrome</key>
+	<false/>
+	<key>Network_speed_valueColor</key>
+	<string>none</string>
+	<key>Network_state</key>
+	<true/>
+	<key>Network_widget</key>
+	<string>speed</string>
+	<key>RAM_barChart_position</key>
+	<integer>1</integer>
+	<key>RAM_combinedProcesses</key>
+	<true/>
+	<key>RAM_label_position</key>
+	<integer>2</integer>
+	<key>RAM_lineChart_position</key>
+	<integer>4</integer>
+	<key>RAM_memory_position</key>
+	<integer>5</integer>
+	<key>RAM_mini_position</key>
+	<integer>3</integer>
+	<key>RAM_pieChart_position</key>
+	<integer>0</integer>
+	<key>RAM_pie_chart_label</key>
+	<false/>
+	<key>RAM_pie_chart_monochrome</key>
+	<true/>
+	<key>RAM_state</key>
+	<true/>
+	<key>RAM_state_position</key>
+	<integer>8</integer>
+	<key>RAM_tachometer_position</key>
+	<integer>6</integer>
+	<key>RAM_text_position</key>
+	<integer>7</integer>
+	<key>RAM_updateInterval</key>
+	<integer>5</integer>
+	<key>RAM_updateTopInterval</key>
+	<integer>5</integer>
+	<key>RAM_widget</key>
+	<string>pie_chart</string>
+	<key>Sensors_barChart_position</key>
+	<integer>3</integer>
+	<key>Sensors_fanControl</key>
+	<true/>
+	<key>Sensors_label_position</key>
+	<integer>2</integer>
+	<key>Sensors_mini_position</key>
+	<integer>1</integer>
+	<key>Sensors_sensors_mode</key>
+	<string>automatic</string>
+	<key>Sensors_sensors_monospacedFont</key>
+	<false/>
+	<key>Sensors_sensors_size</key>
+	<false/>
+	<key>Sensors_stack_position</key>
+	<integer>0</integer>
+	<key>Sensors_state</key>
+	<true/>
+	<key>Sensors_updateInterval</key>
+	<integer>5</integer>
+	<key>Sensors_widget</key>
+	<string>sensors</string>
+	<key>keep_menubar_positions</key>
+	<true/>
+	<key>runAtLoginInitialized</key>
+	<true/>
+	<key>sensor_TC0E</key>
+	<false/>
+	<key>sensor_TC0F</key>
+	<false/>
+	<key>sensor_TC0P</key>
+	<true/>
+	<key>sensor_TG0P</key>
+	<false/>
+	<key>setupProcess</key>
+	<true/>
+	<key>support_ts</key>
+	<integer>1788683431</integer>
+	<key>updater_check_ts</key>
+	<integer>1788688375</integer>
+	<key>version</key>
+	<string>3.0.14</string>
+</dict>
+</plist>

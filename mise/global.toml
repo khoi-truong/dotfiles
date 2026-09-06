@@ -1,0 +1,50 @@
+# mise global config  ->  ~/.config/mise/config.toml (symlink)
+#
+# This file only sets DEFAULTS. Any project that cares about an exact version
+# pins it locally (mise.toml, .tool-versions, .ruby-version, go.mod's toolchain,
+# .java-version, .node-version, .python-version) and that always wins.
+#
+#   mise ls               list what's active
+#   mise use -g node@22   change a default here
+#   mise install          install everything below
+#   mise up               bump the "latest" pins
+#
+# Named global.toml, not config.toml, on purpose: mise treats
+# <dir>/mise/config.toml as a project config, so that name would load a second
+# time for every shell started inside ~/.dotfiles.
+
+[tools]
+
+# --- language runtimes -------------------------------------------------------
+# Loose pins: these are fallbacks for projects that don't specify their own.
+python = "3.13"
+node   = "lts"
+ruby   = "3.4"
+go     = "1.26"
+rust   = "stable"
+java   = "temurin-25"   # mise exports JAVA_HOME on its own
+
+# --- global CLIs ------------------------------------------------------------
+pdm = "latest"          # Python project manager (mise pipx: backend)
+uv  = "latest"          # Python packaging / venvs (do NOT use `uv python` — mise owns Python)
+
+# --- language servers ------------------------------------------------------
+"go:golang.org/x/tools/gopls" = "latest"
+
+# --- Swift / iOS tooling ---------------------------------------------------
+# Kept global so they work in any editor without per-repo setup. Exact pins:
+# swiftformat/swiftlint change their output between patch releases, so a repo
+# with CS checks should still pin its own in a local mise.toml.
+swiftformat = "0.57.2"
+swiftlint   = "0.61.0"
+tuist       = "4.67.2"
+
+[settings]
+# Honour idiomatic per-project version files, not just mise.toml / .tool-versions.
+idiomatic_version_file_enable_tools = ["python", "ruby", "node", "java", "go"]
+experimental = false
+
+[settings.python]
+# A bare "3.x" pin otherwise resolves to the freethreaded stripped build, which
+# ships without a lib/ dir and fails to install.
+precompiled_flavor = "install_only"

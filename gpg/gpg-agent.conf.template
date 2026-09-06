@@ -1,0 +1,13 @@
+# ~/.gnupg/gpg-agent.conf — rendered by gpg/setup.sh, which substitutes the
+# placeholder below with the arch-correct pinentry-mac path.
+
+pinentry-program __PINENTRY__
+
+# Act as the SSH agent too (sshcontrol lists the authorised keygrips).
+enable-ssh-support
+
+# Cache passphrases for 1h idle / 8h max.
+default-cache-ttl 3600
+max-cache-ttl 28800
+default-cache-ttl-ssh 3600
+max-cache-ttl-ssh 28800
