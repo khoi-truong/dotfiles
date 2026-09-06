@@ -1,1 +1,10 @@
+# ~/.zshenv (symlink to $DOTFILES/zsh/zshenv)
+#
+# Sourced for EVERY zsh invocation, including non-interactive scripts. Keep it
+# tiny — PATH and the rest of the environment live in zsh/env.zsh, which zshrc
+# sources, so scripts don't pay for it.
+
+# Don't let macOS write ~/.zsh_sessions state on every shell exit.
 SHELL_SESSIONS_DISABLE=1
+
+export DOTFILES="${HOME}/.dotfiles"

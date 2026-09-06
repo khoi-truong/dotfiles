@@ -1,45 +1,26 @@
-# Set name of the theme to load --- if set to "random", it will
-# load a random theme each time oh-my-zsh is loaded, in which case,
-# to know which specific one was loaded, run: echo $RANDOM_THEME
-# See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
+# zsh/omz.zsh — oh-my-zsh settings. Must be sourced BEFORE the plugin bundle,
+# since oh-my-zsh.sh reads these at load time.
+# See https://github.com/ohmyzsh/ohmyzsh/wiki/Settings
+
 ZSH_THEME="robbyrussell"
 
-# Uncomment the following line to use case-sensitive completion.
-# CASE_SENSITIVE="true"
+# Skip the `compaudit` insecure-directory scan on every start. This is the
+# single biggest oh-my-zsh startup cost; it makes omz use `compinit -C -d
+# $ZSH_COMPDUMP`, i.e. trust the existing dump instead of re-scanning $fpath.
+# Re-enable temporarily (or run `compaudit`) if completions misbehave.
+ZSH_DISABLE_COMPFIX="true"
 
-# Uncomment the following line to use hyphen-insensitive completion.
-# Case-sensitive completion must be off. _ and - will be interchangeable.
-# HYPHEN_INSENSITIVE="true"
+# omz's own updater is unused: plugins come from antidote (`antidote update`).
+DISABLE_AUTO_UPDATE="true"
+DISABLE_MAGIC_FUNCTIONS="false"
 
-# Uncomment the following line to disable bi-weekly auto-update checks.
-# DISABLE_AUTO_UPDATE="true"
+# Command auto-correction off: it mis-fires on directory names that shadow a
+# command ("correct 'nvim' to '.nvim'").
+ENABLE_CORRECTION="false"
 
-# Uncomment the following line to automatically update without prompting.
-# DISABLE_UPDATE_PROMPT="true"
-
-# Uncomment the following line to change how often to auto-update (in days).
-# export UPDATE_ZSH_DAYS=13
-
-# Uncomment the following line if pasting URLs and other text is messed up.
-# DISABLE_MAGIC_FUNCTIONS="true"
-
-# Uncomment the following line to disable colors in ls.
-# DISABLE_LS_COLORS="true"
-
-# Uncomment the following line to disable auto-setting terminal title.
-# DISABLE_AUTO_TITLE="true"
-
-# Uncomment the following line to enable command auto-correction.
-ENABLE_CORRECTION="true"
-
-# Uncomment the following line to display red dots whilst waiting for completion.
+# Red dots while waiting for completion.
 COMPLETION_WAITING_DOTS="true"
 
-# Uncomment the following line if you want to disable marking untracked files
-# under VCS as dirty. This makes repository status check for large repositories
-# much, much faster.
-# DISABLE_UNTRACKED_FILES_DIRTY="true"
-
-# Load common-aliases by Oh-my-zsh because of Terminal app conflict with omz_urlencode()
-# https://github.com/ohmyzsh/ohmyzsh/issues/5243
-# plugins=(common-aliases)
+# Don't mark untracked files as dirty — big speedup for the git prompt/status
+# in large repos.
+DISABLE_UNTRACKED_FILES_DIRTY="true"

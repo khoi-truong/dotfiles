@@ -1,74 +1,107 @@
-# If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:/usr/local/bin:$PATH
+# ~/.zshrc (symlink to $DOTFILES/zsh/zshrc) — interactive shell setup.
+#
+# Load order matters:
+#   env.zsh     PATH + toolchain env (must be first; plugins probe $PATH)
+#   config.zsh  options, history, editor
+#   omz.zsh     oh-my-zsh settings (must precede the plugin bundle)
+#   plugins     antidote static bundle (compinit happens in here, via omz)
+#   aliases     ours load *after* plugins so they win
+#   tools       mise / fzf / zoxide
+#   extra.zsh   machine-local, gitignored
+#
+# Profiling: `ZSH_PROFILE=1 zsh -i -c exit` prints a zprof report. See README.
 
-# Paths
-export DOTFILES="${HOME}/.dotfiles"
+[[ -n ${ZSH_PROFILE:-} ]] && zmodload zsh/zprof
+
+export DOTFILES="${DOTFILES:-${HOME}/.dotfiles}"
 ZSH_DIR="${DOTFILES}/zsh"
-export ANTIDOTE_HOME="${ZSH_DIR}/antidote"
-ZSH_LOCAL="$ZSH_DIR/local"
-mkdir -p $ZSH_LOCAL
-export ZSH_COMPDUMP="$ZSH_LOCAL/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
-export HISTFILE="$ZSH_LOCAL/history"
-export LESSHISTFILE="$ZSH_LOCAL/lesshst"
-export _Z_DATA="${ZSH_LOCAL}/z"
+ZSH_LOCAL="${ZSH_DIR}/local"
+[[ -d $ZSH_LOCAL ]] || mkdir -p "$ZSH_LOCAL"
 
-# clone antidote if necessary and generate a static plugin file
+export ANTIDOTE_HOME="${ZSH_DIR}/antidote"
+export ZSH_COMPDUMP="${ZSH_LOCAL}/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
+export HISTFILE="${ZSH_LOCAL}/history"
+export LESSHISTFILE="${ZSH_LOCAL}/lesshst"
+
+source "${ZSH_DIR}/env.zsh"
+source "${ZSH_DIR}/config.zsh"
+source "${ZSH_DIR}/omz.zsh"
+
+# --- plugins ---------------------------------------------------------------
+# Clone antidote if missing and regenerate the static bundle whenever
+# zsh.plugins changes. Sourcing the generated file is the fast path: antidote
+# itself is not loaded on a normal start.
 zstyle ':antidote:bundle' use-friendly-names 'yes'
-if [[ ! $ZSH_LOCAL/plugins.zsh -nt $ZSH_DIR/zsh.plugins ]]; then
+if [[ ! ${ZSH_LOCAL}/plugins.zsh -nt ${ZSH_DIR}/zsh.plugins ]]; then
   [[ -e $ANTIDOTE_HOME ]] \
-    || git clone --depth=1 https://github.com/mattmc3/antidote.git $ANTIDOTE_HOME
-  [[ -e $ZSH_DIR/zsh.plugins ]] || touch $ZSH_DIR/zsh.plugins
+    || git clone --depth=1 https://github.com/mattmc3/antidote.git "$ANTIDOTE_HOME"
+  [[ -e ${ZSH_DIR}/zsh.plugins ]] || touch "${ZSH_DIR}/zsh.plugins"
   (
-    source $ANTIDOTE_HOME/antidote.zsh
-    antidote bundle <$ZSH_DIR/zsh.plugins >$ZSH_LOCAL/plugins.zsh
+    source "${ANTIDOTE_HOME}/antidote.zsh"
+    antidote bundle <"${ZSH_DIR}/zsh.plugins" >"${ZSH_LOCAL}/plugins.zsh"
   )
 fi
+# Makes `antidote update` available on demand without loading the plugin.
+autoload -Uz "${ANTIDOTE_HOME}/functions/antidote"
 
-# uncomment if you want your session to have commands like `antidote update`
-autoload -Uz $ANTIDOTE_HOME/functions/antidote
+# oh-my-zsh runs `compinit -u -d $ZSH_COMPDUMP`, which re-scans every $fpath
+# directory (compaudit, ~26ms) on every single start. This self-replacing
+# wrapper answers that one call with the cached form (-C) as long as the dump
+# is under a day old. oh-my-zsh still owns invalidation: when it deletes the
+# dump the glob below fails and a full compinit runs.
+compinit() {
+  unfunction compinit
+  autoload -Uz compinit
+  if [[ -n ${ZSH_COMPDUMP}(#qN.mh-24) ]]; then
+    compinit -C -d "$ZSH_COMPDUMP"
+  else
+    compinit -d "$ZSH_COMPDUMP"
+  fi
+}
 
-# Load the shell dotfiles, and then some:
-# * ~/.path can be used to extend `$PATH`.
-# * ~/.extra can be used for other settings you don’t want to commit.
-for file in ${ZSH_DIR}/{paths,config,aliases,omz}.zsh; do
-	[ -r "$file" ] && [ -f "$file" ] && source "$file";
-done;
-unset file;
+source "${ZSH_LOCAL}/plugins.zsh"
 
-# source static plugins file
-source $ZSH_LOCAL/plugins.zsh
+# --- aliases & functions ---------------------------------------------------
+source "${ZSH_DIR}/aliases.zsh"
+[[ $OSTYPE == darwin* ]] && source "${ZSH_DIR}/aliases.macos.zsh"
+source "${ZSH_DIR}/functions.zsh"
+[[ -r ${DOTFILES}/ai/aliases.zsh ]] && source "${DOTFILES}/ai/aliases.zsh"
 
-# rbenv
-eval "$(rbenv init -)"
+# --- tools -----------------------------------------------------------------
+# mise: the only version manager (python, node, ruby, go, java, ...).
+# Do not add any other *env init hooks here; see mise/global.toml.
+(( $+commands[mise] )) && eval "$(mise activate zsh)"
 
-# pyenv
-eval "$(pyenv init -)"
+# fzf key bindings + completion (fzf >= 0.48 ships `fzf --zsh`).
+# The tty guard keeps `zsh -i -c ...` quiet: fzf's key-bindings script
+# save/restores every shell option, and restoring `zle` fails without a tty.
+(( $+commands[fzf] )) && [[ -t 0 ]] && source <(fzf --zsh)
 
-# jenv
-eval "$(jenv init -)"
+# zoxide: directory jumper (`z`, `zi`).
+(( $+commands[zoxide] )) && eval "$(zoxide init zsh)"
 
-# nvm
-export NVM_DIR="$HOME/.nvm"
-[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && . "/opt/homebrew/opt/nvm/nvm.sh"  # Loads nvm
-# [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && . "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # Loads nvm bash_completion
-
-# fast-syntax-highlighting
+# --- fast-syntax-highlighting theme ---------------------------------------
+# fast-theme is slow, so only run it when the desired theme differs from the
+# one recorded in the local marker file.
 FSH_THEME="default"
 FSH_CURRENT_THEME=""
-if [[ -f "$ZSH_LOCAL/theme.fsh" ]]; then
-  read FSH_CURRENT_THEME < "$ZSH_LOCAL/theme.fsh"
+if [[ -f "${ZSH_LOCAL}/theme.fsh" ]]; then
+  read -r FSH_CURRENT_THEME < "${ZSH_LOCAL}/theme.fsh"
 fi
-if [[ $FSH_CURRENT_THEME != $FSH_THEME ]]; then
-  fast-theme $FSH_THEME
-  echo $FSH_THEME > "$ZSH_LOCAL/theme.fsh"
-  FSH_OVERLAY="$ZSH_DIR/plugin-configs/fast-syntax-highlighting/$FSH_THEME-overlay.ini"
-  if [[ -e $FSH_OVERLAY ]]; then
-    fast-theme $FSH_OVERLAY
-  fi
+if [[ $FSH_CURRENT_THEME != "$FSH_THEME" ]]; then
+  fast-theme "$FSH_THEME"
+  echo "$FSH_THEME" > "${ZSH_LOCAL}/theme.fsh"
+  FSH_OVERLAY="${ZSH_DIR}/plugin-configs/fast-syntax-highlighting/${FSH_THEME}-overlay.ini"
+  [[ -e $FSH_OVERLAY ]] && fast-theme "$FSH_OVERLAY"
   unset FSH_OVERLAY
 fi
-unset FSH_THEME
-unset FSH_CURRENT_THEME
+unset FSH_THEME FSH_CURRENT_THEME
 
-unset ZSH_LOCAL
-unset ZSH_DIR
+# --- machine-local overrides ----------------------------------------------
+# zsh/local/ is gitignored. Installers that want to append to PATH (Windsurf,
+# Antigravity, vendor SDKs) should write here, never into this file.
+[[ -r ${ZSH_LOCAL}/extra.zsh ]] && source "${ZSH_LOCAL}/extra.zsh"
+
+unset ZSH_DIR ZSH_LOCAL
+
+[[ -n ${ZSH_PROFILE:-} ]] && zprof
