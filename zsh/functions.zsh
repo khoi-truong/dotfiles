@@ -39,6 +39,25 @@ mkd() {
   mkdir -p "$1" && cd "$1" || return
 }
 
+# mitm [args] — mitmproxy web UI on :8081, proxy on :8080. On first run it
+# writes the CA to ~/.mitmproxy; trust it system-wide with `mitm-trust`.
+mitm() {
+  mitmweb --no-web-open-browser "$@"
+}
+
+# curlm [curl args] — curl routed through the running mitmproxy, trusting its CA.
+curlm() {
+  curl --proxy localhost:8080 \
+    --cacert "${HOME}/.mitmproxy/mitmproxy-ca-cert.pem" "$@"
+}
+
+# mitm-trust — add the mitmproxy CA to the System keychain (needs sudo). Run
+# once, after `mitm` has generated ~/.mitmproxy. Undo in Keychain Access.
+mitm-trust() {
+  sudo security add-trusted-cert -d -p ssl -k /Library/Keychains/System.keychain \
+    "${HOME}/.mitmproxy/mitmproxy-ca-cert.pem"
+}
+
 # claude — wrapper around the Claude Code CLI.
 #
 # Claude Code paints its startup banner before it drains stdin, so in the
