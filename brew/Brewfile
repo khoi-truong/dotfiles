@@ -1,73 +1,90 @@
-tap "homebrew/cask-fonts"
-tap "homebrew/cask-versions"
-tap "homebrew/bundle"
-tap "homebrew/services"
-tap "dart-lang/dart"
-tap "leoafarias/fvm"
+# brew/Brewfile — the single source of truth for everything installed via
+# Homebrew on this machine.
+#
+#   sh brew/setup.sh              install
+#   sh brew/setup.sh --cleanup    install + uninstall anything not listed here
+#   sh brew/update.sh             dump what's installed, to reconcile
+#
+# Runtimes (python, node, ruby, go, java, rust) are NOT here — they are managed
+# by mise; see mise/global.toml.
 
-brew "asdf"
-brew "awscli"
-brew "autojump"
-brew "bazelisk"
-brew "buildifier"
-brew "cmake"
-brew "dart"
-brew "direnv"
-brew "fvm"
+# ------------------------------------------------------------- formulae -----
+
+# shell
+brew "zsh"
+brew "zoxide"      # `z` directory jumper
 brew "fzf"
-brew "gh"
+brew "fd"          # fzf's file walker; also nicer `find`
+brew "ripgrep"     # fzf's grepper; also nicer `grep -r`
+brew "direnv"
+brew "tmux"
+
+# version manager — the only one; see mise/global.toml
+brew "mise"
+
+# vcs & shell tooling
 brew "git"
-brew "go"
-brew "gopls"
+brew "gh"
 brew "gpg"
-brew "jenv"
-brew "llvm"
+brew "pinentry-mac"   # GUI passphrase prompt for gpg-agent
 brew "mas"
 brew "nvim"
-brew "nvm"
-brew "openjdk@22"
-brew "pdm"
-brew "pipx"
-brew "pyenv"
-brew "rbenv"
-brew "rustup"
-brew "tldr"
-brew "tmux"
-brew "vim"
 brew "watchman"
-brew "yarn"
-brew "zsh"
 
-cask "adguard"
-cask "alfred"
-cask "android-studio"
-cask "discord"
-cask "docker"
-cask "figma"
-cask "flux"
-cask "gitkraken"
-cask "goland"
-cask "google-chrome"
-cask "evkey"
-cask "iina"
-cask "intellij-idea"
+# build toolchains
+brew "buildifier"
+brew "cmake"
+brew "llvm"
+
+# cloud
+brew "awscli"
+
+# ---------------------------------------------------------------- casks -----
+
+# ai
+cask "claude-code@latest"
+
+# development
 cask "iterm2"
-cask "logi-options-plus"
+cask "visual-studio-code"
+# cask "cursor"
+# cask "android-studio"
+cask "docker-desktop"
+cask "gitkraken"
+# cask "goland"
+# cask "intellij-idea"
+# cask "pycharm"
+cask "postman"
+cask "sf-symbols"
+
+# productivity
+cask "google-chrome"
+cask "figma"
 cask "microsoft-excel"
 cask "microsoft-powerpoint"
-cask "microsoft-word"
-cask "notion"
-cask "oracle-jdk"
-cask "postman"
-cask "pycharm"
-cask "qbittorrent"
-cask "setapp"
-cask "sf-symbols"
-cask "spotify"
-cask "surfshark"
-cask "visual-studio-code"
-cask "zoom"
+cask "microsoft-teams"
+# cask "microsoft-word"
 
+# system & utilities
+cask "1password"
+cask "1password-cli"
+# cask "adguard"
+cask "flux-app"
+cask "logi-options+"
+cask "puremac"
+cask "stats"
+cask "surfshark"
+
+# media
+cask "iina"
+# cask "spotify"
+
+# communication
+cask "discord"
+cask "telegram"
+# cask "zoom"
+
+# ---------------------------------------------------------------- fonts -----
 cask "font-fira-code"
 cask "font-fira-mono"
 cask "font-fira-sans"
@@ -77,11 +94,11 @@ cask "font-sf-compact"
 cask "font-sf-mono"
 cask "font-sf-pro"
 
+# ------------------------------------------------------------------ mas -----
+# Requires being signed into the App Store first (`mas account`).
 mas "Apple Configurator 2", id: 1037126344
 mas "Apple Developer", id: 640199958
-mas "Keynote", id: 409183694
-mas "Messenger", id: 1480068668
 mas "Slack", id: 803453959
-mas "Telegram", id: 747648890
+# mas "Telegram", id: 747648890 # installed via cask; mas version is old and broken
 mas "The Unarchiver", id: 425424353
-mas "Xcode", id: 497799835
+# mas "Xcode", id: 497799835    # manual install; requires Apple Developer account
