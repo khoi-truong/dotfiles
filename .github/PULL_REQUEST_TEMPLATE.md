@@ -11,6 +11,10 @@ subject, so anything longer is truncated to "...".
 
 <!-- The problem it solves or the reason it's worth doing. -->
 
+## Related
+
+<!-- Delete if none. `Closes #12` auto-closes on merge; `Refs #12` just links. -->
+
 ## Verification
 
 <!-- Delete rows that don't apply. -->
