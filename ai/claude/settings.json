@@ -122,20 +122,8 @@
       "background": "bg"
     },
     "layout": {
-      "line1": ["profile", "gitStatus", "contextBar"],
-      "main": [
-        "model",
-        "thinking",
-        "promptTime",
-        "session",
-        "ralph",
-        "autopilot",
-        "prd",
-        "skills",
-        "agents",
-        "background",
-        "callCounts"
-      ]
+      "line1": ["profile", "model", "thinking", "promptTime", "session", "callCounts", "gitStatus", "contextBar"],
+      "main": ["ralph", "autopilot", "prd", "skills", "agents", "background"]
     },
     "maxWidth": 120,
     "preset": "full",
