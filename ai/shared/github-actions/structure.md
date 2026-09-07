@@ -22,6 +22,12 @@ it's a reusable workflow. Otherwise it's a composite action.**
   that does checkout + mise + cache).
 - Repeated jobs across repos → reusable workflow in `<owner>/.github`, `uses:`d
   from each consumer. Only after the third repo needs it.
+- Repeated job _within one repo_ that carries its own `permissions:` and
+  `outputs:` (e.g. a `detect-changes.yml` change detector called by `test.yml`
+  and `code-quality.yml`) → local reusable workflow, `uses:
+  ./.github/workflows/<name>.yml`. A composite action can't own job-level
+  `permissions:` or share the `outputs:` block, so callers would re-map every
+  output by hand.
 - Local composite actions are referenced as `./.github/actions/<name>` — the
   portable form. They ride the checked-out SHA, so they take **no version**.
 

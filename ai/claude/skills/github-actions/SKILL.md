@@ -47,7 +47,7 @@ Read the one that matches the decision in front of you:
 
 | File                           | When to read                                                                                                                                        |
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/naming.md`         | Naming or renaming a workflow, job, step, id, or `run-name`; deciding declarative vs imperative phrasing; writing a composite action `description`. |
+| `references/naming.md`         | Naming or renaming a workflow, job, step, id, or `run-name`; choosing a step-name verb (`Verify`/`Check for` vs `Set up`/`Build`); writing a composite action `description`. |
 | `references/structure.md`      | Factoring repeated CI code; composite action vs reusable workflow; `github-script` vs shell; action version pinning; trigger design.                |
 | `references/security.md`       | Setting `permissions`; handling secrets, tokens, or fork PRs; `pull_request_target` / `workflow_run`; anything that touches untrusted input.        |
 | `references/cost-and-speed.md` | Cutting billed minutes or wall-clock time; runner OS choice; path filtering; caching; job granularity; matrix; schedule crons.                      |
@@ -56,7 +56,7 @@ Read the one that matches the decision in front of you:
 
 So you know whether you even need to open them:
 
-- **naming**: declarative by default (`gofmt is clean`, `go.mod is tidy`), imperative only for steps that _act_ (`Set up Go`, `Build`). Job keys read naturally at `needs.<id>`. `run-name` only when the default title is ambiguous.
+- **naming**: every step name verb-first, Sentence case. Gates get `Verify …` / `Check for …` (`Verify gofmt is clean`, `Check for known vulnerabilities`); state-changing steps get plain imperative (`Set up Go`, `Build`). Never lowercase (`no lint findings`). Name every job (Sentence case, says what it does) — all or none, never a mix. `run-name` prefixed with `${{ github.workflow }} · …` so the combined "All workflows" list is legible. Reusable-only workflow: mark it by `on: workflow_call` alone + a header comment; optional leading-underscore filename if the folder is crowded. change detection: one reusable workflow (`detect-changes.yml`, `workflow_call`, no checkout), not a composite action; filter keys are one lowercase concern token (`go`, `ci`); expose `<key>` + `<key>-files` outputs.
 - **structure**: don't abstract before the third copy. Composite action = shared _steps_; reusable workflow = shared _jobs_ (needs `permissions`/`strategy`). Shell by default; `github-script` only to avoid hand-rolled Octokit. SHA-pin third-party actions.
 - **security**: deny by default, grant per job. Untrusted input goes through `env:`, never string-interpolated. Prefer `GITHUB_TOKEN`; avoid `pull_request_target` unless you truly need secrets on fork PRs, and never run PR code in that context.
 - **cost-and-speed**: Linux only (macOS bills 10×). Don't run `push` + `pull_request` on the same branch. Filter aggressively so a docs PR costs ~0. Cache the build cache for wall-clock. Cheap gates first so failures surface fast.
