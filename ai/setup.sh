@@ -21,6 +21,13 @@ info "Setting up AI tooling..."
 link "${CURRENT_DIR}/claude/settings.json" "${HOME}/.claude/settings.json"
 link "${CURRENT_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
 
+# Personal skills — one symlink per skill dir so OMC-managed skills
+# (~/.claude/skills/wiki, …) are left untouched.
+for skill in "${CURRENT_DIR}"/claude/skills/*/; do
+  [ -d "$skill" ] || continue
+  link "${skill%/}" "${HOME}/.claude/skills/$(basename "$skill")"
+done
+
 if command -v claude >/dev/null 2>&1; then
   ok "claude $(claude --version 2>/dev/null || echo 'installed')"
 else
