@@ -43,39 +43,46 @@ Two layers, both needed:
        paths-ignore: ["**.md", "docs/**", "LICENSE", ".gitignore"]
    ```
 
-2. **Job level** — `dorny/paths-filter` in a tiny `detect-changes` job, then
-   `needs` + `if` on the expensive jobs:
+2. **Job level** — a `detect-changes` job running `dorny/paths-filter`, then
+   `needs` + `if` on the expensive jobs. Once two workflows need it, make it a
+   **reusable workflow** (`detect-changes.yml`, `on: workflow_call`) — see
+   naming.md for the full pattern. Sketch:
 
    ```yaml
    jobs:
      detect-changes:
        runs-on: ubuntu-24.04
        timeout-minutes: 5
+       permissions: { contents: read, pull-requests: read }
        outputs:
-         go: ${{ steps.changed.outputs.go }}
-         workflows: ${{ steps.changed.outputs.workflows }}
+         go: ${{ github.event_name != 'pull_request' || steps.filter.outputs.go == 'true' }}
        steps:
-         - uses: actions/checkout@v7
-           with: { persist-credentials: false }
          - uses: dorny/paths-filter@<sha> # v4.0.3
-           id: changed
+           id: filter
+           if: github.event_name == 'pull_request' # API-based; no checkout
            with:
              filters: |
                go: ['**/*.go', 'go.mod', 'go.sum', '.golangci.yml']
-               workflows: ['.github/**']
      lint:
        needs: detect-changes
        if: needs.detect-changes.outputs.go == 'true'
        ...
    ```
 
+   **Pitfall:** don't run the filter step on `push`. On a `pull_request` it reads
+   the changed-file list from the API (no git). On `push` it does a git diff
+   against the before-SHA and `git fetch <sha>` **fails with exit 128** whenever
+   that commit is unreachable (force-push, merge). Gate the step to
+   `pull_request` and short-circuit every output to `'true'` on push.
+
 Why not just `on.paths`? Because a required status check that never runs stays
 **pending forever** and blocks merge. A `needs`-gated job that's skipped reports
 **success**. So `on.paths` is safe only for non-required workflows; required
 checks must use the job-level gate.
 
-Filter granularly: the lint job keys on `**/*.go` + `.golangci.yml`; the
-actionlint job keys on `.github/**`; pre-commit keys on its own config.
+Filter granularly, but key on the **area of concern**, not the tool: one `go`
+filter feeds lint + test + build; one `ci` filter (`.github/**`) feeds workflow
+lint. Fold `detect-changes.yml`'s own path into the filters it should re-trigger.
 
 ## 4. Skip draft PRs
 
