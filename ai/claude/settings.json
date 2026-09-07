@@ -52,16 +52,23 @@
   },
   "enabledPlugins": {
     "clangd-lsp@claude-plugins-official": true,
-    "gopls-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true,
-    "pyright-lsp@claude-plugins-official": true,
-    "swift-lsp@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
+    "gitkraken-hooks@gitkraken": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "oh-my-claudecode@omc": true,
+    "pyright-lsp@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
-    "oh-my-claudecode@omc": true
+    "swift-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
+    "gitkraken": {
+      "source": {
+        "path": "/Users/khoi/.claude/plugins/marketplaces/gitkraken",
+        "source": "directory"
+      }
+    },
     "omc": {
       "source": {
         "source": "git",
