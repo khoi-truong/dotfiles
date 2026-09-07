@@ -48,7 +48,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "$HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs"
+    "command": "$HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs | perl -CSD -pe 's/Model:\\x{a0}?\\s?//g; s/session://g; s/ctx://g'"
   },
   "enabledPlugins": {
     "clangd-lsp@claude-plugins-official": true,
@@ -123,7 +123,19 @@
     },
     "layout": {
       "line1": ["profile", "gitStatus", "contextBar"],
-      "main": ["model", "thinking", "promptTime", "session", "ralph", "autopilot", "prd", "skills", "agents", "background", "callCounts"]
+      "main": [
+        "model",
+        "thinking",
+        "promptTime",
+        "session",
+        "ralph",
+        "autopilot",
+        "prd",
+        "skills",
+        "agents",
+        "background",
+        "callCounts"
+      ]
     },
     "maxWidth": 120,
     "preset": "full",
