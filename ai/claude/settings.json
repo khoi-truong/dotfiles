@@ -48,20 +48,27 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "$HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs"
+    "command": "$HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs | perl -CSD -pe 's/Model:\\x{a0}?\\s?//g; s/session://g; s/ctx://g'"
   },
   "enabledPlugins": {
     "clangd-lsp@claude-plugins-official": true,
-    "gopls-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true,
-    "pyright-lsp@claude-plugins-official": true,
-    "swift-lsp@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
+    "gitkraken-hooks@gitkraken": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "oh-my-claudecode@omc": true,
+    "pyright-lsp@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
-    "oh-my-claudecode@omc": true
+    "swift-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
+    "gitkraken": {
+      "source": {
+        "path": "/Users/khoi/.claude/plugins/marketplaces/gitkraken",
+        "source": "directory"
+      }
+    },
     "omc": {
       "source": {
         "source": "git",
@@ -115,8 +122,8 @@
       "background": "bg"
     },
     "layout": {
-      "line1": ["profile", "gitStatus", "contextBar"],
-      "main": ["model", "thinking", "promptTime", "session", "ralph", "autopilot", "prd", "skills", "agents", "background", "callCounts"]
+      "line1": ["profile", "model", "thinking", "promptTime", "session", "callCounts", "gitStatus", "contextBar"],
+      "main": ["ralph", "autopilot", "prd", "skills", "agents", "background"]
     },
     "maxWidth": 120,
     "preset": "full",
