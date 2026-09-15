@@ -4,7 +4,8 @@
 #   env.zsh     PATH + toolchain env (must be first; plugins probe $PATH)
 #   config.zsh  options, history, editor
 #   omz.zsh     oh-my-zsh settings (must precede the plugin bundle)
-#   plugins     antidote static bundle (compinit happens in here, via omz)
+#   compinit    omz $ZSH setup + cached compinit (oh-my-zsh.sh is bypassed)
+#   plugins     antidote static bundle (omz lib + theme, plugins)
 #   aliases     ours load *after* plugins so they win
 #   tools       mise / fzf / zoxide
 #   extra.zsh   machine-local, gitignored
@@ -44,22 +45,37 @@ fi
 # Makes `antidote update` available on demand without loading the plugin.
 autoload -Uz "${ANTIDOTE_HOME}/functions/antidote"
 
-# oh-my-zsh runs `compinit -u -d $ZSH_COMPDUMP`, which re-scans every $fpath
-# directory (compaudit, ~26ms) on every single start. This self-replacing
-# wrapper answers that one call with the cached form (-C) as long as the dump
-# is under a day old. oh-my-zsh still owns invalidation: when it deletes the
-# dump the glob below fails and a full compinit runs.
-compinit() {
-  unfunction compinit
-  autoload -Uz compinit
-  if [[ -n ${ZSH_COMPDUMP}(#qN.mh-24) ]]; then
-    compinit -C -d "$ZSH_COMPDUMP"
-  else
-    compinit -d "$ZSH_COMPDUMP"
-  fi
-}
+# --- oh-my-zsh setup + compinit ------------------------------------------
+# What oh-my-zsh.sh did, minus its per-start forks (scutil, git rev-parse, grep,
+# tee, mkdir/rm lock, zrecompile). compinit must run before the bundle: omz lib
+# and plugins call `compdef` at source time.
+export ZSH="${ANTIDOTE_HOME:A}/robbyrussell/oh-my-zsh"
+ZSH_CUSTOM="${ZSH}/custom"
+ZSH_CACHE_DIR="${ZSH}/cache"
+[[ -w $ZSH_CACHE_DIR ]] || ZSH_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/oh-my-zsh"
+[[ -d ${ZSH_CACHE_DIR}/completions ]] || mkdir -p "${ZSH_CACHE_DIR}/completions"
+SHORT_HOST="${HOST/.*/}"
+fpath=("${ZSH}"/{functions,completions} "${ZSH_CUSTOM}"/{functions,completions} "${ZSH_CACHE_DIR}/completions" $fpath)
+autoload -Uz compaudit compinit zrecompile
+
+# Trust the dump (-C) while it is under a day old and newer than the plugin
+# bundle and env.zsh (which sets fpath). Otherwise truncate it so compinit is
+# forced to rescan $fpath and rewrite it; plain compinit keeps a dump whose
+# directory count happens to match.
+_zcd_fresh=( ${ZSH_COMPDUMP}(N.mh-24) )
+if (( $#_zcd_fresh )) \
+  && [[ ! ${ZSH_LOCAL}/plugins.zsh -nt $ZSH_COMPDUMP && ! ${ZSH_DIR}/env.zsh -nt $ZSH_COMPDUMP ]]; then
+  compinit -C -d "$ZSH_COMPDUMP"
+else
+  : >| "$ZSH_COMPDUMP"
+  compinit -u -d "$ZSH_COMPDUMP"
+fi
+unset _zcd_fresh
+[[ ${ZSH_COMPDUMP}.zwc -nt $ZSH_COMPDUMP ]] || zcompile "$ZSH_COMPDUMP"
 
 source "${ZSH_LOCAL}/plugins.zsh"
+# oh-my-zsh.sh's last step: completion colours match `ls`, after the theme.
+[[ -z $LS_COLORS ]] || zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 
 # --- aliases & functions ---------------------------------------------------
 source "${ZSH_DIR}/aliases.zsh"

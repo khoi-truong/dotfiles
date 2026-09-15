@@ -96,8 +96,9 @@ to append to `~/.zshrc` belongs in `zsh/local/extra.zsh` instead.
 ZSH_PROFILE=1 zsh -i -c exit
 ```
 
-The two largest `zprof` entries — mise's hook and oh-my-zsh's library
-sourcing — are inherent to those tools.
+`oh-my-zsh.sh` is bypassed: antidote sources omz `lib/*.zsh` and the theme
+directly, and zshrc runs `compinit -C`, rebuilding the dump when it is over a
+day old or older than the plugin bundle or `env.zsh`.
 
 ## tmux
 
