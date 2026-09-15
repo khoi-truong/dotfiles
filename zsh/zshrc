@@ -91,7 +91,31 @@ if [[ ! ${ZSH_LOCAL}/plugins.zsh.zwc -nt ${ZSH_LOCAL}/plugins.zsh ]]; then
   unset _zc_src _zc_f
 fi
 
+# omz git.plugin execs `git version` only to gate aliases. Serve it from a cache
+# keyed on the resolved binary (stale once that binary is newer) via a function
+# shim that lives only while the bundle is sourced. /usr/bin/git is xcrun's
+# trampoline, whose output depends on xcode-select, so it stays live.
+_gv_cache="${ZSH_LOCAL}/git-version"
+_gv_bin=${commands[git]:A}
+_gv_shim=0
+if (( $+commands[git] )) && ! (( $+functions[git] )) && [[ $_gv_bin != /usr/bin/git ]]; then
+  _gv=()
+  [[ -r $_gv_cache && $_gv_cache -nt $_gv_bin ]] && _gv=( "${(@f)$(<$_gv_cache)}" )
+  if [[ $_gv[1] != "$_gv_bin" || -z $_gv[2] ]]; then
+    _gv=( "$_gv_bin" "$(command git version 2>/dev/null)" )
+    [[ -n $_gv[2] ]] && { print -rl -- $_gv >| $_gv_cache } 2>/dev/null
+  fi
+  if [[ -n $_gv[2] ]]; then
+    git() {
+      if [[ $# -eq 1 && $1 == version ]]; then print -r -- "$_gv[2]"; else command git "$@"; fi
+    }
+    _gv_shim=1
+  fi
+fi
+
 source "${ZSH_LOCAL}/plugins.zsh"
+(( _gv_shim )) && unfunction git
+unset _gv _gv_cache _gv_bin _gv_shim
 # oh-my-zsh.sh's last step: completion colours match `ls`, after the theme.
 [[ -z $LS_COLORS ]] || zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 
