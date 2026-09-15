@@ -202,7 +202,6 @@ if (( $+commands[mise] )); then
   unset _zm_cfg _zm_sys _zm_state _zm_deps _zm_dirs _zm_d _zm_f _zm_key
 fi
 
-
 # fzf key bindings + completion (fzf >= 0.48 ships `fzf --zsh`).
 # The tty guard keeps `zsh -i -c ...` quiet: fzf's key-bindings script
 # save/restores every shell option, and restoring `zle` fails without a tty.
