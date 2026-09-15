@@ -75,7 +75,9 @@ directory, so edits in the repo are live immediately.
 4. `zsh/local/plugins.zsh` — the antidote bundle.
 5. `zsh/aliases.zsh`, `zsh/aliases.macos.zsh`, `zsh/functions.zsh`,
    `ai/aliases.zsh` — after plugins, so these win.
-6. mise, fzf, zoxide.
+6. mise, fzf, zoxide. mise is activated live; the fzf and zoxide init scripts
+   are cached in `zsh/local/init-*.zsh`, keyed by binary path and rebuilt when
+   the binary or `zshrc` changes (delete them to force a rebuild).
 7. `zsh/local/extra.zsh` — machine-local, gitignored.
 
 **Plugins.** Managed by [antidote](https://getantidote.github.io/).

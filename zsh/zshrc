@@ -106,13 +106,47 @@ source "${ZSH_DIR}/functions.zsh"
 # Do not add any other *env init hooks here; see mise/global.toml.
 (( $+commands[mise] )) && eval "$(mise activate zsh)"
 
+# fzf/zoxide init output is cached in zsh/local/init-<tool>-<binary path>.zsh,
+# rebuilt when the binary or this file is newer; the warm path forks nothing.
+# Delete zsh/local/init-*.zsh to force a rebuild. Sets REPLY to the cache file;
+# returns 1 (caller falls back to the live init) if it cannot be produced.
+_zshrc_init_cache() {
+  local bin=${commands[$1]:A} out f
+  local cache=${ZSH_LOCAL}/init-$1-${bin//[^A-Za-z0-9._-]/_}.zsh
+  if [[ ! -s $cache || $bin -nt $cache || ${ZSH_DIR}/zshrc -nt $cache ]]; then
+    out=$("${commands[$1]}" "${@:2}" 2>/dev/null) && [[ -n $out ]] || return 1
+    zmodload -F zsh/files b:zf_mv b:zf_rm || return 1
+    { print -r -- $out >| $cache.tmp.$$ } 2>/dev/null \
+      && zf_mv -f -- $cache.tmp.$$ $cache 2>/dev/null \
+      || { zf_rm -f -- $cache.tmp.$$ 2>/dev/null; return 1 }
+    for f in ${ZSH_LOCAL}/init-$1-*.zsh(N); do
+      [[ $f == "$cache" ]] || zf_rm -f -- $f 2>/dev/null
+    done
+  fi
+  REPLY=$cache
+}
+
 # fzf key bindings + completion (fzf >= 0.48 ships `fzf --zsh`).
 # The tty guard keeps `zsh -i -c ...` quiet: fzf's key-bindings script
 # save/restores every shell option, and restoring `zle` fails without a tty.
-(( $+commands[fzf] )) && [[ -t 0 ]] && source <(fzf --zsh)
+if (( $+commands[fzf] )) && [[ -t 0 ]]; then
+  if _zshrc_init_cache fzf --zsh; then
+    source "$REPLY"
+  else
+    source <(fzf --zsh)
+  fi
+fi
 
-# zoxide: directory jumper (`z`, `zi`).
-(( $+commands[zoxide] )) && eval "$(zoxide init zsh)"
+# zoxide: directory jumper (`z`, `zi`). _ZO_ECHO/_ZO_RESOLVE_SYMLINKS are baked
+# into its init output, so skip the cache when either is set.
+if (( $+commands[zoxide] )); then
+  if [[ -z ${_ZO_ECHO+x}${_ZO_RESOLVE_SYMLINKS+x} ]] && _zshrc_init_cache zoxide init zsh; then
+    source "$REPLY"
+  else
+    eval "$(zoxide init zsh)"
+  fi
+fi
+unfunction _zshrc_init_cache
 
 # --- fast-syntax-highlighting theme ---------------------------------------
 # fast-theme is slow, so only run it when the desired theme differs from the
