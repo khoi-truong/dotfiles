@@ -102,29 +102,105 @@ source "${ZSH_DIR}/functions.zsh"
 [[ -r ${DOTFILES}/ai/aliases.zsh ]] && source "${DOTFILES}/ai/aliases.zsh"
 
 # --- tools -----------------------------------------------------------------
-# mise: the only version manager (python, node, ruby, go, java, ...).
-# Do not add any other *env init hooks here; see mise/global.toml.
-(( $+commands[mise] )) && eval "$(mise activate zsh)"
-
-# fzf/zoxide init output is cached in zsh/local/init-<tool>-<binary path>.zsh,
+# Tool init output is cached in zsh/local/init-<tool>-<binary path>.zsh,
 # rebuilt when the binary or this file is newer; the warm path forks nothing.
 # Delete zsh/local/init-*.zsh to force a rebuild. Sets REPLY to the cache file;
 # returns 1 (caller falls back to the live init) if it cannot be produced.
+# With `-k KEY DEP... --` the output also depends on KEY and the files DEP:
+# KEY is stored as the first line and must match exactly, any DEP newer than
+# the cache rebuilds it, and REPLY is the cached script itself (eval it), read
+# once so the bytes checked are the bytes run.
 _zshrc_init_cache() {
-  local bin=${commands[$1]:A} out f
+  local hdr buf out f
+  local -a deps
+  if [[ $1 == -k ]]; then
+    hdr="# key ${(qqqq)2}"
+    shift 2
+    while (( $# )) && [[ $1 != -- ]]; do deps+=( "$1" ); shift; done
+    shift
+  fi
+  local bin=${commands[$1]:A}
   local cache=${ZSH_LOCAL}/init-$1-${bin//[^A-Za-z0-9._-]/_}.zsh
-  if [[ ! -s $cache || $bin -nt $cache || ${ZSH_DIR}/zshrc -nt $cache ]]; then
-    out=$("${commands[$1]}" "${@:2}" 2>/dev/null) && [[ -n $out ]] || return 1
+  if [[ -n $hdr && -s $cache && -r $cache && ! $bin -nt $cache && ! ${ZSH_DIR}/zshrc -nt $cache ]]; then
+    for f in $deps; do [[ $f -nt $cache ]] && break; done
+    [[ $f -nt $cache ]] || buf=$(<$cache)
+    [[ ${buf[1,${#hdr}+1]} == "$hdr"$'\n' ]] || buf=
+  fi
+  if [[ ! -s $cache || $bin -nt $cache || ${ZSH_DIR}/zshrc -nt $cache || -n $hdr && -z $buf ]]; then
     zmodload -F zsh/files b:zf_mv b:zf_rm || return 1
-    { print -r -- $out >| $cache.tmp.$$ } 2>/dev/null \
+    # The empty temp file stamps the start: a DEP edited while the tool runs
+    # is newer than it, and that output is not cached.
+    { : >| $cache.tmp.$$ } 2>/dev/null || return 1
+    out=$("${commands[$1]}" "${@:2}" 2>/dev/null) && [[ -n $out ]] \
+      || { zf_rm -f -- $cache.tmp.$$ 2>/dev/null; return 1 }
+    for f in $deps; do
+      [[ $f -nt $cache.tmp.$$ ]] && { zf_rm -f -- $cache.tmp.$$ 2>/dev/null; return 1 }
+    done
+    buf=${hdr:+$hdr$'\n'}$out
+    { print -r -- $buf >| $cache.tmp.$$ } 2>/dev/null \
       && zf_mv -f -- $cache.tmp.$$ $cache 2>/dev/null \
       || { zf_rm -f -- $cache.tmp.$$ 2>/dev/null; return 1 }
     for f in ${ZSH_LOCAL}/init-$1-*.zsh(N); do
       [[ $f == "$cache" ]] || zf_rm -f -- $f 2>/dev/null
     done
   fi
-  REPLY=$cache
+  REPLY=${${hdr:+${buf[${#hdr}+2,-1]}}:-$cache}
 }
+
+# mise: the only version manager (python, node, ruby, go, java, ...).
+# Do not add any other *env init hooks here; see mise/global.toml.
+# `mise activate zsh` bakes in PATH, the binary path, every MISE_* setting and
+# the settings of each config that applies here, so all of those form the key
+# and the candidate config files (plus trust state) are its DEPs. The session
+# and hook-flag variables do not change the output. Env vars that rename
+# config files, and any miserc (it can move the config dirs), bypass the cache.
+# Nested shells in a project usually miss.
+if (( $+commands[mise] )); then
+  if [[ -z ${MISE_DEFAULT_CONFIG_FILENAME+x}${MISE_OVERRIDE_CONFIG_FILENAMES+x}${MISE_DEFAULT_TOOL_VERSIONS_FILENAME+x}${MISE_OVERRIDE_TOOL_VERSIONS_FILENAMES+x} ]]; then
+    _zm_cfg=${MISE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/mise}
+    _zm_sys=${MISE_SYSTEM_CONFIG_DIR:-${MISE_SYSTEM_DIR:-/etc/mise}}
+    _zm_state=${MISE_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/mise}
+    _zm_deps=(
+      $_zm_cfg/((config|mise)(|.*)|settings|miserc).toml(N) $_zm_cfg/conf.d/*.toml(N)
+      $_zm_sys/(config|mise)(|.*).toml(N) $_zm_sys/conf.d/*.toml(N) $_zm_sys/miserc.toml(N)
+      $_zm_state/(trusted|ignored)-configs(N)
+    )
+    for _zm_f in ${MISE_GLOBAL_CONFIG_FILE-} ${MISE_SYSTEM_CONFIG_FILE:-/etc/mise/config.toml}; do
+      [[ -e $_zm_f ]] && _zm_deps+=( $_zm_f )
+    done
+    _zm_dirs=()
+    for _zm_d in $PWD ${${PWD:A}:#${(b)PWD}}; do
+      while _zm_dirs+=( "${_zm_d%/}" ) && [[ $_zm_d != / ]]; do _zm_d=${_zm_d:h}; done
+    done
+    # One directory read per ancestor; descend only into what exists.
+    for _zm_d in "${(@u)_zm_dirs}"; do
+      for _zm_f in $_zm_d/(.config|.miserc.toml|.tool-versions|(|.)mise(|(|.*).toml))(N); do
+        case ${_zm_f:t} in
+          (.config) _zm_deps+=( $_zm_f/(miserc|mise(|.*)).toml(N) )
+            [[ $_zm_f/mise == $_zm_cfg ]] ||
+              _zm_deps+=( $_zm_f/mise/(config|mise)(|.*).toml(N) $_zm_f/mise/conf.d/*.toml(N) ) ;;
+          (mise|.mise) _zm_deps+=( $_zm_f/config(|.*).toml(N) $_zm_f/conf.d/*.toml(N) ) ;;
+          (*) _zm_deps+=( $_zm_f ) ;;
+        esac
+      done
+    done
+    _zm_deps=( ${(u)_zm_deps} )
+    if [[ -z ${(M)_zm_deps:#*/(|.)miserc.toml} ]]; then
+      _zm_key=( ${commands[mise]:A} "PATH=$PATH" "HOME=$HOME" "XDG_CONFIG_HOME=${XDG_CONFIG_HOME-}"
+        "XDG_DATA_HOME=${XDG_DATA_HOME-}" "XDG_STATE_HOME=${XDG_STATE_HOME-}" )
+      for _zm_f in ${(ok)parameters[(I)(MISE_*|__MISE_*)]}; do
+        [[ $_zm_f == __MISE_(SESSION|ZSH_PRECMD_RUN|ZSH_CHPWD_RAN) ]] || _zm_key+=( "$_zm_f=${(P)_zm_f}" )
+      done
+      for _zm_f in $_zm_deps; do _zm_key+=( "$_zm_f" "${_zm_f:A}" ); done
+    fi
+  fi
+  if (( $+_zm_key )) && _zshrc_init_cache -k "${(pj:\0:)_zm_key}" $_zm_deps -- mise activate zsh; then
+    eval "$REPLY"
+  else
+    eval "$(mise activate zsh)"
+  fi
+  unset _zm_cfg _zm_sys _zm_state _zm_deps _zm_dirs _zm_d _zm_f _zm_key
+fi
 
 # fzf key bindings + completion (fzf >= 0.48 ships `fzf --zsh`).
 # The tty guard keeps `zsh -i -c ...` quiet: fzf's key-bindings script
