@@ -80,7 +80,10 @@ directory, so edits in the repo are live immediately.
 
 **Plugins.** Managed by [antidote](https://getantidote.github.io/).
 `zsh/zsh.plugins` is the list; `zsh/local/plugins.zsh` is the generated static
-bundle, rebuilt automatically whenever the list is newer. To force a rebuild:
+bundle, rebuilt automatically whenever the list is newer. The bundle and every
+plugin file it sources are zcompiled once after each regeneration (`.zwc` next
+to the source, in the gitignored cache). After `antidote update` or a zsh
+upgrade, or to force a rebuild:
 
 ```sh
 touch zsh/zsh.plugins && exec zsh
