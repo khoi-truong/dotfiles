@@ -1,13 +1,14 @@
 # zsh/omz.zsh — oh-my-zsh settings. Must be sourced BEFORE the plugin bundle,
-# since oh-my-zsh.sh reads these at load time.
+# since the omz lib/theme files read these at load time.
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Settings
 
+# Informational: oh-my-zsh.sh is bypassed, so the theme actually loaded is the
+# one listed in zsh.plugins.
 ZSH_THEME="robbyrussell"
 
-# Skip the `compaudit` insecure-directory scan on every start. This is the
-# single biggest oh-my-zsh startup cost; it makes omz use `compinit -C -d
-# $ZSH_COMPDUMP`, i.e. trust the existing dump instead of re-scanning $fpath.
-# Re-enable temporarily (or run `compaudit`) if completions misbehave.
+# Informational: oh-my-zsh.sh is bypassed, and zshrc runs compinit itself —
+# `-C` (trust the dump) while it is fresh, `-u` (no insecure-directory
+# prompt) when it rebuilds. Run `compaudit` if completions misbehave.
 ZSH_DISABLE_COMPFIX="true"
 
 # omz's own updater is unused: plugins come from antidote (`antidote update`).
