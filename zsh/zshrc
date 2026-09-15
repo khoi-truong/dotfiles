@@ -73,6 +73,24 @@ fi
 unset _zcd_fresh
 [[ ${ZSH_COMPDUMP}.zwc -nt $ZSH_COMPDUMP ]] || zcompile "$ZSH_COMPDUMP"
 
+# zcompile the bundle and every plugin file it sources, once per regeneration.
+# .zwc files land next to the sources in the gitignored antidote cache; zsh only
+# uses foo.zwc when it is newer than foo, so `antidote update` never loads stale
+# wordcode. plugins.zsh.zwc is the stamp, written last. -U: don't bake aliases.
+if [[ ! ${ZSH_LOCAL}/plugins.zsh.zwc -nt ${ZSH_LOCAL}/plugins.zsh ]]; then
+  _zc_src=( ${${(M)${(f)"$(<${ZSH_LOCAL}/plugins.zsh)"}:#source *}#source } )
+  for _zc_f in $_zc_src; do
+    [[ ${_zc_f:t} == fast-syntax-highlighting.plugin.zsh ]] \
+      && _zc_src+=( "${_zc_f:h}/fast-highlight" "${_zc_f:h}/fast-string-highlight" )
+  done
+  for _zc_f in $_zc_src; do
+    [[ -r $_zc_f && -w ${_zc_f:h} && ! ${_zc_f}.zwc -nt $_zc_f ]] \
+      && zcompile -U -- "$_zc_f" 2>/dev/null
+  done
+  [[ -w $ZSH_LOCAL ]] && zcompile -U -- "${ZSH_LOCAL}/plugins.zsh" 2>/dev/null
+  unset _zc_src _zc_f
+fi
+
 source "${ZSH_LOCAL}/plugins.zsh"
 # oh-my-zsh.sh's last step: completion colours match `ls`, after the theme.
 [[ -z $LS_COLORS ]] || zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
