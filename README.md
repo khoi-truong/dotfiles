@@ -98,9 +98,10 @@ upgrade, or to force a rebuild:
 touch zsh/zsh.plugins && exec zsh
 ```
 
-**Machine-local state.** `zsh/local/` is gitignored and holds history, the
-zcompdump, the generated bundle, and `extra.zsh`. Anything an installer wants
-to append to `~/.zshrc` belongs in `zsh/local/extra.zsh` instead.
+**Machine-local state.** `zsh/local/` is gitignored and holds the zsh, Python
+and Node REPL histories, `lesshst`, the zcompdump, the generated bundle, and
+`extra.zsh`. Anything an installer wants to append to `~/.zshrc` belongs in
+`zsh/local/extra.zsh` instead.
 
 **Startup time.** Roughly 350 ms. Profile it with:
 
