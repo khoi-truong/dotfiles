@@ -18,6 +18,9 @@ info "Setting up AI tooling..."
 
 # --- Claude Code -----------------------------------------------------------
 # claude/CLAUDE.md holds the OMC orchestration rules and imports rules/common.md.
+# Tools that edit settings.json (Claude Code, iTerm's cc-status installer)
+# replace the symlink with a real file. Re-running this backs that file up and
+# relinks; fold anything new from the backup into claude/settings.json first.
 link "${CURRENT_DIR}/claude/settings.json" "${HOME}/.claude/settings.json"
 link "${CURRENT_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
 
