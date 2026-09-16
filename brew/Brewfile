@@ -16,7 +16,6 @@ brew "zoxide"      # `z` directory jumper
 brew "fzf"
 brew "fd"          # fzf's file walker; also nicer `find`
 brew "ripgrep"     # fzf's grepper; also nicer `grep -r`
-brew "direnv"
 brew "tmux"
 brew "shellcheck"  # shell linter
 
@@ -26,19 +25,28 @@ brew "mise"
 # vcs & shell tooling
 brew "git"
 brew "gh"
-brew "gpg"
+brew "lazygit"        # terminal UI for git
+brew "gnupg"
 brew "pinentry-mac"   # GUI passphrase prompt for gpg-agent
 brew "mas"
-brew "nvim"
+brew "neovim"
+brew "vim"
 brew "watchman"
 
 # build toolchains
-brew "buildifier"
 brew "cmake"
 brew "llvm"
+brew "perl"
 
-# cloud
-brew "awscli"
+# databases
+brew "mysql"
+
+# media
+brew "ffmpeg"
+brew "oxipng"
+
+# ai
+brew "ollama"         # local LLMs
 
 # ---------------------------------------------------------------- casks -----
 
@@ -56,7 +64,8 @@ cask "gitkraken"
 # cask "intellij-idea"
 cask "mitmproxy"
 # cask "pycharm"
-cask "postman"
+cask "react-native-debugger"
+cask "bruno"
 cask "sf-symbols"
 
 # productivity
@@ -64,12 +73,14 @@ cask "google-chrome"
 cask "figma"
 cask "microsoft-excel"
 cask "microsoft-powerpoint"
+cask "microsoft-auto-update"
 cask "microsoft-teams"
 # cask "microsoft-word"
 
 # system & utilities
 cask "1password"
 cask "1password-cli"
+cask "evkey"
 cask "adguard"
 cask "flux-app"
 cask "logi-options+"
@@ -79,6 +90,7 @@ cask "surfshark"
 
 # media
 cask "iina"
+cask "qbittorrent"
 # cask "spotify"
 
 # communication
@@ -98,6 +110,8 @@ cask "font-sf-pro"
 
 # ------------------------------------------------------------------ mas -----
 # Requires being signed into the App Store first (`mas account`).
+mas "1Password for Safari", id: 1569813296
+mas "Amphetamine", id: 937984704
 mas "Apple Configurator 2", id: 1037126344
 mas "Apple Developer", id: 640199958
 mas "Slack", id: 803453959
