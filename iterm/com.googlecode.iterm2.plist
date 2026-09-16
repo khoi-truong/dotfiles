@@ -36,6 +36,35 @@ The script should do this: \(ai.prompt)</string>
 	<true/>
 	<key>AutoCommandHistory</key>
 	<true/>
+	<key>ClaudeCodeTriggersInstalled</key>
+	<true/>
+	<key>CodeReviewSavedPrompts</key>
+	<data>
+	W3sidXVpZCI6IkJEOEU5M0ZBLTIyMDItNEY5Ri1CQzc1LTMzRUQ4RTEyQkNEQyIsIm5h
+	bWUiOiJEZWZhdWx0IiwidGV4dCI6IlJldmlldyB0aGUgcGVuZGluZyBjaGFuZ2VzIGlu
+	IHRoaXMgcmVwby4gRmxhZyBpc3N1ZXMgYSBjYXJlZnVsIG1haW50YWluZXIgd291bGQg
+	YmxvY2sgb24gYmVmb3JlIG1lcmdlLCBpbiByb3VnaGx5IHRoaXMgb3JkZXI6XG4gIDEu
+	IENvcnJlY3RuZXNzIOKAlCBsb2dpYyBlcnJvcnMsIGJyb2tlbiBpbnZhcmlhbnRzLCBt
+	aXNzZWQgZWRnZSBjYXNlcywgb2ZmLWJ5LW9uZSwgcmFjZXMsIGxpZmV0aW1lXC9tZW1v
+	cnkgYnVncywgZXJyb3IgcGF0aHMgdGhhdCBzd2FsbG93IGZhaWx1cmVzLlxuICAyLiBT
+	ZWN1cml0eSDigJQgaW5qZWN0aW9uLCBhdXRoblwvYXV0aHogbWlzdGFrZXMsIHNlY3Jl
+	dCBoYW5kbGluZywgdW5zYWZlIGRlc2VyaWFsaXphdGlvbiwgdW5zYWZlIGRlZmF1bHRz
+	LCBUT0NUT1UuXG4gIDMuIFJlbGlhYmlsaXR5ICYgcGVyZm9ybWFuY2Ug4oCUIGJsb2Nr
+	aW5nIHRoZSB3cm9uZyB0aHJlYWQsIHVuYm91bmRlZCByZXNvdXJjZSB1c2UsIGFjY2lk
+	ZW50YWwgTyhOwrIpLCByZXRyaWVzIHdpdGhvdXQgYmFja29mZiwgc2lsZW50IGZhaWx1
+	cmUgcGF0aHMuXG4gIDQuIENvbnRyYWN0IHJpc2sg4oCUIGJlaGF2aW9yIGNoYW5nZXMg
+	Y2FsbGVycyByZWx5IG9uLCBzaWxlbnRseSBjaGFuZ2VkIGRlZmF1bHRzLCBicm9rZW4g
+	YmFja3dhcmQgY29tcGF0aWJpbGl0eSwgbWlzc2luZyBtaWdyYXRpb25zLlxuXG5Gb3Ig
+	ZWFjaCBmaW5kaW5nIGNpdGUgYGZpbGU6bGluZWAsIGV4cGxhaW4gKndoeSogaXQgaXMg
+	d3JvbmcgKG5vdCB3aGF0IHRoZSBjb2RlIGRvZXMpLCBhbmQgcHJvcG9zZSBhIGNvbmNy
+	ZXRlIGZpeCB3aGVuIG9uZSBpcyBvYnZpb3VzLiBCZSBjYWxpYnJhdGVkOiBpZiBhIGZp
+	bmRpbmcgaXMgbm90IGhpZ2gtY29uZmlkZW5jZSwgc2F5IHNvIG9yIHNraXAgaXQuIFZl
+	cmlmeSBjbGFpbXMgYWdhaW5zdCB0aGUgYWN0dWFsIGNvZGUgcmF0aGVyIHRoYW4gaW5m
+	ZXJyaW5nIGZyb20gbmFtZXMuXG5cblNraXAgcHVyZSBzdHlsZSwgZm9ybWF0dGluZywg
+	bmFtaW5nLCBhbmQgYW55dGhpbmcgYSBsaW50ZXIgb3IgQ0kgYWxyZWFkeSBlbmZvcmNl
+	cy5cblxuSWYgeW91IGZpbmQgbm90aGluZyB3b3J0aCBmaXhpbmcsIHNheSBzbyBwbGFp
+	bmx5LiJ9XQ==
+	</data>
 	<key>CopySelection</key>
 	<false/>
 	<key>Custom Color Presets</key>
@@ -1369,6 +1398,53 @@ The script should do this: \(ai.prompt)</string>
 			<integer>3</integer>
 			<key>Transparency</key>
 			<real>0.14874616350446429</real>
+			<key>Triggers</key>
+			<array>
+				<dict>
+					<key>action</key>
+					<string>iTermEnterWorkgroupTrigger</string>
+					<key>contentregex</key>
+					<string></string>
+					<key>disabled</key>
+					<false/>
+					<key>eventParams</key>
+					<dict>
+						<key>jobName</key>
+						<string>claude</string>
+					</dict>
+					<key>matchType</key>
+					<integer>113</integer>
+					<key>parameter</key>
+					<string>builtin.claudeCode</string>
+					<key>partial</key>
+					<false/>
+					<key>regex</key>
+					<string></string>
+				</dict>
+				<dict>
+					<key>action</key>
+					<string>iTermExitWorkgroupTrigger</string>
+					<key>contentregex</key>
+					<string></string>
+					<key>disabled</key>
+					<false/>
+					<key>eventParams</key>
+					<dict>
+						<key>jobName</key>
+						<string>claude</string>
+						<key>leaderOnly</key>
+						<true/>
+					</dict>
+					<key>matchType</key>
+					<integer>114</integer>
+					<key>parameter</key>
+					<string></string>
+					<key>partial</key>
+					<false/>
+					<key>regex</key>
+					<string></string>
+				</dict>
+			</array>
 			<key>Unicode Normalization</key>
 			<integer>0</integer>
 			<key>Unlimited Scrollback</key>
@@ -1477,6 +1553,7 @@ The script should do this: \(ai.prompt)</string>
 	<key>ToolbeltTools</key>
 	<array>
 		<string>Profiles</string>
+		<string>Session Status</string>
 	</array>
 	<key>URLHandlersByGuid</key>
 	<dict/>
@@ -1492,6 +1569,37 @@ The script should do this: \(ai.prompt)</string>
 	<true/>
 	<key>WordCharacters</key>
 	<string>/-+\~_.</string>
+	<key>Workgroups</key>
+	<data>
+	W3sidW5pcXVlSWRlbnRpZmllciI6ImJ1aWx0aW4uY2xhdWRlQ29kZSIsIm5hbWUiOiJD
+	bGF1ZGUgQ29kZSIsInNlc3Npb25zIjpbeyJ1cmxTdHJpbmciOiIiLCJjb21tYW5kIjoi
+	IiwidG9vbGJhckl0ZW1zIjpbeyJraW5kIjoibW9kZVN3aXRjaGVyIn0seyJraW5kIjoi
+	Z2l0U3RhdHVzIn0seyJraW5kIjoiYXV0b1JlcXVlc3RSZXZpZXdXaGVuSWRsZSJ9XSwi
+	ZGlzcGxheU5hbWUiOiJDaGF0IiwidW5pcXVlSWRlbnRpZmllciI6ImJ1aWx0aW4uY2xh
+	dWRlQ29kZS5tYWluIiwia2luZCI6eyJraW5kIjoicm9vdCJ9LCJwZXJGaWxlQ29tbWFu
+	ZCI6IiIsIm1vZGUiOiJyZWd1bGFyIn0seyJkaXNwbGF5TmFtZSI6IkRpZmYiLCJ1bmlx
+	dWVJZGVudGlmaWVyIjoiYnVpbHRpbi5jbGF1ZGVDb2RlLmRpZmYiLCJ0b29sYmFySXRl
+	bXMiOlt7ImtpbmQiOiJtb2RlU3dpdGNoZXIifSx7ImtpbmQiOiJjaGFuZ2VkRmlsZVNl
+	bGVjdG9yIn0seyJraW5kIjoiZ2l0QmFzZVNlbGVjdG9yIn0seyJiYWNrU2hvcnRjdXQi
+	Onsic2VyaWFsaXplZCI6IjB4ZjcwMi0weDM0MDAwMC0weDdiIn0sImZvcndhcmRTaG9y
+	dGN1dCI6eyJzZXJpYWxpemVkIjoiMHhmNzAzLTB4MzQwMDAwLTB4N2MifSwia2luZCI6
+	Im5hdmlnYXRpb24iLCJyZWxvYWRTaG9ydGN1dCI6eyJzZXJpYWxpemVkIjoiMHg3Mi0w
+	eDEwMDAwMC0weGYifX1dLCJtb2RlIjoiZGlmZiIsInBlckZpbGVDb21tYW5kIjoiZ2l0
+	IGRpZmZ0b29sIC15IC14IHZpbWRpZmYgXFwoZ2l0QmFzZSkgLS0gXFwoZmlsZSkiLCJw
+	YXJlbnRJRCI6ImJ1aWx0aW4uY2xhdWRlQ29kZS5tYWluIiwiY29tbWFuZCI6ImdpdCBk
+	aWZmdG9vbCAteSAteCB2aW1kaWZmIFxcKGdpdEJhc2UpIiwia2luZCI6eyJraW5kIjoi
+	cGVlciJ9LCJ1cmxTdHJpbmciOiIifSx7ImRpc3BsYXlOYW1lIjoiQ29kZSBSZXZpZXci
+	LCJ1bmlxdWVJZGVudGlmaWVyIjoiYnVpbHRpbi5jbGF1ZGVDb2RlLnJldmlldyIsInRv
+	b2xiYXJJdGVtcyI6W3sia2luZCI6Im1vZGVTd2l0Y2hlciJ9LHsic2hvcnRjdXQiOnsi
+	c2VyaWFsaXplZCI6IjB4NzItMHgxMDAwMDAtMHhmIn0sImtpbmQiOiJyZWxvYWQifSx7
+	ImtpbmQiOiJhdXRvU2VuZENsaXBwaW5nc1doZW5JZGxlIn1dLCJtb2RlIjoiY29kZVJl
+	dmlldyIsInVybFN0cmluZyI6IiIsInBlckZpbGVDb21tYW5kIjoiIiwicGFyZW50SUQi
+	OiJidWlsdGluLmNsYXVkZUNvZGUubWFpbiIsImNvbW1hbmQiOiJjbGF1ZGUgXFwoY29k
+	ZVJldmlld1Byb21wdCkgLS1hcHBlbmQtc3lzdGVtLXByb21wdC1maWxlICdcXChjb2Rl
+	UmV2aWV3U3lzdGVtUHJvbXB0RmlsZSknIC0tc2V0dGluZ3MgJ1xcKGl0ZXJtMi5hcHBC
+	dW5kbGVQYXRoKVwvQ29udGVudHNcL1Jlc291cmNlc1wvY29kZS1yZXZpZXctc2V0dGlu
+	Z3MudHh0JyIsImtpbmQiOnsia2luZCI6InBlZXIifX1dfV0=
+	</data>
 	<key>findMode_iTerm</key>
 	<integer>0</integer>
 	<key>kCPKSelectionViewPreferredModeKey</key>
