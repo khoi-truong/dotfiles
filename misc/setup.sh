@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 # misc — run every misc/*/setup.sh.
-#
-# dash/ and istat_menu/ are data-only (synced/imported through the apps' own
-# UI); only submodules that ship a setup.sh are executed.
 set -euo pipefail
 
 DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
