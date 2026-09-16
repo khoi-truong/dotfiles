@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # zsh/env.zsh — environment variables and $PATH. Sourced first by zshrc.
 #
 # PATH is built exactly once here. `typeset -U path` keeps it deduplicated, so

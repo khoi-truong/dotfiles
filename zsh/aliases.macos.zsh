@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # zsh/aliases.macos.zsh — macOS-only aliases. Sourced from zshrc when
 # $OSTYPE is darwin*. Most of these come from mathiasbynens/dotfiles.
 

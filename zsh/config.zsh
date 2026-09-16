@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # zsh/config.zsh — shell options, history, and general environment.
 
 # --- editor ----------------------------------------------------------------

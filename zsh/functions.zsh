@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # zsh/functions.zsh — shell functions. Anything that needs arguments or more
 # than one line belongs here rather than in aliases.zsh.
 
