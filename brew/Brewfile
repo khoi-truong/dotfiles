@@ -18,6 +18,7 @@ brew "fd"          # fzf's file walker; also nicer `find`
 brew "ripgrep"     # fzf's grepper; also nicer `grep -r`
 brew "direnv"
 brew "tmux"
+brew "shellcheck"  # shell linter
 
 # version manager — the only one; see mise/global.toml
 brew "mise"
@@ -69,7 +70,7 @@ cask "microsoft-teams"
 # system & utilities
 cask "1password"
 cask "1password-cli"
-# cask "adguard"
+cask "adguard"
 cask "flux-app"
 cask "logi-options+"
 cask "puremac"
