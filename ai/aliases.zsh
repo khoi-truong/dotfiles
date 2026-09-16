@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # ai/aliases.zsh — AI CLI shortcuts. Sourced from zsh/zshrc.
 #
 # The `claude` wrapper function itself lives in zsh/functions.zsh.

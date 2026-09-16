@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # zsh/aliases.zsh — portable aliases. macOS-only ones live in aliases.macos.zsh.
 # Sourced AFTER the plugin bundle so these win over plugin-provided aliases.
 

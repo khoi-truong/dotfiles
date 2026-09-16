@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+# shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # zsh/omz.zsh — oh-my-zsh settings. Must be sourced BEFORE the plugin bundle,
 # since the omz lib/theme files read these at load time.
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Settings
