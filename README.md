@@ -25,7 +25,7 @@ then runs each module's `setup.sh`.
 
 |             | Modules                                                  |
 | ----------- | -------------------------------------------------------- |
-| **default** | `git` `brew` `mise` `macos` `gpg` `iterm` `alfred` `ai` `misc` |
+| **default** | `git` `brew` `mise` `macos` `gpg` `iterm` `ai` `misc`    |
 | **opt-in**  | `vscode` `xcode` `terminal`                              |
 
 The opt-in ones need a GUI app that may not be installed, or only matter on
@@ -56,7 +56,6 @@ directory, so edits in the repo are live immediately.
   Finder/Dock at the end.
 - iTerm2 is pointed at `iterm/` via its "load preferences from a custom folder"
   setting. iTerm writes the plist back there on quit, so commit from the repo.
-- Alfred's `syncfolder` is set to `alfred/`.
 - Terminal.app imports its theme through `osascript`.
 - `gpg/setup.sh` copies `gpg.conf` and a rendered `gpg-agent.conf` (arch-correct
   `pinentry-mac` path) into `~/.gnupg`. Copied, not symlinked — gpg insists on a

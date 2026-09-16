@@ -32,7 +32,6 @@
   "globs": ["**/*.md"],
   "ignores": [
     "zsh/antidote/**",
-    "alfred/**",
     ".omc/**",
     "node_modules/**"
   ]
