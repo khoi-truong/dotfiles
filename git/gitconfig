@@ -1,195 +1,167 @@
-[alias]
+# ~/.gitconfig — linked from ~/.dotfiles/git/gitconfig by git/setup.sh.
+#
+# Sections are alphabetical. Machine-specific settings (user.*, gpg.program)
+# live in ~/.config/git/gitconfig.local, included last so it can override
+# anything here. Global ignores go in ~/.config/git/ignore (git's default).
 
-	# View abbreviated SHA, description, and history graph of the latest 20 commits.
-	l = log --pretty=oneline -n 20 --graph --abbrev-commit
-
-	# View the current working tree status using the short format.
-	s = status -s
-
-	# Show the diff between the latest commit and the current state.
-	d = !"git diff-index --quiet HEAD -- || clear; git --no-pager diff --patch-with-stat"
-
-	# `git di $number` shows the diff between the state `$number` revisions ago and the current state.
-	di = !"d() { git diff --patch-with-stat HEAD~$1; }; git diff-index --quiet HEAD -- || clear; d"
-
-	# Pull in remote changes for the current repository and all its submodules.
-	p = pull --recurse-submodules
-
-	# Clone a repository including all submodules.
-	c = clone --recursive
-
-	# Commit all changes.
-	ca = !git add -A && git commit -av
-
-	# Switch to a branch, creating it if necessary.
-	go = "!f() { git checkout -b \"$1\" 2> /dev/null || git checkout \"$1\"; }; f"
-
-	# Show verbose output about tags, branches or remotes
-	tags = tag -l
-	branches = branch --all
-	remotes = remote --verbose
-
-	# List aliases.
-	aliases = config --get-regexp alias
-
-	# Amend the currently staged files to the latest commit.
-	amend = commit --amend --reuse-message=HEAD
-
-  # Stage all files and amend to the latest commit, then force push to the remote
-  pushamendall = !git add -A && git commit --amend --reuse-message=HEAD && git push --force-with-lease
-
-	# Credit an author on the latest commit.
-	credit = "!f() { git commit --amend --author \"$1 <$2>\" -C HEAD; }; f"
-
-	# Interactive rebase with the given number of latest commits.
-	reb = "!r() { git rebase -i HEAD~$1; }; r"
-
-	# Remove the old tag with this name and tag the latest commit with it.
-	retag = "!r() { git tag -d $1 && git push origin :refs/tags/$1 && git tag $1; }; r"
-
-	# Find branches containing commit
-	fb = "!f() { git branch -a --contains $1; }; f"
-
-	# Find tags containing commit
-	ft = "!f() { git describe --always --contains $1; }; f"
-
-	# Find commits by source code
-	fc = "!f() { git log --pretty=format:'%C(yellow)%h  %Cblue%ad  %Creset%s%Cgreen  [%cn] %Cred%d' --decorate --date=short -S$1; }; f"
-
-	# Find commits by commit message
-	fm = "!f() { git log --pretty=format:'%C(yellow)%h  %Cblue%ad  %Creset%s%Cgreen  [%cn] %Cred%d' --decorate --date=short --grep=$1; }; f"
-
-	# Remove branches that have already been merged with main.
-	# a.k.a. ‘delete merged’
-	dm = "!git branch --merged | grep -v '\\*' | xargs -n 1 git branch -d"
-
-	# List contributors with number of commits.
-	contributors = shortlog --summary --numbered
-
-	# Show the user email for the current repository.
-	whoami = config user.email
-
-[apply]
-
-	# Detect whitespace errors when applying a patch.
-	whitespace = fix
-
-[branch]
-
-	# Show most recently changed branches first.
-	sort = -committerdate
+# ─── Core ────────────────────────────────────────────────────────────────────
 
 [core]
+  # macOS: HFS+/APFS store names decomposed; report them precomposed so
+  # non-ASCII filenames aren't shown as untracked.
+  precomposeUnicode = true
+  # macOS: ctime changes spuriously (Spotlight, backups); ignore it.
+  trustctime = false
+  # Cache untracked-file lookups to speed up `git status`.
+  untrackedCache = true
 
-	# Use custom `.gitignore` and `.gitattributes`.
-	# excludesfile = ~/.gitignore
-	# attributesfile = ~/.gitattributes
-
-	# Treat spaces before tabs and all kinds of trailing whitespace as an error.
-	# [default] trailing-space: looks for spaces at the end of a line
-	# [default] space-before-tab: looks for spaces before tabs at the beginning of a line
-	whitespace = space-before-tab,-indent-with-non-tab,trailing-space
-
-	# Make `git rebase` safer on macOS.
-	# More info: <http://www.git-tower.com/blog/make-git-rebase-safe-on-osx/>
-	trustctime = false
-
-	# Prevent showing files whose names contain non-ASCII symbols as unversioned.
-	# http://michael-kuehnel.de/git/2014/11/21/git-mac-osx-and-german-umlaute.html
-	precomposeunicode = false
-
-	# Speed up commands involving untracked files such as `git status`.
-	# https://git-scm.com/docs/git-update-index#_untracked_cache
-	untrackedCache = true
-
-[color]
-
-	# Use colors in Git commands that are capable of colored output when
-	# outputting to the terminal. (This is the default setting in Git ≥ 1.8.4.)
-	ui = auto
-
-[color "branch"]
-
-	current = yellow reverse
-	local = yellow
-	remote = green
-
-[color "diff"]
-
-	meta = yellow bold
-	frag = magenta bold # line info
-	old = red # deletions
-	new = green # additions
-
-[color "status"]
-
-	added = yellow
-	changed = green
-	untracked = cyan
-
-[commit]
-
-	# https://help.github.com/articles/signing-commits-using-gpg/
-	gpgSign = true
-
-	# Commented Conventional-Commits skeleton, shown when composing in the
-	# editor. `git commit -m` bypasses it. `~` is expanded by git.
-	template = ~/.dotfiles/git/gitmessage.txt
-
-[diff]
-
-	# Detect copies as well as renames.
-	renames = copies
-
-[diff "bin"]
-
-	# Use `hexdump` to diff binary files.
-	textconv = hexdump -v -C
+[init]
+  defaultBranch = main
+  # New repos get hooks/pre-commit (gitleaks secret scan).
+  templateDir = ~/.config/git/template/
 
 [help]
+  # Ask before running a mistyped command's best guess.
+  autocorrect = prompt
 
-	# Automatically correct and execute mistyped commands.
-	autocorrect = 1
+[column]
+  ui = auto
+
+# ─── Committing ──────────────────────────────────────────────────────────────
+
+[commit]
+  gpgSign = true
+  # Commented Conventional-Commits skeleton; `git commit -m` bypasses it.
+  template = ~/.dotfiles/git/gitmessage.txt
+  # Show the diff being committed in the editor.
+  verbose = true
+
+[tag]
+  sort = version:refname
+
+[rerere]
+  # Remember conflict resolutions and replay them.
+  enabled = true
+  autoUpdate = true
+
+# ─── Branches, fetching, pushing ─────────────────────────────────────────────
+
+[branch]
+  sort = -committerdate
+
+[fetch]
+  # Drop remote-tracking branches deleted upstream.
+  prune = true
+
+[pull]
+  ff = only
+
+[push]
+  default = current
+  autoSetupRemote = true
+  # Push annotated tags reachable from the pushed commits.
+  followTags = true
+
+[rebase]
+  # Honour fixup!/squash! commits, stash around the rebase, and move
+  # stacked branches along with it.
+  autoSquash = true
+  autoStash = true
+  updateRefs = true
+
+[merge]
+  # Show the common ancestor in conflict hunks, minus the shared lines.
+  conflictStyle = zdiff3
+  # Summarise merged commits in the merge message.
+  log = true
+
+[transfer]
+  # Verify every object received or sent.
+  fsckObjects = true
+
+# ─── Diffs and patches ───────────────────────────────────────────────────────
+
+[diff]
+  algorithm = histogram
+  # Colour moved blocks differently from real additions/deletions.
+  colorMoved = plain
+  # Prefix paths with i/ w/ c/ (index, worktree, commit) instead of a/ b/.
+  mnemonicPrefix = true
+  # Detect copies as well as renames.
+  renames = copies
+
+[apply]
+  # Fix whitespace errors when applying a patch.
+  whitespace = fix
+
+[status]
+  submoduleSummary = true
+
+# ─── Colours ─────────────────────────────────────────────────────────────────
+
+[color "branch"]
+  current = yellow reverse
+  local = yellow
+  remote = green
+
+[color "diff"]
+  meta = yellow bold
+  frag = magenta bold
+  old = red
+  new = green
+
+[color "status"]
+  added = yellow
+  changed = green
+  untracked = cyan
+
+# ─── URL shorthands ──────────────────────────────────────────────────────────
+# `git clone gh:user/repo` (SSH) or `github:user/repo` (HTTPS, pushes via SSH).
+
+[url "git@github.com:"]
+  insteadOf = gh:
+  pushInsteadOf = github:
+  pushInsteadOf = https://github.com/
+
+[url "https://github.com/"]
+  insteadOf = github:
+
+[url "git@gist.github.com:"]
+  insteadOf = gst:
+  pushInsteadOf = gist:
+  pushInsteadOf = https://gist.github.com/
+
+[url "https://gist.github.com/"]
+  insteadOf = gist:
+
+# ─── Aliases ─────────────────────────────────────────────────────────────────
+
+[alias]
+  # Status and history
+  s = status --short --branch
+  l = log --graph --oneline --decorate -n 20
+  whoami = config user.email
+  aliases = config --get-regexp ^alias\\.
+
+  # Committing
+  amend = commit --amend --reuse-message=HEAD
+  amendp = !git add --all && git commit --amend --reuse-message=HEAD && git push --force-with-lease
+  # Undo the last commit, keeping its changes staged.
+  undo = reset --soft HEAD~1
+  # Fold staged changes into <commit>: `git fixup <sha>`.
+  fixup = "!f() { sha=$(git rev-parse \"$1\") && git commit --fixup=\"$sha\" && GIT_SEQUENCE_EDITOR=: git rebase --interactive --autosquash \"$sha~1\"; }; f"
+  # Interactive rebase of the last N commits.
+  reb = "!f() { git rebase --interactive HEAD~\"$1\"; }; f"
+
+  # Delete local branches merged into the default branch or gone upstream.
+  tidy = "!f() { git fetch --prune; base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo main); git branch --merged \"$base\" --format='%(refname:short)' | grep -vxE \"main|master|${base#origin/}|$(git branch --show-current)\" | xargs -n 1 git branch -d; git branch --format='%(refname:short) %(upstream:track)' | awk '$2 == \"[gone]\" { print $1 }' | xargs -n 1 git branch -D; }; f"
+
+  # Searching: branches containing a commit; commits by code or message.
+  fb = "!f() { git branch --all --contains \"$1\"; }; f"
+  fc = "!f() { git log --pretty=format:'%C(yellow)%h  %Cblue%ad  %Creset%s%Cgreen  [%cn] %Cred%d' --decorate --date=short -S\"$1\"; }; f"
+  fm = "!f() { git log --pretty=format:'%C(yellow)%h  %Cblue%ad  %Creset%s%Cgreen  [%cn] %Cred%d' --decorate --date=short --grep=\"$1\"; }; f"
+
+# ─── Machine-local overrides (must stay last) ───────────────────────────────
 
 [include]
   path = ~/.config/git/gitconfig.local
-
-[merge]
-
-	# Include summaries of merged commits in newly created merge commit messages
-	log = true
-
-[push]
-
-	# https://git-scm.com/docs/git-config#git-config-pushdefault
-	default = current
-	# Make `git push` push relevant annotated tags when pushing branches out.
-	followTags = true
-	autoSetupRemote = true
-
-# URL shorthands
-
-[url "git@github.com:"]
-
-	insteadOf = "gh:"
-	pushInsteadOf = "github:"
-	pushInsteadOf = "git://github.com/"
-
-[url "git://github.com/"]
-
-	insteadOf = "github:"
-
-[url "git@gist.github.com:"]
-
-	insteadOf = "gst:"
-	pushInsteadOf = "gist:"
-	pushInsteadOf = "git://gist.github.com/"
-
-[url "git://gist.github.com/"]
-
-	insteadOf = "gist:"
-
-[init]
-
-	templateDir = ~/.config/git/template/
-	defaultBranch = main
