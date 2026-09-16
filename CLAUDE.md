@@ -29,3 +29,15 @@ it updated when the structure changes.
 - **Secrets never land in the repo.** `~/.claude.json`,
   `~/.claude/.credentials.json` and `~/.config/github-copilot/apps.json` hold
   credentials. Only declarative config is versioned under `ai/`.
+
+## Contributing
+
+- **Branch + PR for every change.** Never commit directly to `main`.
+- **Sign every commit** (`git commit -S`; `commit.gpgSign = true`). Don't
+  rewrite history with `git filter-branch` — it strips signatures.
+- **No AI attribution** anywhere in commit messages or PR title/body: no
+  `Co-Authored-By`, no `Claude-Session` trailer, no "Generated with" line.
+- **Keep the PR title ≤ ~50 chars** and in Conventional Commits form — it
+  becomes the squash-merge subject and is otherwise truncated to `…`. Put
+  detail in the body.
+- Force-push and `git reset --hard` are blocked here; hand those to the user.

@@ -132,6 +132,10 @@
 	# https://help.github.com/articles/signing-commits-using-gpg/
 	gpgSign = true
 
+	# Commented Conventional-Commits skeleton, shown when composing in the
+	# editor. `git commit -m` bypasses it. `~` is expanded by git.
+	template = ~/.dotfiles/git/gitmessage.txt
+
 [diff]
 
 	# Detect copies as well as renames.

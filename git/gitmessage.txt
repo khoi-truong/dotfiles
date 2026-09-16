@@ -1,0 +1,13 @@
+# <type>(<scope>): <subject>
+#
+# Subject: imperative mood, <=50 chars, no trailing period. Becomes the
+# squash-merge subject, so keep it tight or it truncates to an ellipsis.
+#   type:  feat fix docs style refactor perf test build ci chore revert
+#   scope: optional area - ai, zsh, brew, git, macos, ...
+#
+# Body (blank line above): what changed and why, not how. Wrap at 72.
+#
+# Footer (blank line above):
+#   Closes #123   - issue this resolves
+#   Refs #123     - related, not closed
+#   BREAKING CHANGE: <what changed and how to migrate>
