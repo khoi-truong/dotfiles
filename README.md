@@ -60,6 +60,10 @@ directory, so edits in the repo are live immediately.
 - `gpg/setup.sh` copies `gpg.conf` and a rendered `gpg-agent.conf` (arch-correct
   `pinentry-mac` path) into `~/.gnupg`. Copied, not symlinked — gpg insists on a
   real `700` directory. Keys and `trustdb` are never versioned.
+- `git/template/` is linked to `~/.config/git/template` (`init.templateDir`), so
+  every new clone gets a `pre-commit` hook that runs `gitleaks` on staged
+  changes. Existing repos pick it up with `git init`; the hook skips itself
+  when gitleaks is missing, and `--no-verify` bypasses it once.
 - Stats (menu bar monitor) has its prefs imported by `misc/stats/setup.sh` from
   `misc/stats/eu.exelban.Stats.plist`; re-dump with `bash misc/stats/update.sh`.
 

@@ -10,6 +10,8 @@ CURRENT_DIR="$(module_dir)"
 
 info "Setting up git..."
 link "${CURRENT_DIR}/gitconfig" "${HOME}/.gitconfig"
+# init.templateDir: new repos get hooks/pre-commit (gitleaks secret scan).
+link "${CURRENT_DIR}/template" "${HOME}/.config/git/template"
 
 # git/gitconfig ends with `[include] path = ~/.config/git/gitconfig.local`.
 # That file holds everything machine-specific — currently just the path to the

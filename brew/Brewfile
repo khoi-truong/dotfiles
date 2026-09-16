@@ -25,6 +25,7 @@ brew "mise"
 # vcs & shell tooling
 brew "git"
 brew "gh"
+brew "gitleaks"       # secret scan in the git pre-commit hook
 brew "lazygit"        # terminal UI for git
 brew "gnupg"
 brew "pinentry-mac"   # GUI passphrase prompt for gpg-agent
