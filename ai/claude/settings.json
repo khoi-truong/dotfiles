@@ -1,6 +1,5 @@
 {
   "cleanupPeriodDays": 365,
-  "model": "opusplan",
   "env": {
     "CLAUDE_CODE_EFFORT_LEVEL": "medium",
     "CLAUDE_CODE_ENABLE_AUTO_MODE": "1",
@@ -45,6 +44,7 @@
     ],
     "defaultMode": "auto"
   },
+  "model": "opus",
   "statusLine": {
     "type": "command",
     "command": "$HOME/.local/share/mise/shims/node $HOME/.dotfiles/ai/claude/hud-ctx-fix.mjs | $HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs | perl -CSD -pe 's/Model:\\x{a0}?\\s?//g; s/session://g; s/ctx://g'"
@@ -59,13 +59,14 @@
     "pyright-lsp@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
     "swift-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
+    "typescript-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "gitkraken": {
       "source": {
-        "path": "/Users/khoi/.claude/plugins/marketplaces/gitkraken",
-        "source": "directory"
+        "source": "directory",
+        "path": "/Users/khoi/.claude/plugins/marketplaces/gitkraken"
       }
     },
     "omc": {
@@ -76,12 +77,47 @@
     }
   },
   "autoCompactWindow": 190000,
-  "tui": "default",
+  "tui": "fullscreen",
   "autoMemoryEnabled": true,
   "skipDangerousModePermissionPrompt": true,
   "skipWorkflowUsageWarning": true,
   "teammateMode": "in-process",
   "skipAutoPermissionPrompt": true,
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Bash(brew bundle cleanup:*) in ~/.dotfiles — uninstalls everything absent from the Brewfile per repo CLAUDE.md",
+      "Bash(git push --force*) and Bash(git reset --hard*) in ~/.dotfiles — repo CLAUDE.md blocks these; hand to user"
+    ],
+    "environment": [
+      "### Org-wide",
+      "**Organization**: None configured",
+      "**Cloud provider(s)**: None configured",
+      "**Repository visibility**: PUBLIC — khoi-truong/dotfiles (github.com) is a public repository; any push publishes it",
+      "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: repo convention only — `~/.claude.json`, `~/.claude/.credentials.json`, `~/.config/github-copilot/apps.json` hold credentials and must never be versioned; only declarative config under `ai/` is tracked",
+      "**Default / protected branches**: `main` is the default branch and is protected via the active `protect-main` ruleset (gh-verified); direct commits to `main` are disallowed per CLAUDE.md",
+      "**CI/CD deploy targets**: None configured",
+      "**Network posture**: None configured",
+      "**Host containment**: None configured — assume Claude Code runs on an ordinary developer machine (this is a personal macOS dotfiles repo) with open internet",
+      "**Source control**: The trusted repo (khoi-truong/dotfiles on github.com) and its remote only — no additional orgs configured",
+      "**Trusted internal domains**: None configured",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: None configured",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: `~/.claude.json`, `~/.claude/.credentials.json`, `~/.config/github-copilot/apps.json`, and any file matching the repo's unusual redacted .gitignore pattern or `ai/claude/.credentials*` — never commit these; share only with the repo owner (khoi)",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment",
+      "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
+      "### User-specific",
+      "**Primary use of Claude Code**: personal macOS dotfiles maintenance (software development, hobby/personal posture)",
+      "**Trusted repo**: `~/.dotfiles` (github.com/khoi-truong/dotfiles) — public repo; only this repo's own work belongs here, confidential/secret material is never cleared into it regardless of visibility",
+      "**Org-specific CLiIs**: None configured — routine tools observed are generic (brew, mise, shellcheck, npx, git)",
+      "System-mutating commands (`./setup.sh`, module `setup.sh`, `brew bundle`, `brew bundle cleanup`, `mise use -g`, `mise install`, `defaults write`, `sudo`) require explicit user request per repo CLAUDE.md — treat as routine-but-gated, not auto-run",
+      "Force-push and `git reset --hard` are explicitly blocked by repo convention and must be handed to the user"
+    ]
+  },
   "omcHud": {
     "elements": {
       "activeSkills": true,
@@ -131,7 +167,14 @@
         "gitStatus",
         "contextBar"
       ],
-      "main": ["ralph", "autopilot", "prd", "skills", "agents", "background"]
+      "main": [
+        "ralph",
+        "autopilot",
+        "prd",
+        "skills",
+        "agents",
+        "background"
+      ]
     },
     "maxWidth": 120,
     "preset": "full",
