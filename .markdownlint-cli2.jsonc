@@ -17,6 +17,10 @@
     // Bare URLs are fine in reference lists.
     "MD034": false,
 
+    // Same rationale as MD013: wide tables (e.g. the skill reference tables)
+    // don't hand-align their pipes.
+    "MD060": false,
+
     // Require a language on fenced code blocks; use `text` when there isn't one.
     "MD040": true,
 

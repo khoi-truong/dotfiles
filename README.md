@@ -209,4 +209,7 @@ trailing whitespace — except in `*.md` and `*.diff`. C-family and Python use 4
 spaces; Makefiles use tabs. Markdown is linted per `.markdownlint-cli2.jsonc`.
 
 There is no build or test suite; this repo is shell scripts and config files.
-Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`.
+Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`. CI
+(`.github/workflows/lint.yml`) runs the same shellcheck/`zsh -n` checks plus
+markdownlint, editorconfig-checker, JSON validation, actionlint, zizmor and a
+gitleaks secret scan on every push and pull request.

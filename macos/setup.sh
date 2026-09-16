@@ -577,9 +577,9 @@ defaults write com.apple.finder FXPreferredViewStyle -string "clmv"
 
 echo "  › Expand the following File Info panes: \`General\`, \`Open with\`, and \`Sharing & Permissions\`"
 defaults write com.apple.finder FXInfoPanesExpanded -dict \
-	General -bool true \
-	OpenWith -bool true \
-	Privileges -bool true
+  General -bool true \
+  OpenWith -bool true \
+  Privileges -bool true
 
 ###############################################################################
 # Safari & WebKit                                                             #
@@ -835,18 +835,18 @@ echo ""
 echo "› Kill affected applications..."
 
 for app in "Activity Monitor" \
-	"Address Book" \
-	"Calendar" \
-	"cfprefsd" \
-	"Contacts" \
-	"Dock" \
-	"Finder" \
-	"Mail" \
-	"Messages" \
-	"Photos" \
-	"Safari" \
-	"SystemUIServer"; do
-	killall "${app}" &> /dev/null
+  "Address Book" \
+  "Calendar" \
+  "cfprefsd" \
+  "Contacts" \
+  "Dock" \
+  "Finder" \
+  "Mail" \
+  "Messages" \
+  "Photos" \
+  "Safari" \
+  "SystemUIServer"; do
+  killall "${app}" &> /dev/null
 done
 
 echo ""
