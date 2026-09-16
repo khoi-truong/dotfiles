@@ -5,7 +5,7 @@
   "editor.bracketPairColorization.enabled": false,
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit",
-    "source.organizeImports": "explicit"
+    "source.organizeImports": "explicit",
   },
   "editor.codeLens": true,
   "editor.colorDecorators": true,
@@ -32,26 +32,26 @@
       "textMateRules": [
         {
           "scope": "variable.other.readwrite",
-          "settings": [{ "foreground": "#fbf1c7" }]
+          "settings": [{ "foreground": "#fbf1c7" }],
         },
         {
           "scope": "variable.parameter",
-          "settings": [{ "foreground": "#8ec07c" }]
+          "settings": [{ "foreground": "#8ec07c" }],
         },
         {
           "scope": "entity.name.function, variable.other",
-          "settings": [{ "foreground": "#83a598" }]
+          "settings": [{ "foreground": "#83a598" }],
         },
         {
           "scope": "entity.name.type",
-          "settings": [{ "foreground": "#fabd2f" }]
+          "settings": [{ "foreground": "#fabd2f" }],
         },
         {
           "scope": "variable.parameter.function.language.special.self.python",
-          "settings": [{ "foreground": "#fb4934" }]
-        }
-      ]
-    }
+          "settings": [{ "foreground": "#fb4934" }],
+        },
+      ],
+    },
   },
   "editor.wordWrap": "on",
   "editor.wordWrapColumn": 100,
@@ -73,7 +73,7 @@
     "*.wxss": "css",
     "*.wxs": "javascript",
     "curlrc": "properties",
-    ".curlrc": "properties"
+    ".curlrc": "properties",
   },
   "files.autoSave": "afterDelay",
   "files.exclude": {
@@ -92,7 +92,7 @@
     "**/.classpath": true,
     "**/.project": true,
     "**/.settings": true,
-    "**/.factorypath": true
+    "**/.factorypath": true,
   },
   "files.trimFinalNewlines": true,
   "files.watcherExclude": {
@@ -102,14 +102,14 @@
     "**/env/**": true,
     "**/venv/**": true,
     "env-*": true,
-    "**/.fvm": true
+    "**/.fvm": true,
   },
   "search.exclude": {
     "**/node_modules": true,
     "**/bower_components": true,
     "**/env": true,
     "**/venv": true,
-    "**/.fvm": true
+    "**/.fvm": true,
   },
 
   // ─── Workbench, Window & Theme ───
@@ -229,7 +229,7 @@
     "dropdown.border": "#282828",
     "widget.shadow": "#00000040",
     "focusBorder": "#d7992100",
-    "sash.hoverBorder": "#d79921"
+    "sash.hoverBorder": "#d79921",
   },
   "workbench.colorTheme": "Gruvbox Dark Hard",
   "workbench.editor.tabScrollbarVisibility": "never",
@@ -273,7 +273,7 @@
   "gitlens.graph.scrollMarkers.additionalTypes": [
     "localBranches",
     "stashes",
-    "tags"
+    "tags",
   ],
   "gitlens.hovers.currentLine.over": "line",
   "gitlens.menus": {
@@ -282,53 +282,53 @@
       "clipboard": true,
       "compare": true,
       "history": true,
-      "remote": true
+      "remote": true,
     },
     "editorGroup": {
       "blame": true,
-      "compare": true
+      "compare": true,
     },
     "editorGutter": {
       "compare": true,
       "remote": true,
-      "share": true
+      "share": true,
     },
     "editorTab": {
       "clipboard": true,
       "compare": true,
       "history": true,
-      "remote": true
+      "remote": true,
     },
     "explorer": {
       "clipboard": true,
       "compare": true,
       "history": true,
-      "remote": true
+      "remote": true,
     },
     "ghpr": {
-      "worktree": true
+      "worktree": true,
     },
     "scm": {
-      "graph": true
+      "graph": true,
     },
     "scmRepositoryInline": {
       "graph": true,
-      "stash": true
+      "stash": true,
     },
     "scmRepository": {
       "authors": true,
       "generateCommitMessage": true,
       "patch": true,
-      "graph": false
+      "graph": false,
     },
     "scmGroupInline": {
-      "stash": true
+      "stash": true,
     },
     "scmGroup": {
       "compare": true,
       "openClose": true,
       "patch": true,
-      "stash": true
+      "stash": true,
     },
     "scmItem": {
       "clipboard": true,
@@ -336,8 +336,8 @@
       "history": true,
       "remote": true,
       "share": true,
-      "stash": true
-    }
+      "stash": true,
+    },
   },
   "gitlens.sortBranchesBy": "name:asc",
   "gitlens.terminalLinks.enabled": false,
@@ -369,7 +369,7 @@
     "fileHistory": false,
     "repositories": true,
     "searchAndCompare": false,
-    "launchpad": true
+    "launchpad": true,
   },
   "gitlens.views.showRelativeDateMarkers": false,
   "gitlens.views.worktrees.pullRequests.enabled": false,
@@ -392,7 +392,7 @@
     "git rev-parse": true,
     "/^node -e \"const fs=require\\('fs'\\);const p='\\.claude/settings\\.local\\.json';const j=JSON\\.parse\\(fs\\.readFileSync\\(p,'utf8'\\)\\);const a=j\\.permissions\\?\\.allow\\|\\|\\[\\];const map=new Map\\(\\);for\\(const x of a\\) map\\.set\\(x,\\(map\\.get\\(x\\)\\|\\|0\\)\\+1\\);const d=\\[\\.\\.\\.map\\.entries\\(\\)\\]\\.filter\\(\\(\\[,c\\]\\)=>c>1\\);console\\.log\\('total',a\\.length,'unique',map\\.size,'dups',d\\.length\\);if\\(d\\.length\\)\\{for\\(const \\[k,c\\] of d\\) console\\.log\\(c\\+'x',k\\)\\}\"$/": {
       "approve": true,
-      "matchCommandLine": true
+      "matchCommandLine": true,
     },
     "git add": true,
     "git commit": true,
@@ -409,16 +409,16 @@
     "diff": true,
     "/^node -e \"console\\.log\\(require\\('\\./apps/monaco/package\\.json'\\)\\.name\\)\"$/": {
       "approve": true,
-      "matchCommandLine": true
+      "matchCommandLine": true,
     },
     "/^for d in features/accounts/accounts features/cfd/cfd features/crypto-basket/crypto-basket features/earn/earn features/equity/equity features/market/market features/predict/predict; do node -e \"console\\.log\\(require\\('\\./\\$d/package\\.json'\\)\\.name\\)\"; done$/": {
       "approve": true,
-      "matchCommandLine": true
+      "matchCommandLine": true,
     },
     "lsof": true,
     "/^node -e \"const s=require\\('\\./apps/monaco/package\\.json'\\)\\.scripts; for \\(const k of Object\\.keys\\(s\\)\\) if \\(/start\\|metro/\\.test\\(k\\)\\) console\\.log\\(k\\+': '\\+s\\[k\\]\\)\"$/": {
       "approve": true,
-      "matchCommandLine": true
+      "matchCommandLine": true,
     },
     "git config": true,
     "git push": true,
@@ -428,12 +428,12 @@
     "npx turbo": true,
     "/^python3 - <<'EOF'\nimport json, os\np = os\\.path\\.expanduser\\('~/\\.claude/settings\\.json'\\)\nd = json\\.load\\(open\\(p\\)\\)\nprint\\(json\\.dumps\\(d\\.get\\('hooks'\\), indent=2\\)\\)\nEOF$/": {
       "approve": true,
-      "matchCommandLine": true
+      "matchCommandLine": true,
     },
     "/^ls \\.omc/state/\\*\\.json \\.omc/state/\\*\\.md 2>/dev/null; echo '---'; grep -c stop_hook_active ~/\\.claude/hooks/persistent-mode\\.mjs; echo '---'; grep -n \"activeMode\\\\\\|ralph\\\\\\|ultrawork\\\\\\|autopilot\" \\.omc/state/mission-state\\.json \\| head -5; echo '---'; python3 -c \"import json; d=json\\.load\\(open\\('\\.omc/state/mission-state\\.json'\\)\\); print\\(list\\(d\\.keys\\(\\)\\)\\); print\\(d\\.get\\('mode'\\), d\\.get\\('active'\\), d\\.get\\('status'\\)\\)\" 2>&1 \\| head$/": {
       "approve": true,
-      "matchCommandLine": true
-    }
+      "matchCommandLine": true,
+    },
   },
   "claudeCode.disableLoginPrompt": true,
   "claudeCode.hideOnboarding": true,
@@ -448,7 +448,7 @@
     "scminput": false,
     "yaml": true,
     "python": true,
-    "jsonc": true
+    "jsonc": true,
   },
   "github.copilot.nextEditSuggestions.enabled": true,
 
@@ -460,7 +460,7 @@
   "dart.openDevTools": "never",
   "dart.renameFilesWithClasses": "prompt",
   "emmet.includeLanguages": {
-    "wxml": "html"
+    "wxml": "html",
   },
   "go.toolsManagement.autoUpdate": true,
   "java.project.importHint": false,
@@ -492,7 +492,7 @@
   "[bazel]": {
     "editor.formatOnSave": true,
     "editor.formatOnPaste": true,
-    "editor.defaultFormatter": "StackBuild.bazel-stack-vscode"
+    "editor.defaultFormatter": "StackBuild.bazel-stack-vscode",
   },
   "[dart]": {
     "editor.formatOnSave": true,
@@ -502,31 +502,31 @@
     "editor.suggest.snippetsPreventQuickSuggestions": false,
     "editor.suggestSelection": "first",
     "editor.tabCompletion": "onlySnippets",
-    "editor.wordBasedSuggestions": "off"
+    "editor.wordBasedSuggestions": "off",
   },
   "[dockercompose]": {
     "editor.insertSpaces": true,
     "editor.tabSize": 2,
     "editor.autoIndent": "advanced",
-    "editor.defaultFormatter": "redhat.vscode-yaml"
+    "editor.defaultFormatter": "redhat.vscode-yaml",
   },
   "[github-actions-workflow]": {
-    "editor.defaultFormatter": "redhat.vscode-yaml"
+    "editor.defaultFormatter": "redhat.vscode-yaml",
   },
   "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "[jsonc]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
     "editor.tabSize": 4,
-    "editor.wordWrapColumn": 79
+    "editor.wordWrapColumn": 79,
   },
   "[swift]": {
     "editor.tabSize": 4,
-    "editor.defaultFormatter": "sweetpad.sweetpad"
-  }
+    "editor.defaultFormatter": "sweetpad.sweetpad",
+  },
 }

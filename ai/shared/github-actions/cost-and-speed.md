@@ -119,15 +119,22 @@ lib). Warm → seconds.
   - uses: actions/cache@v6
     with:
       path: ~/.cache/go-build
-      key: ${{ runner.os }}-gobuild-${{ hashFiles('go.sum') }}-${{ github.sha }}
+      key: gobuild-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
       restore-keys: |
-        ${{ runner.os }}-gobuild-${{ hashFiles('go.sum') }}-
-        ${{ runner.os }}-gobuild-
+        gobuild-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+        gobuild-${{ runner.os }}-
   ```
 
-- `restore-keys` for partial hits so a dep bump doesn't cold-start.
-- Same pattern for `~/.cache/golangci-lint` and `~/.cache/pre-commit`.
-- Salt the key with a version you can bump to force a rebuild.
+- **Key field order: `<item>-<os>[-<arch>]-<inputs hash>-<git sha>`.** The item
+  name (what's cached) comes first so keys sort and grep by purpose in the cache
+  UI, not by `Linux-`; then the platform (`runner.os`, then `runner.arch` if you
+  run more than one); then the `hashFiles(...)` of the inputs; then `github.sha`
+  last as the churn suffix. Drop segments that don't vary — no `arch` on a
+  single-arch job.
+- `restore-keys` for partial hits so a dep bump doesn't cold-start — each drops
+  one segment from the right.
+- Same pattern for `~/.cache/golangci-lint` (`golangci-…`) and `~/.cache/pre-commit`.
+- Salt the item name with a version you can bump to force a rebuild (`gobuild-v2-…`).
 
 ## 7. Fail fast — order cheap gates first
 

@@ -55,6 +55,14 @@ When more than one workflow path-gates its jobs, put `dorny/paths-filter` in a
 
 ```yaml
 detect-changes:
+  # A called workflow's token is capped by the CALLER job's permissions, not by
+  # the workflow's own top-level block. Top-level `permissions: {}` and nothing
+  # here = `contents: none` for the reusable workflow's jobs, which fails
+  # validation ("is requesting 'contents: read' but is only allowed
+  # 'contents: none'"). Grant here what the reusable workflow's jobs declare.
+  permissions:
+    contents: read
+    pull-requests: read
   uses: ./.github/workflows/detect-changes.yml
 ```
 
