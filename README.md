@@ -74,12 +74,21 @@ directory, so edits in the repo are live immediately.
 4. `zsh/local/plugins.zsh` — the antidote bundle.
 5. `zsh/aliases.zsh`, `zsh/aliases.macos.zsh`, `zsh/functions.zsh`,
    `ai/aliases.zsh` — after plugins, so these win.
-6. mise, fzf, zoxide.
+6. mise, fzf, zoxide. Their init scripts are cached in `zsh/local/init-*.zsh`,
+   keyed by binary path and rebuilt when the binary or `zshrc` changes (delete
+   them to force a rebuild). The mise cache is also keyed on `$PATH`, the
+   `MISE_*` variables and every mise config (and trust state) that applies to
+   the current directory, so it rebuilds itself when any of those change. A
+   miserc bypasses it, and a nested shell inside a project usually misses and
+   runs `mise activate` live, as before.
 7. `zsh/local/extra.zsh` — machine-local, gitignored.
 
 **Plugins.** Managed by [antidote](https://getantidote.github.io/).
 `zsh/zsh.plugins` is the list; `zsh/local/plugins.zsh` is the generated static
-bundle, rebuilt automatically whenever the list is newer. To force a rebuild:
+bundle, rebuilt automatically whenever the list is newer. The bundle and every
+plugin file it sources are zcompiled once after each regeneration (`.zwc` next
+to the source, in the gitignored cache). After `antidote update` or a zsh
+upgrade, or to force a rebuild:
 
 ```sh
 touch zsh/zsh.plugins && exec zsh
@@ -95,8 +104,9 @@ to append to `~/.zshrc` belongs in `zsh/local/extra.zsh` instead.
 ZSH_PROFILE=1 zsh -i -c exit
 ```
 
-The two largest `zprof` entries — mise's hook and oh-my-zsh's library
-sourcing — are inherent to those tools.
+`oh-my-zsh.sh` is bypassed: antidote sources omz `lib/*.zsh` and the theme
+directly, and zshrc runs `compinit -C`, rebuilding the dump when it is over a
+day old or older than the plugin bundle or `env.zsh`.
 
 ## tmux
 
