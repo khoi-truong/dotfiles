@@ -23,8 +23,11 @@ ZSH_LOCAL="${ZSH_DIR}/local"
 
 export ANTIDOTE_HOME="${ZSH_DIR}/antidote"
 export ZSH_COMPDUMP="${ZSH_LOCAL}/zcompdump-${SHORT_HOST:-${HOST}}-${ZSH_VERSION}"
-export HISTFILE="${ZSH_LOCAL}/history"
+# Not exported: a bash started from zsh would inherit it and write into it.
+HISTFILE="${ZSH_LOCAL}/history"
 export LESSHISTFILE="${ZSH_LOCAL}/lesshst"
+export PYTHON_HISTORY="${ZSH_LOCAL}/python_history" # Python 3.13+
+export NODE_REPL_HISTORY="${ZSH_LOCAL}/node_repl_history"
 
 source "${ZSH_DIR}/env.zsh"
 source "${ZSH_DIR}/config.zsh"
