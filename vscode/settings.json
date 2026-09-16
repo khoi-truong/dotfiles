@@ -482,15 +482,6 @@
   "redhat.telemetry.enabled": true,
   "remote.SSH.configFile": "~/.ssh/config.local",
   "rubyLsp.rubyExecutablePath": "/Users/khoi/.rbenv/shims/ruby",
-  // shellcheck only parses sh/bash/dash/ksh, so every zsh-ism in zsh/ (glob
-  // qualifiers, brace groups without a trailing `;`) reports as a syntax error.
-  // `zsh -n` is the checker for those files.
-  "shellcheck.ignorePatterns": {
-    "**/.zshenv": true,
-    "**/.zshrc": true,
-    "**/*.zsh": true,
-    "**/zsh/*": true
-  },
   "solidity.telemetry": true,
   "swift.disableAutoResolve": true,
   "swift.disableSwiftPackageManagerIntegration": true,
