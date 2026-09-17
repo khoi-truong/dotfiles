@@ -122,7 +122,8 @@ effort with `/thinking` (`off`/`low`/`high`/`max`, default `high`) rather
 than the model. `ai/pi/models.json` defines `deepseek-flash`, which pi's
 bundled catalog lacks, and has pi read the key from Keychain when it starts,
 so it isn't exported to every shell. Store it with
-`security add-generic-password -a "$USER" -s deepseek-api-key -w`. A
+`security add-generic-password -U -a "$USER" -s deepseek-api-key -w`
+(`-U` replaces an existing key, so the same command rotates it). A
 `DEEPSEEK_API_KEY` in the environment or a key in `~/.pi/agent/auth.json`
 overrides it.
 Thinking is collapsed to a one-line label; Ctrl+T shows it, and pi saves
