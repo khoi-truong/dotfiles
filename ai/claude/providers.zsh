@@ -96,11 +96,11 @@ function cc-providers {
 
 # --- providers ---------------------------------------------------------------
 
-# DeepSeek: key shared with pi (ai/pi/models.json). Unknown ids map to flash.
+# DeepSeek: key shared with pi (ai/pi/models.json). Every model id,
+# Opus included, is served by Flash.
 cc_provider deepseek \
   url=https://api.deepseek.com/anthropic \
   key=op://cvlkani4a45n37bmnnwzvynboi/wu7wmnnyk2qpmz6lyij5ubrqvi/PI_CODING_AGENT \
   model=deepseek-flash \
-  pro=deepseek-v4-pro \
   label=DS \
   short=ccd
