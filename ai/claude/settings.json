@@ -242,6 +242,10 @@
           {
             "type": "command",
             "command": "$HOME/.config/iterm2/cc-status"
+          },
+          {
+            "type": "command",
+            "command": "cd \"$(jq -r .cwd)\" && $HOME/.dotfiles/git/template/hooks/post-checkout 0 HEAD 1 >/dev/null"
           }
         ]
       }

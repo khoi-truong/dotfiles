@@ -42,6 +42,7 @@ directory, so edits in the repo are live immediately.
 | ------------------------------------------------------- | --------------------------------------- |
 | `zsh/zshenv`, `zsh/zshrc`                               | `~/.zshenv`, `~/.zshrc`                 |
 | `git/gitconfig`                                         | `~/.gitconfig`                          |
+| `git/ignore`                                            | `~/.config/git/ignore`                  |
 | `ssh/config`                                            | `~/.ssh/config`                         |
 | `curl/curlrc`, `tmux/tmux.conf`, `vim/vimrc`            | `~/.curlrc`, `~/.tmux.conf`, `~/.vimrc` |
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |
@@ -71,6 +72,14 @@ harness keeps its own model/provider and MCP config, since the formats differ.
   every new clone gets a `pre-commit` hook that runs `gitleaks` on staged
   changes. Existing repos pick it up with `git init`; the hook skips itself
   when gitleaks is missing, and `--no-verify` bypasses it once.
+  It also installs a `post-checkout` hook for worktrees: when
+  `git worktree add` creates one, each path listed in the main checkout's
+  `.worktreeclone` (e.g. `node_modules`, generated code) is cloned into it
+  with APFS copy-on-write, so there is nothing to reinstall or regenerate.
+  Claude Code's `--worktree` skips git hooks, so a `SessionStart` hook in
+  `ai/claude/settings.json` runs the same script. Don't list virtualenvs;
+  they embed absolute paths. `git wta <branch>` adds `../<repo>-<branch>`,
+  `wt` jumps between worktrees with fzf, and `git tidy` prunes stale ones.
 - Stats (menu bar monitor) has its prefs imported by `misc/stats/setup.sh` from
   `misc/stats/eu.exelban.Stats.plist`; re-dump with `bash misc/stats/update.sh`.
 
