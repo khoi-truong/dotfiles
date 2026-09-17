@@ -17,8 +17,13 @@
 
 [init]
   defaultBranch = main
-  # New repos get hooks/pre-commit (gitleaks secret scan).
+  # New repos get hooks/pre-commit (gitleaks secret scan) and
+  # hooks/post-checkout (seeds new worktrees from .worktreeclone).
   templateDir = ~/.config/git/template/
+
+[worktree]
+  # Link worktrees with relative paths, so moving the repo doesn't break them.
+  useRelativePaths = true
 
 [help]
   # Ask before running a mistyped command's best guess.
@@ -154,7 +159,12 @@
   reb = "!f() { git rebase --interactive HEAD~\"$1\"; }; f"
 
   # Delete local branches merged into the default branch or gone upstream.
-  tidy = "!f() { git fetch --prune; base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo main); git branch --merged \"$base\" --format='%(refname:short)' | grep -vxE \"main|master|${base#origin/}|$(git branch --show-current)\" | xargs -n 1 git branch -d; git branch --format='%(refname:short) %(upstream:track)' | awk '$2 == \"[gone]\" { print $1 }' | xargs -n 1 git branch -D; }; f"
+  tidy = "!f() { git fetch --prune; base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo main); git branch --merged \"$base\" --format='%(refname:short)' | grep -vxE \"main|master|${base#origin/}|$(git branch --show-current)\" | xargs -n 1 git branch -d; git branch --format='%(refname:short) %(upstream:track)' | awk '$2 == \"[gone]\" { print $1 }' | xargs -n 1 git branch -D; git worktree prune; }; f"
+
+  # Worktrees: `git wt` lists them; `git wta <branch>` adds ../<repo>-<branch>
+  # on that branch, creating it if needed.
+  wt = worktree list
+  wta = "!f() { b=\"$1\"; d=\"../$(basename \"$PWD\")-$(printf %s \"$b\" | tr / -)\"; if git show-ref --verify --quiet \"refs/heads/$b\"; then git worktree add \"$d\" \"$b\"; else git worktree add -b \"$b\" \"$d\"; fi; }; f"
 
   # Searching: branches containing a commit; commits by code or message.
   fb = "!f() { git branch --all --contains \"$1\"; }; f"

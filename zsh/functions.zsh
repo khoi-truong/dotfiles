@@ -82,3 +82,10 @@ claude() {
   fi
   return $_ret
 }
+
+# wt — cd into one of the current repo's worktrees, picked with fzf.
+wt() {
+  local dir
+  dir=$(git worktree list 2>/dev/null | fzf --height 40% --reverse --query "${1:-}" --select-1 | awk '{print $1}') || return
+  [[ -n $dir ]] && cd "$dir"
+}

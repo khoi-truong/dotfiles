@@ -1,0 +1,8 @@
+# ~/.config/git/ignore — linked from ~/.dotfiles/git/ignore by git/setup.sh.
+# Global ignores for every repo; project-specific ones belong in .gitignore.
+
+# macOS
+.DS_Store
+
+# Claude Code `--worktree` checkouts
+.claude/worktrees/

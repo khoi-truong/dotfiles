@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Global post-checkout hook: seed a new worktree from the main checkout.
+#
+# `git worktree add` (and Claude Code's `--worktree`) runs this with a null
+# previous HEAD. If the main checkout has a `.worktreeclone` file (one path per
+# line, `#` comments allowed), each listed path that exists there — typically
+# node_modules, generated code or build caches — is cloned into the new
+# worktree with APFS copy-on-write (`cp -c`): near-instant, no extra disk
+# until a file changes. Paths already present in the worktree are left alone.
+#
+# Copied into every new repo from init.templateDir; existing repos pick it up
+# with `git init`. Don't list virtualenvs: they embed absolute paths.
+set -euo pipefail
+
+[[ "${1:-}" =~ ^0+$ && "${3:-}" == 1 ]] || exit 0
+# A fresh clone also has a null previous HEAD; only act in a linked worktree.
+[[ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]] || exit 0
+
+main="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+here="$(git rev-parse --show-toplevel)"
+list="${main}/.worktreeclone"
+[[ -n "${main}" && "${main}" != "${here}" && -f "${list}" ]] || exit 0
+
+while IFS= read -r path || [[ -n "${path}" ]]; do
+  path="${path%%#*}"
+  path="${path#"${path%%[![:space:]]*}"}"
+  path="${path%"${path##*[![:space:]]}"}"
+  path="${path%/}"
+  [[ -n "${path}" ]] || continue
+  case "/${path}/" in
+    */../* | //*) echo "post-checkout: skipping unsafe path ${path}" >&2; continue ;;
+  esac
+  [[ -e "${main}/${path}" && ! -e "${here}/${path}" ]] || continue
+  mkdir -p "$(dirname "${here}/${path}")"
+  if cp -c -R "${main}/${path}" "${here}/${path}" 2>/dev/null \
+    || cp -R "${main}/${path}" "${here}/${path}"; then
+    echo "post-checkout: cloned ${path}" >&2
+  fi
+done <"${list}"
