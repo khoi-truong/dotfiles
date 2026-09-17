@@ -1,0 +1,87 @@
+name: Smoke Test
+run-name: "${{ github.workflow }} · ${{ github.event.pull_request.title || github.event.head_commit.message }}"
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  detect-changes:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/_detect-changes.yml
+
+  macos:
+    name: Start the shell on macOS
+    needs: detect-changes
+    if: needs.detect-changes.outputs.macos == 'true'
+    # Free for public repos; the only job that runs the config on its real OS.
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      # ~350 ms locally; hosted runners are slower and noisier.
+      MAX_STARTUP_MS: 1500
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify plists are well-formed
+        run: git ls-files -z '*.plist' | xargs -0 plutil -lint -s
+
+      - name: Verify setup.sh runs on macOS
+        run: ./setup.sh --list
+
+      # zshenv hardcodes ~/.dotfiles, so point a throwaway HOME at the checkout.
+      - name: Set up a throwaway home
+        run: |
+          home="${RUNNER_TEMP}/home"
+          mkdir -p "$home"
+          ln -s "$GITHUB_WORKSPACE" "$home/.dotfiles"
+          ln -s "$GITHUB_WORKSPACE/zsh/zshenv" "$home/.zshenv"
+          ln -s "$GITHUB_WORKSPACE/zsh/zshrc" "$home/.zshrc"
+          echo "SMOKE_HOME=$home" >>"$GITHUB_ENV"
+
+      # The first start clones antidote and the plugins (progress goes to
+      # stderr) and builds every cache. `exit 0`: a bare `exit` returns the
+      # status of zshrc's last line, which is legitimately false.
+      - name: Set up plugins and caches with a first shell
+        run: HOME="$SMOKE_HOME" zsh -i -c 'exit 0'
+
+      - name: Verify a warm shell starts quickly and without errors
+        run: |
+          for _ in 1 2 3; do HOME="$SMOKE_HOME" zsh -i -c 'exit 0' >/dev/null 2>>"$RUNNER_TEMP/stderr.log"; done
+          if [[ -s $RUNNER_TEMP/stderr.log ]]; then
+            cat "$RUNNER_TEMP/stderr.log"
+            exit 1
+          fi
+          best=
+          for _ in 1 2 3 4 5; do
+            start=$(perl -MTime::HiRes=time -e 'printf "%d", time * 1000')
+            HOME="$SMOKE_HOME" zsh -i -c 'exit 0' >/dev/null 2>&1
+            ms=$(( $(perl -MTime::HiRes=time -e 'printf "%d", time * 1000') - start ))
+            if [[ -z $best ]] || (( ms < best )); then best=$ms; fi
+          done
+          echo "Fastest warm start: ${best} ms (limit ${MAX_STARTUP_MS} ms)"
+          echo "### Shell startup: ${best} ms" >>"$GITHUB_STEP_SUMMARY"
+          if (( best > MAX_STARTUP_MS )); then
+            echo "::error title=Shell startup::${best} ms is over ${MAX_STARTUP_MS} ms"
+            exit 1
+          fi

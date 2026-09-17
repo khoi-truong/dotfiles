@@ -373,7 +373,19 @@ trailing whitespace — except in `*.md` and `*.diff`. C-family and Python use 4
 spaces; Makefiles use tabs. Markdown is linted per `.markdownlint-cli2.jsonc`.
 
 There is no build or test suite; this repo is shell scripts and config files.
-Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`. CI
-(`.github/workflows/lint.yml`) runs the same shellcheck/`zsh -n` checks plus
-markdownlint, editorconfig-checker, JSON validation, actionlint, zizmor and a
-gitleaks secret scan on every push and pull request.
+Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`. CI runs on every
+push to `main` and every pull request:
+
+- `lint.yml` — `shellcheck -x`, `zsh -n`, markdownlint, editorconfig-checker,
+  JSON and TOML validation, actionlint and zizmor.
+- `secrets.yml` — a gitleaks scan of every pushed commit, with no path filter.
+- `pi.yml` — the pi extension checks, only when `ai/pi/` or `mise/global.toml`
+  changed.
+- `smoke.yml` — on macOS, when the shell config, `setup.sh`, `lib/` or a plist
+  changed: lints the plists, then links the zsh config into a throwaway `HOME`
+  and fails on any stderr output or a warm start over 1.5 s.
+- `pr-title.yml` — Conventional Commits title; warns past 50 characters,
+  fails past 72.
+
+The path filters live in the reusable `_detect-changes.yml`; skipped jobs
+report success, so they can be required checks.
