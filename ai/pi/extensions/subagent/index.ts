@@ -1,4 +1,5 @@
 // Vendored from pi-coding-agent 0.85.1 examples/extensions/subagent/index.ts
+// Differs from upstream: type-only changes (ThemeColor, unknown instead of any) to pass lint.
 /**
  * Subagent Tool - Delegate tasks to specialized agents
  *

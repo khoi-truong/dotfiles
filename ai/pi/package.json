@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "check": "npm run typecheck && npm run lint"
+    "test": "node -e \"process.exitCode = require('fs').globSync('test/**/*.test.ts').length ? 0 : 1\" && node --test 'test/**/*.test.ts'",
+    "check": "npm run typecheck && npm run lint && npm test"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "0.85.1",

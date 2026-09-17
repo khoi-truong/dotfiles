@@ -1,4 +1,5 @@
 // Vendored from pi-coding-agent 0.85.1 examples/extensions/notify.ts
+// Differs from upstream: ESM import instead of require, and no notification without a UI (subagents).
 /**
  * Pi Notify Extension
  *
