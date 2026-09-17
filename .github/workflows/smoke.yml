@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    uses: ./.github/workflows/_detect-changes.yml
+    uses: $/.github/workflows/_detect-changes.yml
 
   macos:
     name: Start the shell on macOS
