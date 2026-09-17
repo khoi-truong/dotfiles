@@ -17,7 +17,7 @@ uv  = "latest"          # don't use `uv python`; mise owns Python
 
 "go:golang.org/x/tools/gopls" = "latest"
 
-"npm:@mariozechner/pi-coding-agent" = "latest"
+"npm:@earendil-works/pi-coding-agent" = "latest"
 
 swiftformat = "latest"
 swiftlint   = "latest"
