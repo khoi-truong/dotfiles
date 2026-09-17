@@ -52,11 +52,9 @@ brew "ollama"         # local LLMs
 
 # ---------------------------------------------------------------- casks -----
 
-# ai
-cask "claude-code@latest"
-
 # development
 cask "iterm2"
+cask "claude-code@latest"
 cask "visual-studio-code"
 # cask "cursor"
 # cask "android-studio"
