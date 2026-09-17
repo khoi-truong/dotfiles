@@ -1,4 +1,5 @@
 // Vendored from pi-coding-agent 0.85.1 examples/extensions/todo.ts
+// Differs from upstream: the command is /todo, since plan-mode already registers /todos.
 /**
  * Todo Extension - Demonstrates state management via session entries
  *

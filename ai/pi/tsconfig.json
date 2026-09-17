@@ -9,6 +9,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "strict": true,
+    "erasableSyntaxOnly": true,
     "skipLibCheck": true,
     "types": [
       "node"
@@ -21,6 +22,7 @@
     }
   },
   "include": [
-    "extensions/**/*.ts"
+    "extensions/**/*.ts",
+    "test/**/*.ts"
   ]
 }

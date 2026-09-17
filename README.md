@@ -128,14 +128,31 @@ ships with, so run `pi` online once on a new machine.
 workflows), subagent definitions, and extensions vendored from pi's bundled
 examples (plan mode, subagents, todos, handoff, notifications, a permission
 gate and protected paths). Each vendored extension names the pi version it
-came from, and mise pins pi to that version. Before bumping it, compare them
-with the new examples using `diff -w` (they were reindented to spaces).
-Subagents run headless, so the permission gate blocks flagged commands there
-instead of asking. Third-party packages go in
-`settings.json` → `packages`, pinned to a version, after reading their source.
-To typecheck and lint the extensions, run
-`cd ai/pi && npm install && npm run check`. Keep the pi version in
-`ai/pi/package.json` in step with `mise/global.toml`.
+came from, and mise pins pi to that version. Subagents run headless, so the
+permission gate blocks flagged commands there instead of asking.
+
+The permission gate and protected paths are a guardrail against model
+mistakes, not a sandbox. They may miss `$(…)`, interpreter one-liners
+(`python -c`), directory searches, `curl`, paths relative to a `cd`
+(`cd ~ && cat .ssh/id_ed25519`), and quoted paths with spaces
+(`cat ~/.ssh/'my key'`). A commit message naming a secret path with no spaces
+in it is blocked, as is a remote one (`scp host:~/.ssh/id_ed25519.pub .`). In bash, writes to the write-only paths (`.git/`,
+`node_modules/`, the extension directories) are checked only for redirects,
+`tee`, `sed`/`perl -i`, and `mv`/`cp`/`install`/`ln`.
+
+Third-party packages go in `settings.json` → `packages`, pinned to an exact
+version (`npm:name@x.y.z`), after reading their source and their dependency
+tree's install scripts, which pi runs. On startup pi installs any missing or
+mismatched package into `~/.pi/agent/npm/` (`pi --offline` skips that);
+`pi install npm:name@x.y.z` does the same and writes `settings.json` through
+the symlink. Review the result with `git diff`.
+
+To typecheck, lint and test the extensions, run
+`cd ai/pi && npm install && npm run check`. The tests also fail when a
+vendored extension drifts from pi's bundled example, or when the pi version in
+`ai/pi/package.json`, `mise/global.toml` and the vendored headers disagree. To
+bump pi, update all three, re-copy the examples, and re-check the path
+normalization that `protected-paths.ts` mirrors from pi.
 
 `pic` continues the last session and `pir` picks one to resume.
 
