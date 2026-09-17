@@ -127,7 +127,8 @@ ships with, so run `pi` online once on a new machine.
 (`/review`, `/commit`, `/pr`, `/explain`, `/fix-ci`, and the subagent
 workflows), subagent definitions, and extensions vendored from pi's bundled
 examples (plan mode, subagents, todos, handoff, notifications, a permission
-gate and protected paths). Each vendored extension names the pi version it
+gate and protected paths), plus our own `footer.ts`, a status bar in the
+theme's colours. Each vendored extension names the pi version it
 came from, and mise pins pi to that version. Subagents run headless, so the
 permission gate blocks flagged commands there instead of asking.
 
