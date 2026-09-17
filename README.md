@@ -253,8 +253,12 @@ providers. A DeepSeek session sends the code it reads to DeepSeek, so deny
 
 **Switching mid-task.** Hand off through the plan file, not the transcript:
 plan with `cc`, then `ccd "execute .omc/plans/<task>.md"`, then review with
-`cc`. `--continue` picks the directory's latest session whichever provider
-ran it, so prefer `ccdr`/`ccr` and pick the session.
+`cc`. Resuming across providers works in both directions — a Pro session
+continued under DeepSeek and the reverse each answered cleanly, with no
+rejected thinking block — but `--continue` picks the directory's latest
+session whichever provider ran it, so prefer `ccdr`/`ccr` and pick the session
+you meant. Only single-turn sessions have been tested; a long tool-heavy
+transcript is untried.
 
 ## tmux
 
