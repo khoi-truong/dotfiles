@@ -52,12 +52,15 @@ export const secretPaths = [
 // settings.json, and web-search.json and mcp.json can run commands, so an edit
 // to any of them runs code outside these checks. The shared and project MCP
 // configs are ignored (PI_MCP_CONFIG_MODE=exclusive) but guarded too, for
-// other MCP hosts.
+// other MCP hosts. Subagent definitions set a child's tools and prompt.
 export const writeOnlyPaths = [
   "/.git/",
   "/node_modules/",
   "~/.dotfiles/ai/pi/extensions/",
   "~/.pi/agent/extensions/",
+  "~/.dotfiles/ai/pi/agents/",
+  "~/.pi/agent/agents/",
+  "~/.agents/",
   "~/.dotfiles/ai/pi/settings.json",
   "~/.dotfiles/ai/pi/models.json",
   "~/.dotfiles/ai/pi/web-search.json",
@@ -67,8 +70,6 @@ export const writeOnlyPaths = [
   "~/.pi/agent/web-search.json",
   "~/.pi/agent/mcp.json",
   "~/.config/mcp/",
-  "~/.agents/mcp.json",
-  "~/.agents/mcp/",
   "/.mcp.json/",
   "/.pi/mcp.json/",
 ];

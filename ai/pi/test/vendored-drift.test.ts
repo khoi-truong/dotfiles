@@ -17,7 +17,6 @@ const unmodified = [
   "titlebar-spinner.ts",
   "plan-mode/index.ts",
   "plan-mode/utils.ts",
-  "subagent/agents.ts",
 ];
 
 // Like diff -w: whitespace inside lines is ignored, lines are not.
@@ -44,7 +43,7 @@ test("mise pins the installed pi version", () => {
 });
 
 // Written for this repo, not copied from pi's examples.
-const own = ["footer.ts", "mcp-guard.ts"];
+const own = ["footer.ts", "mcp-guard.ts", "subagent-guard.ts"];
 const vendored = readdirSync(extensions, { recursive: true, encoding: "utf8" }).filter(
   (f) => f.endsWith(".ts") && !own.includes(f),
 );
@@ -58,8 +57,6 @@ test("every extension is vendored", () => {
     "plan-mode/utils.ts",
     "protected-paths.ts",
     "questionnaire.ts",
-    "subagent/agents.ts",
-    "subagent/index.ts",
     "titlebar-spinner.ts",
     "todo.ts",
   ]);
