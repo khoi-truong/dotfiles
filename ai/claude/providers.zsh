@@ -96,7 +96,7 @@ function cc-providers {
 
 # --- providers ---------------------------------------------------------------
 
-# DeepSeek: key shared with pi (ai/pi/models.json). Every model id,
+# DeepSeek: key shared with omp (ai/omp/models.yml). Every model id,
 # Opus included, is served by Flash.
 cc_provider deepseek \
   url=https://api.deepseek.com/anthropic \

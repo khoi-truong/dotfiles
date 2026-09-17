@@ -7,11 +7,9 @@
 # Claude Code: cc/ccc/ccr (Pro) and the other-provider launchers.
 [[ -r ${DOTFILES}/ai/claude/providers.zsh ]] && source "${DOTFILES}/ai/claude/providers.zsh"
 
-# pi (DeepSeek)
-alias pic="pi --continue"
-alias pir="pi --resume"
-# pi-mcp-adapter: read only ~/.pi/agent/mcp.json, never a project .mcp.json.
-export PI_MCP_CONFIG_MODE=exclusive
+# oh-my-pi (DeepSeek)
+alias ompc="omp --continue"
+alias ompr="omp --resume"
 
 # GitHub Copilot CLI (gh extension)
 alias '??'="gh copilot suggest -t shell"

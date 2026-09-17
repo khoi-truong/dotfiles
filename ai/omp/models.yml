@@ -1,0 +1,9 @@
+# oh-my-pi providers, linked to ~/.omp/agent/models.yml.
+#
+# DeepSeek is built in (catalog model deepseek/deepseek-flash); this only
+# supplies the key. omp runs the command when a request first needs it and
+# caches the result for the process, so rotate the key in 1Password and
+# restart omp. A --api-key flag overrides it.
+providers:
+  deepseek:
+    apiKey: "!op read --account my.1password.com op://cvlkani4a45n37bmnnwzvynboi/wu7wmnnyk2qpmz6lyij5ubrqvi/PI_CODING_AGENT"
