@@ -5,8 +5,8 @@
 #   ~/.claude.json                       project history + auth
 #   ~/.claude/.credentials.json          OAuth tokens
 #   ~/.config/github-copilot/apps.json   OAuth tokens
-#   ~/.pi/agent/auth.json                pi API keys (DEEPSEEK_API_KEY lives
-#                                        in ai/env.local.zsh instead)
+#   ~/.pi/agent/auth.json                pi API keys (the DeepSeek key lives
+#                                        in 1Password; see ai/pi/models.json)
 # Those stay on the machine and are re-created by logging in.
 set -euo pipefail
 
@@ -45,7 +45,7 @@ fi
 # and those edits show up as repo diffs to commit or discard.
 # auth.json, models-store.json, trust.json, sessions/ and npm/ stay local.
 PI_DIR="${HOME}/.pi/agent"
-for item in settings.json APPEND_SYSTEM.md agents extensions prompts themes; do
+for item in settings.json models.json APPEND_SYSTEM.md agents extensions prompts themes; do
   link "${CURRENT_DIR}/pi/${item}" "${PI_DIR}/${item}"
 done
 # Same global rules as Claude Code.
