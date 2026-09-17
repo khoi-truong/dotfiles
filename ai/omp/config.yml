@@ -1,6 +1,3 @@
-# oh-my-pi settings, linked to ~/.omp/agent/config.yml.
-# `omp config list` shows every key; /settings and /model write here.
-
 modelRoles:
   default: deepseek/deepseek-flash
   smol: deepseek/deepseek-flash:low
@@ -9,87 +6,130 @@ enabledModels:
   - deepseek/deepseek-flash
 defaultThinkingLevel: high
 hideThinkingBlock: true
-
 theme:
   dark: dark-gruvbox
 
 startup:
   quiet: true
-
 compaction:
   enabled: true
   reserveTokens: 32768
   keepRecentTokens: 60000
-
 retry:
   enabled: true
   maxRetries: 3
-
-# Only ~/.omp/agent/mcp.json; a cloned repo's .mcp.json and friends can run
-# commands.
 mcp:
   enableProjectConfig: false
-
-# A guardrail against model mistakes, not a sandbox. bash.patterns prompt and
-# deny rules hold in yolo mode too, and subagents (no UI) are refused
-# instead of asked. They cover the bash tool only: the read/grep tools are
-# not path-restricted, and eval (Python/JS) is gated as a whole instead.
 tools:
   approvalMode: yolo
   approval:
     eval: prompt
-
 bash:
   patterns:
-    # Secrets
-    - { match: "*.ssh/*", approval: deny }
-    - { match: "*.gnupg/*", approval: deny }
-    - { match: "*.aws/*", approval: deny }
-    - { match: "*.docker/config.json*", approval: deny }
-    - { match: "*.netrc*", approval: deny }
-    - { match: "*.npmrc*", approval: deny }
-    - { match: "*.git-credentials*", approval: deny }
-    - { match: "*.claude.json*", approval: deny }
-    - { match: "*.credentials.json*", approval: deny }
-    - { match: "*github-copilot/apps.json*", approval: deny }
-    - { match: "*gh/hosts.yml*", approval: deny }
-    - { match: "*gh auth token*", approval: deny }
-    - { match: "*env.local.zsh*", approval: deny }
-    - { match: "*.omp/agent/agent.db*", approval: deny }
-    - { match: "*op read*", approval: deny }
-    - { match: "*op item get*", approval: deny }
-    # Destructive or system-mutating (see the dotfiles CLAUDE.md)
-    - { match: "*rm -r*", approval: prompt }
-    - { match: "*rm -fr*", approval: prompt }
-    - { match: "*rm -R*", approval: prompt }
-    - { match: "*rm --recursive*", approval: prompt }
-    - { match: "*find * -delete*", approval: prompt }
-    - { match: "*find * -exec rm*", approval: prompt }
-    - { match: "*sudo *", approval: prompt }
-    - { match: "*chmod *777*", approval: prompt }
-    - { match: "*chown *777*", approval: prompt }
-    - { match: "*brew install*", approval: prompt }
-    - { match: "*brew reinstall*", approval: prompt }
-    - { match: "*brew uninstall*", approval: prompt }
-    - { match: "*brew remove*", approval: prompt }
-    - { match: "*brew upgrade*", approval: prompt }
-    - { match: "*brew bundle*", approval: prompt }
-    - { match: "*defaults write*", approval: prompt }
-    - { match: "*defaults delete*", approval: prompt }
-    - { match: "*defaults import*", approval: prompt }
-    - { match: "*mise install*", approval: prompt }
-    - { match: "*mise i *", approval: prompt }
-    - { match: "*mise upgrade*", approval: prompt }
-    - { match: "*mise up*", approval: prompt }
-    - { match: "*mise use *-g*", approval: prompt }
-    - { match: "*mise use *--global*", approval: prompt }
-    - { match: "./setup.sh*", approval: prompt }
-    - { match: "./*/setup.sh*", approval: prompt }
-    - { match: "*sh *setup.sh*", approval: prompt }
-    - { match: "*.dotfiles/setup.sh*", approval: prompt }
-    - { match: "*git push*--force*", approval: prompt }
-    - { match: "*git push* -f*", approval: prompt }
-    - { match: "*git push*+*", approval: prompt }
-    - { match: "*git reset*--hard*", approval: prompt }
-    - { match: "*git clean*-*f*", approval: prompt }
-    - { match: "*git filter-branch*", approval: prompt }
+    - match: "*.ssh/*"
+      approval: deny
+    - match: "*.gnupg/*"
+      approval: deny
+    - match: "*.aws/*"
+      approval: deny
+    - match: "*.docker/config.json*"
+      approval: deny
+    - match: "*.netrc*"
+      approval: deny
+    - match: "*.npmrc*"
+      approval: deny
+    - match: "*.git-credentials*"
+      approval: deny
+    - match: "*.claude.json*"
+      approval: deny
+    - match: "*.credentials.json*"
+      approval: deny
+    - match: "*github-copilot/apps.json*"
+      approval: deny
+    - match: "*gh/hosts.yml*"
+      approval: deny
+    - match: "*gh auth token*"
+      approval: deny
+    - match: "*env.local.zsh*"
+      approval: deny
+    - match: "*.omp/agent/agent.db*"
+      approval: deny
+    - match: "*op read*"
+      approval: deny
+    - match: "*op item get*"
+      approval: deny
+    - match: "*rm -r*"
+      approval: prompt
+    - match: "*rm -fr*"
+      approval: prompt
+    - match: "*rm -R*"
+      approval: prompt
+    - match: "*rm --recursive*"
+      approval: prompt
+    - match: "*find * -delete*"
+      approval: prompt
+    - match: "*find * -exec rm*"
+      approval: prompt
+    - match: "*sudo *"
+      approval: prompt
+    - match: "*chmod *777*"
+      approval: prompt
+    - match: "*chown *777*"
+      approval: prompt
+    - match: "*brew install*"
+      approval: prompt
+    - match: "*brew reinstall*"
+      approval: prompt
+    - match: "*brew uninstall*"
+      approval: prompt
+    - match: "*brew remove*"
+      approval: prompt
+    - match: "*brew upgrade*"
+      approval: prompt
+    - match: "*brew bundle*"
+      approval: prompt
+    - match: "*defaults write*"
+      approval: prompt
+    - match: "*defaults delete*"
+      approval: prompt
+    - match: "*defaults import*"
+      approval: prompt
+    - match: "*mise install*"
+      approval: prompt
+    - match: "*mise i *"
+      approval: prompt
+    - match: "*mise upgrade*"
+      approval: prompt
+    - match: "*mise up*"
+      approval: prompt
+    - match: "*mise use *-g*"
+      approval: prompt
+    - match: "*mise use *--global*"
+      approval: prompt
+    - match: ./setup.sh*
+      approval: prompt
+    - match: ./*/setup.sh*
+      approval: prompt
+    - match: "*sh *setup.sh*"
+      approval: prompt
+    - match: "*.dotfiles/setup.sh*"
+      approval: prompt
+    - match: "*git push*--force*"
+      approval: prompt
+    - match: "*git push* -f*"
+      approval: prompt
+    - match: "*git push*+*"
+      approval: prompt
+    - match: "*git reset*--hard*"
+      approval: prompt
+    - match: "*git clean*-*f*"
+      approval: prompt
+    - match: "*git filter-branch*"
+      approval: prompt
+providers:
+  webSearchOrder:
+    []
+symbolPreset: unicode
+composer:
+  shape: claude
+setupVersion: 2
