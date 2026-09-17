@@ -132,12 +132,11 @@ that choice to `settings.json`, so revert it there if it wasn't meant to stick.
 
 `ai/pi/` holds the settings, a Gruvbox Dark theme, prompt templates
 (`/review`, `/commit`, `/pr`, `/explain`, `/fix-ci`, and the subagent
-workflows), subagent definitions, and extensions vendored from pi's bundled
-examples (plan mode, subagents, todos, handoff, notifications, a permission
-gate and protected paths), plus our own `footer.ts`, a status bar in the
-theme's colours, and `mcp-guard.ts` (below). Each vendored extension
-names the pi version it came from, and mise pins pi to that version. Subagents run headless, so the
-permission gate blocks flagged commands there instead of asking.
+workflows), a `planner` subagent, and extensions vendored from pi's bundled
+examples (plan mode, todos, handoff, notifications, a permission gate and
+protected paths), plus our own `footer.ts`, a status bar in the theme's
+colours, and `mcp-guard.ts` and `subagent-guard.ts` (below). Each vendored
+extension names the pi version it came from, and mise pins pi to that version.
 
 The permission gate and protected paths are a guardrail against model
 mistakes, not a sandbox. They may miss `$(…)`, interpreter one-liners
@@ -176,6 +175,24 @@ files, whose commands a cloned repo controls. `mcp-guard.ts` blocks MCP tools
 when that variable is missing (pi started outside zsh), the model-driven
 server install, and `mcpScript`. MCP config files are write-only for the
 agent, since they can run commands.
+
+[pi-subagents](https://pi.dev/packages/pi-subagents) provides the `subagent`
+tool and builtin agents (`scout`, `worker`, `reviewer`, `researcher`,
+`oracle`, …); `ai/pi/agents/planner.md` adds a planner. Only its extension
+loads, not its skills or prompts, and `settings.json` disables the agents that
+run external CLIs (Claude Code, Codex, Cursor). Children run in-process
+without our extensions, so `subagent-guard.ts` registers the permission gate,
+protected paths and itself as extensions every child must load, and blocks
+`subagent` if that registration is missing. Children have no UI, so the
+permission gate blocks flagged commands there instead of asking. The guard
+also limits the model to one agent per call: it blocks workflow scripts,
+`gate` and acceptance `verify` commands (which run on the host, outside the
+gate), output paths, remote machines, agent and schedule changes, and project
+agents and settings, which pi-subagents loads without pi's project trust
+check. Its slash commands (`/run`, `/subagents`, …) are yours and are not
+checked. Agent directories are write-only for the agent. On a pi-subagents
+bump, re-check the child extension registry and the tool's fields against the
+guard.
 
 To typecheck, lint and test the extensions, run
 `cd ai/pi && npm install && npm run check`. The tests also fail when a

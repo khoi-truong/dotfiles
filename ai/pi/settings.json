@@ -33,11 +33,26 @@
   ],
   "packages": [
     "npm:pi-web-access@0.29.0",
-    "npm:pi-mcp-adapter@2.34.0"
+    "npm:pi-mcp-adapter@2.34.0",
+    {
+      "source": "npm:pi-subagents@0.68.0",
+      "skills": [],
+      "prompts": []
+    }
   ],
   "npmCommand": [
     "npm",
     "--ignore-scripts"
   ],
+  "subagents": {
+    "agentOverrides": {
+      "claude-code": { "disabled": true },
+      "claude-code-writer": { "disabled": true },
+      "codex-exec": { "disabled": true },
+      "codex-exec-writer": { "disabled": true },
+      "cursor-agent": { "disabled": true },
+      "cursor-agent-writer": { "disabled": true }
+    }
+  },
   "lastChangelogVersion": "0.85.1"
 }
