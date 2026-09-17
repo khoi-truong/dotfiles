@@ -1,1 +1,1 @@
-../rules/common.md
+../shared/rules/common.md

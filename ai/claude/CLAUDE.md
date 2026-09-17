@@ -77,4 +77,4 @@ Say "setup omc" or run `/oh-my-claudecode:omc-setup`.
 
 ## Global preferences
 
-@~/.dotfiles/ai/rules/common.md
+@~/.dotfiles/ai/shared/rules/common.md

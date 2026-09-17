@@ -4,7 +4,7 @@
 // unless the session is genuinely past the 200k boundary. Keeps the OMC HUD
 // ctx bar aligned with the point where Claude Code actually starts compacting.
 // Also prefixes the model name with CC_PROVIDER_LABEL (set by
-// ai/claude-providers.zsh) so a non-Anthropic session is obvious.
+// ai/claude/providers.zsh) so a non-Anthropic session is obvious.
 // Lives in dotfiles so plugin updates cannot clobber it.
 
 let raw = "";
