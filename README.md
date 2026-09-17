@@ -47,6 +47,7 @@ directory, so edits in the repo are live immediately.
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |
 | `ai/claude/*`                                           | `~/.claude/`                            |
 | `ai/copilot/*`                                          | `~/.copilot/`                           |
+| `ai/pi/` config dirs, `ai/rules/common.md` (as `AGENTS.md`) | `~/.pi/agent/`                     |
 | `vscode/{settings,keybindings}.json`, `vscode/snippets` | VS Code user dir                        |
 
 **Preference redirection** — for apps with no dotfile.
@@ -112,6 +113,31 @@ ZSH_PROFILE=1 zsh -i -c exit
 `oh-my-zsh.sh` is bypassed: antidote sources omz `lib/*.zsh` and the theme
 directly, and zshrc runs `compinit -C`, rebuilding the dump when it is over a
 day old or older than the plugin bundle or `env.zsh`.
+
+## pi
+
+[pi](https://pi.dev) is installed by mise and runs DeepSeek V4.1 Flash
+(`deepseek-flash`) for everything. For harder tasks, change the reasoning
+effort with `/thinking` (`off`/`low`/`high`/`max`, default `high`) rather
+than the model. The key goes in `ai/env.local.zsh` as `DEEPSEEK_API_KEY`.
+`deepseek-flash` comes from the model catalog pi downloads, not the one it
+ships with, so run `pi` online once on a new machine.
+
+`ai/pi/` holds the settings, a Gruvbox Dark theme, prompt templates
+(`/review`, `/commit`, `/pr`, `/explain`, `/fix-ci`, and the subagent
+workflows), subagent definitions, and extensions vendored from pi's bundled
+examples (plan mode, subagents, todos, handoff, notifications, a permission
+gate and protected paths). Each vendored extension names the pi version it
+came from, and mise pins pi to that version. Before bumping it, compare them
+with the new examples using `diff -w` (they were reindented to spaces).
+Subagents run headless, so the permission gate blocks flagged commands there
+instead of asking. Third-party packages go in
+`settings.json` → `packages`, pinned to a version, after reading their source.
+To typecheck and lint the extensions, run
+`cd ai/pi && npm install && npm run check`. Keep the pi version in
+`ai/pi/package.json` in step with `mise/global.toml`.
+
+`pic` continues the last session and `pir` picks one to resume.
 
 ## tmux
 

@@ -37,6 +37,6 @@
   "ignores": [
     "zsh/antidote/**",
     ".omc/**",
-    "node_modules/**"
+    "**/node_modules/**"
   ]
 }
