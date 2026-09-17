@@ -32,12 +32,11 @@ uv  = "latest"          # Python packaging / venvs (do NOT use `uv python` — m
 "go:golang.org/x/tools/gopls" = "latest"
 
 # --- Swift / iOS tooling ---------------------------------------------------
-# Kept global so they work in any editor without per-repo setup. Exact pins:
-# swiftformat/swiftlint change their output between patch releases, so a repo
-# with CS checks should still pin its own in a local mise.toml.
-swiftformat = "0.57.2"
-swiftlint   = "0.61.0"
-tuist       = "4.67.2"
+# Kept global so they work in any editor without per-repo setup. Their output
+# changes between releases, so a repo with CS checks pins its own in a local
+# mise.toml. tuist is per-project only (`mise use tuist@x` in the repo).
+swiftformat = "latest"
+swiftlint   = "latest"
 
 [settings]
 # Honour idiomatic per-project version files, not just mise.toml / .tool-versions.
