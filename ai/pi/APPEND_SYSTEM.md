@@ -13,5 +13,3 @@
   settings, force-push, history rewrites, deleting files you did not create,
   publishing anything. Subagents cannot ask, so the permission gate blocks
   these there; run such steps from the main agent.
-- Stop and report when a unit of work is done instead of sprawling into
-  unrequested changes.

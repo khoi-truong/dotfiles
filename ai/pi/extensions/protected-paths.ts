@@ -9,8 +9,8 @@
  * (macOS filesystems are case-insensitive).
  *
  * - Secret paths are blocked for write, edit, read, grep, find, ls and bash.
- * - Write-only paths (.git/, node_modules/, the extension directories) are
- *   blocked for write and edit only.
+ * - Write-only paths (.git/, node_modules/, the extension directories, pi's
+ *   settings.json and models.json) are blocked for write and edit only.
  * - bash (and powershell) is checked token by token: path-like tokens always,
  *   and bare env-file names (ask, not block) only when that file exists in
  *   cwd. Write-only paths apply only to redirect targets, tee, sed -i /
@@ -48,7 +48,18 @@ export const secretPaths = [
   "~/.git-credentials",
 ];
 
-export const writeOnlyPaths = ["/.git/", "/node_modules/", "~/.dotfiles/ai/pi/extensions/", "~/.pi/agent/extensions/"];
+// pi runs the key command in models.json and installs the packages in
+// settings.json, so an edit to either runs code outside these checks.
+export const writeOnlyPaths = [
+  "/.git/",
+  "/node_modules/",
+  "~/.dotfiles/ai/pi/extensions/",
+  "~/.pi/agent/extensions/",
+  "~/.dotfiles/ai/pi/settings.json",
+  "~/.dotfiles/ai/pi/models.json",
+  "~/.pi/agent/settings.json",
+  "~/.pi/agent/models.json",
+];
 
 const home = homedir().toLowerCase();
 // realpathSync calls allowed per bash command; tokens past it ask instead.
