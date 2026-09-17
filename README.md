@@ -345,7 +345,8 @@ On a new machine:
    install.
 6. Import the GPG key and trust it — commits are signed
    (`commit.gpgSign = true`), so git will refuse to commit until this is done.
-   `git/setup.sh` writes the correct `gpg.program` path for the architecture and
+   `git/setup.sh` writes the correct `gpg.program` path for the architecture,
+   asks for `user.name`/`user.email` if they are missing, and
    `gpg/setup.sh` installs `gpg.conf` / `gpg-agent.conf`.
 7. `gh auth login`, then `sh ai/setup.sh` for the Copilot CLI extension.
 8. `./setup.sh --all` if this machine needs VS Code or Xcode.
