@@ -47,7 +47,7 @@ fi
 # config.yml in place, so those edits show up as repo diffs to commit or
 # discard. agent.db, sessions and the rest of ~/.omp stay local.
 OMP_DIR="${HOME}/.omp/agent"
-for item in config.yml models.yml mcp.json APPEND_SYSTEM.md commands; do
+for item in config.yml models.yml mcp.json APPEND_SYSTEM.md commands extensions; do
   link "${CURRENT_DIR}/omp/${item}" "${OMP_DIR}/${item}"
 done
 link "${CURRENT_DIR}/shared/skills" "${OMP_DIR}/skills"

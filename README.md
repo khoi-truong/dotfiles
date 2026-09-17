@@ -145,7 +145,13 @@ with CLI integration on, and omp gives `op` 10 seconds, so approve the prompt
 promptly. `--api-key` overrides it.
 
 `ai/omp/` holds `config.yml` (settings), `models.yml`, `mcp.json`,
-`APPEND_SYSTEM.md` and the `/commit`, `/pr` and `/explain` commands. Plan
+`APPEND_SYSTEM.md`, the `/commit`, `/pr` and `/explain` commands, and
+`extensions/` — one composer shape, `dotfiles/claude-gauge`: the built-in
+`claude` layout with the context gauge (progress bar plus `42% · window`) on
+the top rule. omp only draws that gauge for a composer attached as
+`top-border`/`top-band`, and `claude` docks a plain rule chip instead, so the
+gauge needs the shape. Until the extension loads (about a second into a
+launch) omp falls back to its `box` shape, which carries the same gauge. Plan
 mode, todos, handoff, `ask`, subagents (`task`), `web_search`, `/review` and
 `/ci-green` are built in, as is the `dark-gruvbox` theme. `/settings` and
 `/model` write `config.yml` through the symlink; review the result with
