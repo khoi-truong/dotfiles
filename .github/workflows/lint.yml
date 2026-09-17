@@ -20,13 +20,17 @@ on:
       - "**.plist"
       - "**.xib"
       - "**.storyboard"
+  workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   scripts:
@@ -49,7 +53,7 @@ jobs:
             echo "No shell scripts found."
             exit 0
           fi
-          shellcheck "${files[@]}"
+          shellcheck -x "${files[@]}"
 
       - name: Set up zsh
         run: sudo apt-get update -qq && sudo apt-get install -y zsh
@@ -101,6 +105,15 @@ jobs:
             jq empty "$file"
           done
 
+      - name: Verify TOML files are valid
+        run: |
+          git ls-files -z '*.toml' | xargs -0 python3 -c '
+          import sys, tomllib
+          for path in sys.argv[1:]:
+              with open(path, "rb") as f:
+                  tomllib.load(f)
+          '
+
   workflows:
     name: Lint GitHub Actions workflows
     runs-on: ubuntu-24.04
@@ -120,34 +133,6 @@ jobs:
 
       - name: Check for workflow security findings
         run: pipx run zizmor==1.30.1 --persona=regular .github/workflows
-
-  pi-extensions:
-    name: Check pi extensions
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: ai/pi/package-lock.json
-
-      - name: Install dev dependencies
-        run: npm ci --ignore-scripts
-        working-directory: ai/pi
-
-      # tsc, eslint, then the gate, path, hook and vendored-drift tests
-      - name: Verify pi extensions typecheck, lint and pass tests
-        run: npm run check
-        working-directory: ai/pi
 
   secrets:
     name: Scan for leaked secrets

@@ -1,0 +1,40 @@
+name: PR Title
+run-name: "${{ github.workflow }} · ${{ github.event.pull_request.title }}"
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check PR title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      # The title becomes the squash-merge subject (see CLAUDE.md): Conventional
+      # Commits, and short enough that GitHub doesn't truncate it.
+      - name: Verify PR title is a short Conventional Commit
+        shell: bash
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: [^ ].*[^.]$'
+          if [[ ! $TITLE =~ $pattern ]]; then
+            echo "::error title=PR title::Use Conventional Commits, e.g. 'feat(zsh): add wt switcher' (no trailing period)."
+            exit 1
+          fi
+          if (( ${#TITLE} > 72 )); then
+            echo "::error title=PR title::${#TITLE} characters; keep it at or under ~50 (72 max)."
+            exit 1
+          fi
+          if (( ${#TITLE} > 50 )); then
+            echo "::warning title=PR title::${#TITLE} characters; aim for 50 or fewer."
+          fi
