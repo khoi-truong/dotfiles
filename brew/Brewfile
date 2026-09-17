@@ -45,6 +45,7 @@ brew "mysql"
 # media
 brew "ffmpeg"
 brew "oxipng"
+brew "transmission-cli"
 
 # ai
 brew "ollama"         # local LLMs
@@ -65,7 +66,6 @@ cask "gitkraken"
 # cask "intellij-idea"
 cask "mitmproxy"
 # cask "pycharm"
-cask "react-native-debugger"
 cask "bruno"
 cask "sf-symbols"
 
@@ -91,7 +91,7 @@ cask "surfshark"
 
 # media
 cask "iina"
-cask "qbittorrent"
+cask "transmission"
 # cask "spotify"
 
 # communication
