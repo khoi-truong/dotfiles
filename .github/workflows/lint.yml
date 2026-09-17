@@ -133,24 +133,3 @@ jobs:
 
       - name: Check for workflow security findings
         run: pipx run zizmor==1.30.1 --persona=regular .github/workflows
-
-  secrets:
-    name: Scan for leaked secrets
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read # gitleaks-action lists the PR's commits to scan
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0 # scan every commit in the push or PR, not just the tip
-
-      - name: Scan for leaked secrets
-        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_VERSION: 8.30.1
-          GITLEAKS_ENABLE_COMMENTS: false

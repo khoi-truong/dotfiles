@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    uses: $/.github/workflows/_detect-changes.yml
+    uses: ./.github/workflows/_detect-changes.yml
 
   check:
     name: Check pi extensions

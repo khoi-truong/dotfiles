@@ -368,7 +368,8 @@ Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`. CI runs on every
 push to `main` and every pull request:
 
 - `lint.yml` — `shellcheck -x`, `zsh -n`, markdownlint, editorconfig-checker,
-  JSON and TOML validation, actionlint, zizmor and a gitleaks secret scan.
+  JSON and TOML validation, actionlint and zizmor.
+- `secrets.yml` — a gitleaks scan of every pushed commit, with no path filter.
 - `pi.yml` — the pi extension checks, only when `ai/pi/` or `mise/global.toml`
   changed.
 - `smoke.yml` — on macOS, when the shell config, `setup.sh`, `lib/` or a plist

@@ -7,3 +7,7 @@ rules:
         actions/*: ref-pin
         github/*: ref-pin
         "*": hash-pin
+  # `uses: $/…` is what this audit wants, and GitHub runs it, but actionlint
+  # (1.7.12) rejects it. Local `./` calls already resolve at the checked-out SHA.
+  self-repository:
+    disable: true
