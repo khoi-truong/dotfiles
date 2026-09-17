@@ -12,6 +12,8 @@ alias ccr="claude --resume"
 # pi (DeepSeek)
 alias pic="pi --continue"
 alias pir="pi --resume"
+# pi-mcp-adapter: read only ~/.pi/agent/mcp.json, never a project .mcp.json.
+export PI_MCP_CONFIG_MODE=exclusive
 
 # GitHub Copilot CLI (gh extension)
 alias '??'="gh copilot suggest -t shell"

@@ -135,8 +135,8 @@ that choice to `settings.json`, so revert it there if it wasn't meant to stick.
 workflows), subagent definitions, and extensions vendored from pi's bundled
 examples (plan mode, subagents, todos, handoff, notifications, a permission
 gate and protected paths), plus our own `footer.ts`, a status bar in the
-theme's colours. Each vendored extension names the pi version it
-came from, and mise pins pi to that version. Subagents run headless, so the
+theme's colours, and `mcp-guard.ts` (below). Each vendored extension
+names the pi version it came from, and mise pins pi to that version. Subagents run headless, so the
 permission gate blocks flagged commands there instead of asking.
 
 The permission gate and protected paths are a guardrail against model
@@ -166,6 +166,16 @@ page fetching. With no API key it searches through Exa's public MCP endpoint,
 so queries go to Exa. `ai/pi/web-search.json` (linked to
 `~/.pi/agent/web-search.json`, write-only for the agent since it can hold key
 commands) turns off the browser curator and browser-cookie access.
+
+[pi-mcp-adapter](https://pi.dev/packages/pi-mcp-adapter) connects MCP servers
+lazily, through one `mcp` tool. `ai/pi/mcp.json` (linked to
+`~/.pi/agent/mcp.json`) defines GitHub, read-only and authenticated with
+`gh auth token`, and Context7. `ai/aliases.zsh` exports
+`PI_MCP_CONFIG_MODE=exclusive`, so the adapter ignores project `.mcp.json`
+files, whose commands a cloned repo controls. `mcp-guard.ts` blocks MCP tools
+when that variable is missing (pi started outside zsh), the model-driven
+server install, and `mcpScript`. MCP config files are write-only for the
+agent, since they can run commands.
 
 To typecheck, lint and test the extensions, run
 `cd ai/pi && npm install && npm run check`. The tests also fail when a

@@ -45,7 +45,7 @@ fi
 # and those edits show up as repo diffs to commit or discard.
 # auth.json, models-store.json, trust.json, sessions/ and npm/ stay local.
 PI_DIR="${HOME}/.pi/agent"
-for item in settings.json models.json web-search.json APPEND_SYSTEM.md agents extensions prompts themes; do
+for item in settings.json models.json web-search.json mcp.json APPEND_SYSTEM.md agents extensions prompts themes; do
   link "${CURRENT_DIR}/pi/${item}" "${PI_DIR}/${item}"
 done
 # Same global rules as Claude Code.
