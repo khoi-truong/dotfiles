@@ -81,7 +81,7 @@ cask "microsoft-teams"
 # system & utilities
 cask "1password"
 cask "1password-cli"
-cask "evkey"
+cask "gonhanh"
 cask "adguard"
 cask "flux-app"
 cask "logi-options+"
