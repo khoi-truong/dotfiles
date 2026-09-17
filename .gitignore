@@ -31,6 +31,7 @@ brew/Brewfile.generated
 # Agent/tooling scratch state
 .omc/
 .ruby-lsp/
+ai/omp/config.yml.lock
 
 # Local files
 *.local
