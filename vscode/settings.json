@@ -62,6 +62,7 @@
   "explorer.confirmDragAndDrop": false,
   "explorer.decorations.badges": true,
   "files.associations": {
+    "**/git/ignore": "ignore",
     "Fastfile": "ruby",
     "Matchfile": "ruby",
     "Appfile": "ruby",
