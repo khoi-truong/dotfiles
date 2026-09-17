@@ -17,8 +17,8 @@ uv  = "latest"          # don't use `uv python`; mise owns Python
 
 "go:golang.org/x/tools/gopls" = "latest"
 
-# Fallbacks for editors. Repos with format/lint checks pin their own; tuist is
-# always per-project.
+"npm:@mariozechner/pi-coding-agent" = "latest"
+
 swiftformat = "latest"
 swiftlint   = "latest"
 
