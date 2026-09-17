@@ -1,19 +1,16 @@
 {
-  "settings": {
-    "hostConfigDiscovery": "off",
-    "scriptMode": false,
-    "notifyOnStartupConnect": false
-  },
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
   "mcpServers": {
     "github": {
+      "type": "http",
       "url": "https://api.githubcopilot.com/mcp/readonly",
-      "auth": "bearer",
-      "bearerToken": "!gh auth token",
       "headers": {
+        "Authorization": "!printf 'Bearer %s' \"$(gh auth token)\"",
         "X-MCP-Readonly": "true"
       }
     },
     "context7": {
+      "type": "http",
       "url": "https://mcp.context7.com/mcp"
     }
   }

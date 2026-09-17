@@ -34,13 +34,3 @@ brew/Brewfile.generated
 
 # Local files
 *.local
-
-# pi extension dev tooling (ai/pi/package.json)
-ai/pi/node_modules
-# pi state; only named items are linked, this is a backstop
-ai/pi/auth.json
-ai/pi/models-store.json
-ai/pi/trust.json
-ai/pi/sessions/
-ai/pi/npm/
-ai/pi/*.lock

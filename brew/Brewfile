@@ -22,6 +22,10 @@ brew "shellcheck"  # shell linter
 # version manager — the only one; see mise/global.toml
 brew "mise"
 
+# coding agents
+tap "can1357/tap"
+brew "can1357/tap/omp"   # oh-my-pi; config in ai/omp
+
 # vcs & shell tooling
 brew "git"
 brew "gh"

@@ -48,13 +48,13 @@ directory, so edits in the repo are live immediately.
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |
 | `ai/claude/*`                                           | `~/.claude/`                            |
 | `ai/copilot/*`                                          | `~/.copilot/`                           |
-| `ai/pi/` config dirs, `ai/shared/rules/common.md` (as `AGENTS.md`) | `~/.pi/agent/` |
-| `ai/shared/skills/*`                                    | `~/.claude/skills/` (pi reads them in place) |
+| `ai/omp/*`, `ai/shared/skills`, `ai/shared/rules/common.md` (as `AGENTS.md`) | `~/.omp/agent/` |
+| `ai/shared/skills/*`                                    | `~/.claude/skills/`                     |
 | `vscode/{settings,keybindings}.json`, `vscode/snippets` | VS Code user dir                        |
 
-`ai/` is split by harness (`claude/`, `pi/`, `copilot/`), with what they
+`ai/` is split by harness (`claude/`, `omp/`, `copilot/`), with what they
 share in `ai/shared/`: `rules/common.md`, the global instructions every harness
-loads, and `skills/`, Agent Skills that Claude Code and pi both read. Each
+loads, and `skills/`, Agent Skills that Claude Code and omp both read. Each
 harness keeps its own model/provider and MCP config, since the formats differ.
 
 **Preference redirection** — for apps with no dotfile.
@@ -130,95 +130,46 @@ ZSH_PROFILE=1 zsh -i -c exit
 directly, and zshrc runs `compinit -C`, rebuilding the dump when it is over a
 day old or older than the plugin bundle or `env.zsh`.
 
-## pi
+## oh-my-pi
 
-[pi](https://pi.dev) is installed by mise and runs DeepSeek V4.1 Flash
-(`deepseek-flash`) for everything. For harder tasks, change the reasoning
-effort with `/thinking` (`off`/`low`/`high`/`max`, default `high`) rather
-than the model. `ai/pi/models.json` defines `deepseek-flash`, which pi's
-bundled catalog lacks, and has pi read the key from 1Password (`op read`,
-the `PI_CODING_AGENT` field of the "DeepSeek API Keys" note in Private) when
-it starts, so it isn't exported to every shell. Rotate it in 1Password and
-restart pi, which reads the key once per run. The 1Password app must be
-unlocked with CLI integration on, and pi gives `op` 10 seconds, so approve
-the prompt promptly. A `DEEPSEEK_API_KEY` in the environment or a key in
-`~/.pi/agent/auth.json` overrides it.
-Thinking is collapsed to a one-line label; Ctrl+T shows it, and pi saves
-that choice to `settings.json`, so revert it there if it wasn't meant to stick.
+[oh-my-pi](https://omp.sh) (`omp`, a fork of pi) is installed from the
+`can1357/tap` Homebrew formula, which ships arm64 and Intel builds and the zsh
+completions. It runs DeepSeek V4.1 Flash (`deepseek/deepseek-flash`, in omp's
+bundled catalog) for every role; for harder tasks, raise the thinking level
+(`/model`, `--thinking`, or `:max` on a role) rather than change the model.
+`ai/omp/models.yml` only supplies the key: omp reads it from 1Password
+(`op read`, the `PI_CODING_AGENT` field of the "DeepSeek API Keys" note in
+Private) the first time a request needs it and caches it for the process.
+Rotate it in 1Password and restart omp. The 1Password app must be unlocked
+with CLI integration on, and omp gives `op` 10 seconds, so approve the prompt
+promptly. `--api-key` overrides it.
 
-`ai/pi/` holds the settings, a Gruvbox Dark theme, prompt templates
-(`/review`, `/commit`, `/pr`, `/explain`, `/fix-ci`, and the subagent
-workflows), a `planner` subagent, and extensions vendored from pi's bundled
-examples (plan mode, todos, handoff, notifications, a permission gate and
-protected paths), plus our own `footer.ts`, a status bar in the theme's
-colours, and `mcp-guard.ts` and `subagent-guard.ts` (below). Each vendored
-extension names the pi version it came from, and mise pins pi to that version.
+`ai/omp/` holds `config.yml` (settings), `models.yml`, `mcp.json`,
+`APPEND_SYSTEM.md` and the `/commit`, `/pr` and `/explain` commands. Plan
+mode, todos, handoff, `ask`, subagents (`task`), `web_search`, `/review` and
+`/ci-green` are built in, as is the `dark-gruvbox` theme. `/settings` and
+`/model` write `config.yml` through the symlink; review the result with
+`git diff`. Logins, sessions and the key store (`agent.db`) stay in
+`~/.omp`.
 
-The permission gate and protected paths are a guardrail against model
-mistakes, not a sandbox. They may miss `$(…)`, interpreter one-liners
-(`python -c`), directory searches, `curl`, paths relative to a `cd`
-(`cd ~ && cat .ssh/id_ed25519`), and quoted paths with spaces
-(`cat ~/.ssh/'my key'`). A commit message naming a secret path with no spaces
-in it is blocked, as is a remote one (`scp host:~/.ssh/id_ed25519.pub .`).
-In bash, writes to the write-only paths (`.git/`, `node_modules/`, the
-extension directories) are checked only for redirects,
-`tee`, `sed`/`perl -i`, and `mv`/`cp`/`install`/`ln`. pi's `settings.json` and
-`models.json` are write-only too: pi installs the packages listed in one and
-runs the key command in the other, so the agent may read them but not edit
-them.
+**Guardrails.** `config.yml` keeps the default `yolo` approval mode and adds
+`bash.patterns`: commands touching secret paths (`~/.ssh`, `~/.gnupg`,
+`~/.claude.json`, `ai/env.local.zsh`, `op read`, `gh auth token`, …) are
+denied, and recursive `rm`, `sudo`, installs, `defaults write`, running a
+`setup.sh`, force-push and history rewrites ask first. Those rules hold in
+yolo mode, and subagents, which have no UI, are refused instead of asked.
+`eval` (Python/JS) always asks, since the patterns don't see its shells. This
+is a guardrail against model mistakes, not a sandbox: the rules match the
+command text only (`$(…)`, variables and interpreter one-liners slip past),
+and the `read`/`grep` tools are not restricted by path.
 
-Third-party packages go in `settings.json` → `packages`, pinned to an exact
-version (`npm:name@x.y.z`), after reading their source and their dependency
-tree's install scripts, which pi runs. On startup pi installs any missing or
-mismatched package into `~/.pi/agent/npm/` (`pi --offline` skips that);
-`pi install npm:name@x.y.z` does the same and writes `settings.json` through
-the symlink. Review the result with `git diff`. `npmCommand` adds
-`--ignore-scripts`, so a later dependency release can't run an install script
-either.
+**MCP.** `ai/omp/mcp.json` defines GitHub, read-only and authenticated with
+`gh auth token`, and Context7. `mcp.enableProjectConfig: false` ignores
+project MCP files (`.mcp.json`, `.omp/mcp.json`, `.claude/`, …), whose
+commands a cloned repo controls. omp does still read other project config,
+such as `.omp/` settings, `AGENTS.md` and `.claude/commands`.
 
-[pi-web-access](https://pi.dev/packages/pi-web-access) adds web search and
-page fetching. With no API key it searches through Exa's public MCP endpoint,
-so queries go to Exa. `ai/pi/web-search.json` (linked to
-`~/.pi/agent/web-search.json`, write-only for the agent since it can hold key
-commands) turns off the browser curator and browser-cookie access.
-
-[pi-mcp-adapter](https://pi.dev/packages/pi-mcp-adapter) connects MCP servers
-lazily, through one `mcp` tool. `ai/pi/mcp.json` (linked to
-`~/.pi/agent/mcp.json`) defines GitHub, read-only and authenticated with
-`gh auth token`, and Context7. `ai/aliases.zsh` exports
-`PI_MCP_CONFIG_MODE=exclusive`, so the adapter ignores project `.mcp.json`
-files, whose commands a cloned repo controls. `mcp-guard.ts` blocks MCP tools
-when that variable is missing (pi started outside zsh), the model-driven
-server install, and `mcpScript`. MCP config files are write-only for the
-agent, since they can run commands.
-
-[pi-subagents](https://pi.dev/packages/pi-subagents) provides the `subagent`
-tool and builtin agents (`scout`, `worker`, `reviewer`, `researcher`,
-`oracle`, …); `ai/pi/agents/planner.md` adds a planner. Only its extension
-loads, not its skills or prompts, and `settings.json` disables the agents that
-run external CLIs (Claude Code, Codex, Cursor). Children run in-process
-without our extensions, so `subagent-guard.ts` registers the permission gate,
-protected paths and itself as extensions every child must load, and blocks
-`subagent` if that registration is missing. Children have no UI, so the
-permission gate blocks flagged commands there instead of asking. The guard
-also limits the model to one agent per call: it blocks workflow scripts,
-`gate` and acceptance `verify` commands (which run on the host, outside the
-gate), output paths, remote machines, agent and schedule changes, and project
-agents and settings, which pi-subagents loads without pi's project trust
-check. Its slash commands (`/run`, `/subagents`, …) are yours and are not
-checked. Agent directories are write-only for the agent. On a pi-subagents
-bump, re-check the child extension registry and the tool's fields against the
-guard.
-
-To typecheck, lint and test the extensions, run
-`cd ai/pi && npm install && npm run check`. The tests also fail when a
-vendored extension drifts from pi's bundled example, or when the pi version in
-`ai/pi/package.json`, `mise/global.toml` and the vendored headers disagree. To
-bump pi, update all three, re-copy the examples, re-check the path
-normalization that `protected-paths.ts` mirrors from pi, and commit the
-`lastChangelogVersion` pi writes to `settings.json` on its first run.
-
-`pic` continues the last session and `pir` picks one to resume.
+`ompc` continues the last session and `ompr` picks one to resume.
 
 ## Claude Code on other providers
 
@@ -262,7 +213,7 @@ executing a written plan, boilerplate, tests, lint and CI fixes, exploration,
 docs. If a mistake would ship silently or shape later work, use Pro:
 planning, architecture, API and schema design, security, pre-merge
 `/code-review`, and debugging after one failed DeepSeek attempt. Web
-research goes to pi, since Claude Code's web search doesn't work on other
+research goes to omp, since Claude Code's web search doesn't work on other
 providers. A DeepSeek session sends the code it reads to DeepSeek, so deny
 `.env` reads in private repos first.
 
@@ -379,8 +330,6 @@ push to `main` and every pull request:
 - `lint.yml` — `shellcheck -x`, `zsh -n`, markdownlint, editorconfig-checker,
   JSON and TOML validation, actionlint and zizmor.
 - `secrets.yml` — a gitleaks scan of every pushed commit, with no path filter.
-- `pi.yml` — the pi extension checks, only when `ai/pi/` or `mise/global.toml`
-  changed.
 - `smoke.yml` — on macOS, when the shell config, `setup.sh`, `lib/` or a plist
   changed: lints the plists, then links the zsh config into a throwaway `HOME`
   and fails on any stderr output or a warm start over 1.5 s.

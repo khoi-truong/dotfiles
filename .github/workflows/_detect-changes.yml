@@ -1,12 +1,9 @@
-# Reusable (workflow_call only). Called by pi.yml and smoke.yml.
+# Reusable (workflow_call only). Called by smoke.yml.
 name: Detect Changes
 
 on:
   workflow_call:
     outputs:
-      pi:
-        description: "'true' when the pi extensions or their version pins changed"
-        value: ${{ jobs.detect-changes.outputs.pi }}
       macos:
         description: "'true' when anything the macOS smoke test exercises changed"
         value: ${{ jobs.detect-changes.outputs.macos }}
@@ -23,7 +20,6 @@ jobs:
       pull-requests: read # paths-filter lists the PR's files through the API
     outputs:
       # Push to main (or a manual run) always runs everything.
-      pi: ${{ github.event_name != 'pull_request' || steps.changed.outputs.pi == 'true' }}
       macos: ${{ github.event_name != 'pull_request' || steps.changed.outputs.macos == 'true' }}
     steps:
       - name: Detect changed paths
@@ -32,11 +28,6 @@ jobs:
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           filters: |
-            pi:
-              - 'ai/pi/**'
-              - 'mise/global.toml'
-              - '.github/workflows/pi.yml'
-              - '.github/workflows/_detect-changes.yml'
             macos:
               - 'zsh/**'
               - 'ai/aliases.zsh'

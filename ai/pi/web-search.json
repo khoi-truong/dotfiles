@@ -1,7 +1,0 @@
-{
-  "workflow": "none",
-  "allowBrowserCookies": false,
-  "commands": {
-    "curator": { "enabled": false }
-  }
-}

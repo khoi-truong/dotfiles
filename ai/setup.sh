@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# ai — Claude Code, pi and GitHub Copilot CLI configuration.
+# ai — Claude Code, oh-my-pi and GitHub Copilot CLI configuration.
 #
 # Only the declarative config is versioned. Credentials are NOT:
 #   ~/.claude.json                       project history + auth
 #   ~/.claude/.credentials.json          OAuth tokens
 #   ~/.config/github-copilot/apps.json   OAuth tokens
-#   ~/.pi/agent/auth.json                pi API keys (the DeepSeek key lives
-#                                        in 1Password; see ai/pi/models.json)
+#   ~/.omp/agent/agent.db                omp logins and API keys (the DeepSeek
+#                                        key lives in 1Password; see
+#                                        ai/omp/models.yml)
 # Those stay on the machine and are re-created by logging in.
 set -euo pipefail
 
@@ -28,8 +29,8 @@ link "${CURRENT_DIR}/claude/settings.json" "${HOME}/.claude/settings.json"
 link "${CURRENT_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
 
 # Shared skills — one symlink per skill dir so OMC-managed skills
-# (~/.claude/skills/wiki, …) are left untouched. pi reads shared/skills in
-# place (pi/settings.json `skills`), so it gets no links.
+# (~/.claude/skills/wiki, …) are left untouched. omp gets the whole directory
+# (below).
 for skill in "${CURRENT_DIR}"/shared/skills/*/; do
   [ -d "$skill" ] || continue
   link "${skill%/}" "${HOME}/.claude/skills/$(basename "$skill")"
@@ -41,22 +42,25 @@ else
   warn "claude not found — installed by brew/setup.sh (cask \"claude-code\")."
 fi
 
-# --- pi --------------------------------------------------------------------
-# Installed by mise (mise/global.toml). pi writes settings.json in place
-# (/model Ctrl+S, pi install, lastChangelogVersion), so the symlink survives
-# and those edits show up as repo diffs to commit or discard.
-# auth.json, models-store.json, trust.json, sessions/ and npm/ stay local.
-PI_DIR="${HOME}/.pi/agent"
-for item in settings.json models.json web-search.json mcp.json APPEND_SYSTEM.md agents extensions prompts themes; do
-  link "${CURRENT_DIR}/pi/${item}" "${PI_DIR}/${item}"
+# --- oh-my-pi --------------------------------------------------------------
+# Installed by brew/Brewfile (can1357/tap/omp). /settings and /model write
+# config.yml in place, so those edits show up as repo diffs to commit or
+# discard. agent.db, sessions and the rest of ~/.omp stay local.
+OMP_DIR="${HOME}/.omp/agent"
+for item in config.yml models.yml mcp.json APPEND_SYSTEM.md commands; do
+  link "${CURRENT_DIR}/omp/${item}" "${OMP_DIR}/${item}"
 done
+link "${CURRENT_DIR}/shared/skills" "${OMP_DIR}/skills"
 # Same global rules as Claude Code.
-link "${CURRENT_DIR}/shared/rules/common.md" "${PI_DIR}/AGENTS.md"
+link "${CURRENT_DIR}/shared/rules/common.md" "${OMP_DIR}/AGENTS.md"
 
-if command -v pi >/dev/null 2>&1; then
-  ok "pi $(pi --version 2>/dev/null || echo 'installed')"
+if command -v omp >/dev/null 2>&1; then
+  ok "omp $(omp --version 2>/dev/null || echo 'installed')"
 else
-  warn "pi not found — installed by mise (mise/global.toml)."
+  warn "omp not found — installed by brew/setup.sh (can1357/tap/omp)."
+fi
+if [ -d "${HOME}/.pi" ]; then
+  warn "${HOME}/.pi is left over from pi; delete it once nothing there is needed."
 fi
 
 # --- GitHub Copilot CLI ----------------------------------------------------
@@ -88,7 +92,7 @@ fi
 # --- dangling links -------------------------------------------------------
 # Files moved in the repo leave stale links behind. Report them; the user
 # decides whether to delete.
-for dir in "${HOME}/.claude" "${HOME}/.claude/skills" "${PI_DIR}" "${HOME}/.copilot"; do
+for dir in "${HOME}/.claude" "${HOME}/.claude/skills" "${OMP_DIR}" "${HOME}/.copilot"; do
   [ -d "$dir" ] || continue
   for entry in "$dir"/*; do
     if [ -L "$entry" ] && [ ! -e "$entry" ]; then
