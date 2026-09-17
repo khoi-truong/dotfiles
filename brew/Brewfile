@@ -55,7 +55,6 @@ brew "ollama"         # local LLMs
 # development
 cask "iterm2"
 cask "claude-code@latest"
-brew "opencode"
 brew "pi-coding-agent"
 cask "visual-studio-code"
 # cask "cursor"
