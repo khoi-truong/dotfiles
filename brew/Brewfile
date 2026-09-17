@@ -48,14 +48,15 @@ brew "oxipng"
 brew "transmission-cli"
 
 # ai
-brew "ollama"          # local LLMs
-brew "pi-coding-agent" # pi coding agent (pi.dev)
+brew "ollama"         # local LLMs
 
 # ---------------------------------------------------------------- casks -----
 
 # development
 cask "iterm2"
 cask "claude-code@latest"
+brew "opencode"
+brew "pi-coding-agent"
 cask "visual-studio-code"
 # cask "cursor"
 # cask "android-studio"
