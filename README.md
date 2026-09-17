@@ -230,7 +230,6 @@ Claude Code can talk to any Anthropic-compatible API. `ai/claude/providers.zsh`
 | --- | --- |
 | `cc` / `ccc` / `ccr` | Pro (new, `--continue`, `--resume`), with every provider variable cleared |
 | `ccd` / `ccdc` / `ccdr` | DeepSeek V4.1 Flash, same three forms |
-| `ccd --pro …` | DeepSeek, with the Opus slot on `deepseek-v4-pro` |
 | `claude-deepseek` | Long form of `ccd` |
 | `cc-providers` | List configured providers |
 
@@ -240,7 +239,7 @@ A provider is one `cc_provider` call at the bottom of the file:
 cc_provider deepseek \
   url=https://api.deepseek.com/anthropic \
   key=op://…/PI_CODING_AGENT \
-  model=deepseek-flash pro=deepseek-v4-pro label=DS short=ccd
+  model=deepseek-flash label=DS short=ccd
 ```
 
 `url`, `key` and `model` are required. `key` is an `op://` reference (read
