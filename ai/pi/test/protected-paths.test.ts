@@ -40,7 +40,7 @@ const legacy: [string, string, boolean][] = [
   ["/tmp/p", ".env.example", false],
   ["/tmp/p", ".envrc", false],
   ["/tmp/p", "src/vite.env.d.ts", false],
-  [`${H}/.dotfiles`, "ai/pi/settings.json", false],
+  [`${H}/.dotfiles`, "ai/pi/settings.json", true],
   [`${H}/.dotfiles`, "ai/env.local.zsh.example", false],
 ];
 
@@ -93,11 +93,13 @@ const rows: [string, string, string, boolean][] = [
   ["write", "@~/.ssh/config", repo, true],
   ["write", ".git/config", repo, true],
   ["write", "ai/pi/extensions/todo.ts", repo, true],
+  ["edit", "~/.pi/agent/models.json", repo, true],
   ["edit", "node_modules/x/index.js", repo, true],
   // allow
   ["read", "node_modules/x/index.d.ts", repo, false],
   ["bash", "cat .git/HEAD", repo, false],
   ["read", "ai/pi/extensions/todo.ts", repo, false],
+  ["read", "ai/pi/models.json", repo, false],
   ["read", ".git/config", repo, false],
   ["bash", "ls node_modules", repo, false],
   ["bash", "cat README.md", repo, false],
@@ -175,6 +177,9 @@ const rows: [string, string, string, boolean][] = [
   ["bash", "git add .", repo, false],
   ["bash", "npm install", repo, false],
   ["bash", "cp ai/pi/extensions/todo.ts /tmp/x.ts", repo, false],
+  ["bash", "sed -i '' 's/a/b/' ai/pi/settings.json", repo, true],
+  ["bash", "echo {} > ~/.pi/agent/models.json", repo, true],
+  ["bash", "cat ai/pi/models.json", repo, false],
   ["bash", "sed 's/.git/x/' .git/config", repo, false],
   ["bash", "sed -n 1p .git/config > /tmp/x", repo, false],
   ["bash", "sed -i '' 's/a/b/' README.md", repo, false],

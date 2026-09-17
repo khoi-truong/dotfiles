@@ -144,9 +144,13 @@ mistakes, not a sandbox. They may miss `$(…)`, interpreter one-liners
 (`python -c`), directory searches, `curl`, paths relative to a `cd`
 (`cd ~ && cat .ssh/id_ed25519`), and quoted paths with spaces
 (`cat ~/.ssh/'my key'`). A commit message naming a secret path with no spaces
-in it is blocked, as is a remote one (`scp host:~/.ssh/id_ed25519.pub .`). In bash, writes to the write-only paths (`.git/`,
-`node_modules/`, the extension directories) are checked only for redirects,
-`tee`, `sed`/`perl -i`, and `mv`/`cp`/`install`/`ln`.
+in it is blocked, as is a remote one (`scp host:~/.ssh/id_ed25519.pub .`).
+In bash, writes to the write-only paths (`.git/`, `node_modules/`, the
+extension directories) are checked only for redirects,
+`tee`, `sed`/`perl -i`, and `mv`/`cp`/`install`/`ln`. pi's `settings.json` and
+`models.json` are write-only too: pi installs the packages listed in one and
+runs the key command in the other, so the agent may read them but not edit
+them.
 
 Third-party packages go in `settings.json` → `packages`, pinned to an exact
 version (`npm:name@x.y.z`), after reading their source and their dependency
@@ -159,8 +163,9 @@ To typecheck, lint and test the extensions, run
 `cd ai/pi && npm install && npm run check`. The tests also fail when a
 vendored extension drifts from pi's bundled example, or when the pi version in
 `ai/pi/package.json`, `mise/global.toml` and the vendored headers disagree. To
-bump pi, update all three, re-copy the examples, and re-check the path
-normalization that `protected-paths.ts` mirrors from pi.
+bump pi, update all three, re-copy the examples, re-check the path
+normalization that `protected-paths.ts` mirrors from pi, and commit the
+`lastChangelogVersion` pi writes to `settings.json` on its first run.
 
 `pic` continues the last session and `pir` picks one to resume.
 
