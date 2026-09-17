@@ -48,7 +48,8 @@ brew "oxipng"
 brew "transmission-cli"
 
 # ai
-brew "ollama"         # local LLMs
+brew "ollama"          # local LLMs
+brew "pi-coding-agent" # pi coding agent (pi.dev)
 
 # ---------------------------------------------------------------- casks -----
 
