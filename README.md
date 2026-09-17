@@ -157,7 +157,15 @@ version (`npm:name@x.y.z`), after reading their source and their dependency
 tree's install scripts, which pi runs. On startup pi installs any missing or
 mismatched package into `~/.pi/agent/npm/` (`pi --offline` skips that);
 `pi install npm:name@x.y.z` does the same and writes `settings.json` through
-the symlink. Review the result with `git diff`.
+the symlink. Review the result with `git diff`. `npmCommand` adds
+`--ignore-scripts`, so a later dependency release can't run an install script
+either.
+
+[pi-web-access](https://pi.dev/packages/pi-web-access) adds web search and
+page fetching. With no API key it searches through Exa's public MCP endpoint,
+so queries go to Exa. `ai/pi/web-search.json` (linked to
+`~/.pi/agent/web-search.json`, write-only for the agent since it can hold key
+commands) turns off the browser curator and browser-cookie access.
 
 To typecheck, lint and test the extensions, run
 `cd ai/pi && npm install && npm run check`. The tests also fail when a

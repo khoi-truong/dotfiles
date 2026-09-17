@@ -31,6 +31,12 @@
   "skills": [
     "~/.dotfiles/ai/claude/skills"
   ],
-  "packages": [],
+  "packages": [
+    "npm:pi-web-access@0.29.0"
+  ],
+  "npmCommand": [
+    "npm",
+    "--ignore-scripts"
+  ],
   "lastChangelogVersion": "0.85.1"
 }
