@@ -19,16 +19,18 @@ CURRENT_DIR="$(module_dir)"
 info "Setting up AI tooling..."
 
 # --- Claude Code -----------------------------------------------------------
-# claude/CLAUDE.md holds the OMC orchestration rules and imports rules/common.md.
+# claude/CLAUDE.md holds the OMC orchestration rules and imports
+# shared/rules/common.md.
 # Tools that edit settings.json (Claude Code, iTerm's cc-status installer)
 # replace the symlink with a real file. Re-running this backs that file up and
 # relinks; fold anything new from the backup into claude/settings.json first.
 link "${CURRENT_DIR}/claude/settings.json" "${HOME}/.claude/settings.json"
 link "${CURRENT_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
 
-# Personal skills — one symlink per skill dir so OMC-managed skills
-# (~/.claude/skills/wiki, …) are left untouched.
-for skill in "${CURRENT_DIR}"/claude/skills/*/; do
+# Shared skills — one symlink per skill dir so OMC-managed skills
+# (~/.claude/skills/wiki, …) are left untouched. pi reads shared/skills in
+# place (pi/settings.json `skills`), so it gets no links.
+for skill in "${CURRENT_DIR}"/shared/skills/*/; do
   [ -d "$skill" ] || continue
   link "${skill%/}" "${HOME}/.claude/skills/$(basename "$skill")"
 done
@@ -49,7 +51,7 @@ for item in settings.json models.json web-search.json mcp.json APPEND_SYSTEM.md 
   link "${CURRENT_DIR}/pi/${item}" "${PI_DIR}/${item}"
 done
 # Same global rules as Claude Code.
-link "${CURRENT_DIR}/rules/common.md" "${PI_DIR}/AGENTS.md"
+link "${CURRENT_DIR}/shared/rules/common.md" "${PI_DIR}/AGENTS.md"
 
 if command -v pi >/dev/null 2>&1; then
   ok "pi $(pi --version 2>/dev/null || echo 'installed')"
@@ -82,5 +84,17 @@ if [ ! -f "${CURRENT_DIR}/env.local.zsh" ]; then
   cp "${CURRENT_DIR}/env.local.zsh.example" "${CURRENT_DIR}/env.local.zsh"
   ok "created ai/env.local.zsh (gitignored) — add API keys there"
 fi
+
+# --- dangling links -------------------------------------------------------
+# Files moved in the repo leave stale links behind. Report them; the user
+# decides whether to delete.
+for dir in "${HOME}/.claude" "${HOME}/.claude/skills" "${PI_DIR}" "${HOME}/.copilot"; do
+  [ -d "$dir" ] || continue
+  for entry in "$dir"/*; do
+    if [ -L "$entry" ] && [ ! -e "$entry" ]; then
+      warn "dangling symlink: $entry -> $(readlink "$entry")"
+    fi
+  done
+done
 
 ok "AI tooling configured."

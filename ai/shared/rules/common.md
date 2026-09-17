@@ -21,6 +21,6 @@
   to the task.
 - GitHub Actions: when creating, editing, or reviewing anything under
   `.github/` (workflow or composite-action YAML), first read and apply the
-  conventions in `~/.dotfiles/ai/shared/github-actions/` — `naming.md`,
-  `structure.md`, `security.md`, `cost-and-speed.md`. Settled decisions, not
-  suggestions.
+  conventions in `~/.dotfiles/ai/shared/skills/github-actions/references/` —
+  `naming.md`, `structure.md`, `security.md`, `cost-and-speed.md`. Settled
+  decisions, not suggestions.

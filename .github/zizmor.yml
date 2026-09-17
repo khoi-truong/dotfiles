@@ -1,5 +1,5 @@
-# Mirrors ai/shared/github-actions/structure.md: trusted publishers pin to a
-# major tag, everything else to a full commit SHA.
+# Mirrors ai/shared/skills/github-actions/references/structure.md: trusted
+# publishers pin to a major tag, everything else to a full commit SHA.
 rules:
   unpinned-uses:
     config:

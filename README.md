@@ -47,8 +47,14 @@ directory, so edits in the repo are live immediately.
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |
 | `ai/claude/*`                                           | `~/.claude/`                            |
 | `ai/copilot/*`                                          | `~/.copilot/`                           |
-| `ai/pi/` config dirs, `ai/rules/common.md` (as `AGENTS.md`) | `~/.pi/agent/`                     |
+| `ai/pi/` config dirs, `ai/shared/rules/common.md` (as `AGENTS.md`) | `~/.pi/agent/` |
+| `ai/shared/skills/*`                                    | `~/.claude/skills/` (pi reads them in place) |
 | `vscode/{settings,keybindings}.json`, `vscode/snippets` | VS Code user dir                        |
+
+`ai/` is split by harness (`claude/`, `pi/`, `copilot/`), with what they
+share in `ai/shared/`: `rules/common.md`, the global instructions every harness
+loads, and `skills/`, Agent Skills that Claude Code and pi both read. Each
+harness keeps its own model/provider and MCP config, since the formats differ.
 
 **Preference redirection** — for apps with no dotfile.
 
@@ -78,7 +84,8 @@ directory, so edits in the repo are live immediately.
 3. `zsh/omz.zsh` — oh-my-zsh settings; must precede the plugin bundle.
 4. `zsh/local/plugins.zsh` — the antidote bundle.
 5. `zsh/aliases.zsh`, `zsh/aliases.macos.zsh`, `zsh/functions.zsh`,
-   `ai/aliases.zsh` (which sources `ai/claude-providers.zsh`) — after plugins, so these win.
+   `ai/aliases.zsh` (which sources `ai/claude/providers.zsh`) — after plugins,
+   so these win.
 6. mise, fzf, zoxide. Their init scripts are cached in `zsh/local/init-*.zsh`,
    keyed by binary path and rebuilt when the binary or `zshrc` changes (delete
    them to force a rebuild). The mise cache is also keyed on `$PATH`, the
@@ -206,7 +213,7 @@ normalization that `protected-paths.ts` mirrors from pi, and commit the
 
 ## Claude Code on other providers
 
-Claude Code can talk to any Anthropic-compatible API. `ai/claude-providers.zsh`
+Claude Code can talk to any Anthropic-compatible API. `ai/claude/providers.zsh`
 (sourced by `ai/aliases.zsh`) sets that up per process, so the Pro login and
 `~/.claude/settings.json` are never touched.
 

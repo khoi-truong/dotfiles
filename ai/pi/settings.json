@@ -29,7 +29,7 @@
     }
   },
   "skills": [
-    "~/.dotfiles/ai/claude/skills"
+    "~/.dotfiles/ai/shared/skills"
   ],
   "packages": [
     "npm:pi-web-access@0.29.0",

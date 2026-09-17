@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
-# ai/claude-providers.zsh — run Claude Code against Anthropic-compatible
+# ai/claude/providers.zsh — run Claude Code against Anthropic-compatible
 # providers, one process at a time. The Pro login is never touched.
 # Sourced from ai/aliases.zsh. To add a provider, add one cc_provider call at
 # the bottom; it generates claude-<name> and, with short=, <short>/<short>c/<short>r.
