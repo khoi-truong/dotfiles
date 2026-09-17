@@ -32,7 +32,8 @@
     "~/.dotfiles/ai/claude/skills"
   ],
   "packages": [
-    "npm:pi-web-access@0.29.0"
+    "npm:pi-web-access@0.29.0",
+    "npm:pi-mcp-adapter@2.34.0"
   ],
   "npmCommand": [
     "npm",

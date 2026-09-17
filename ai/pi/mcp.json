@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "hostConfigDiscovery": "off",
+    "scriptMode": false,
+    "notifyOnStartupConnect": false
+  },
+  "mcpServers": {
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "auth": "bearer",
+      "bearerToken": "!gh auth token",
+      "headers": {
+        "X-MCP-Readonly": "true"
+      }
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

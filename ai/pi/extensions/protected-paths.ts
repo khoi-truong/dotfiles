@@ -49,8 +49,10 @@ export const secretPaths = [
 ];
 
 // pi runs the key command in models.json and installs the packages in
-// settings.json, and web-search.json can hold key commands, so an edit to any
-// of them runs code outside these checks.
+// settings.json, and web-search.json and mcp.json can run commands, so an edit
+// to any of them runs code outside these checks. The shared and project MCP
+// configs are ignored (PI_MCP_CONFIG_MODE=exclusive) but guarded too, for
+// other MCP hosts.
 export const writeOnlyPaths = [
   "/.git/",
   "/node_modules/",
@@ -59,9 +61,16 @@ export const writeOnlyPaths = [
   "~/.dotfiles/ai/pi/settings.json",
   "~/.dotfiles/ai/pi/models.json",
   "~/.dotfiles/ai/pi/web-search.json",
+  "~/.dotfiles/ai/pi/mcp.json",
   "~/.pi/agent/settings.json",
   "~/.pi/agent/models.json",
   "~/.pi/agent/web-search.json",
+  "~/.pi/agent/mcp.json",
+  "~/.config/mcp/",
+  "~/.agents/mcp.json",
+  "~/.agents/mcp/",
+  "/.mcp.json/",
+  "/.pi/mcp.json/",
 ];
 
 const home = homedir().toLowerCase();

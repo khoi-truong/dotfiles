@@ -44,7 +44,7 @@ test("mise pins the installed pi version", () => {
 });
 
 // Written for this repo, not copied from pi's examples.
-const own = ["footer.ts"];
+const own = ["footer.ts", "mcp-guard.ts"];
 const vendored = readdirSync(extensions, { recursive: true, encoding: "utf8" }).filter(
   (f) => f.endsWith(".ts") && !own.includes(f),
 );
