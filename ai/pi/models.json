@@ -1,0 +1,28 @@
+{
+  "providers": {
+    "deepseek": {
+      "apiKey": "!security find-generic-password -a \"$USER\" -s deepseek-api-key -w",
+      "models": [
+        {
+          "id": "deepseek-flash",
+          "name": "DeepSeek V4.1 Flash",
+          "api": "openai-completions",
+          "baseUrl": "https://api.deepseek.com",
+          "reasoning": true,
+          "thinkingLevelMap": { "minimal": null, "low": "low", "medium": null, "high": "high", "max": "max" },
+          "input": ["text", "image"],
+          "cost": { "input": 0.3, "output": 1.2, "cacheRead": 0.006, "cacheWrite": 0 },
+          "contextWindow": 1000000,
+          "maxTokens": 384000,
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "maxTokensField": "max_tokens",
+            "requiresReasoningContentOnAssistantMessages": true,
+            "thinkingFormat": "deepseek"
+          }
+        }
+      ]
+    }
+  }
+}

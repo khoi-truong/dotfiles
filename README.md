@@ -119,9 +119,12 @@ day old or older than the plugin bundle or `env.zsh`.
 [pi](https://pi.dev) is installed by mise and runs DeepSeek V4.1 Flash
 (`deepseek-flash`) for everything. For harder tasks, change the reasoning
 effort with `/thinking` (`off`/`low`/`high`/`max`, default `high`) rather
-than the model. The key goes in `ai/env.local.zsh` as `DEEPSEEK_API_KEY`.
-`deepseek-flash` comes from the model catalog pi downloads, not the one it
-ships with, so run `pi` online once on a new machine.
+than the model. `ai/pi/models.json` defines `deepseek-flash`, which pi's
+bundled catalog lacks, and has pi read the key from Keychain when it starts,
+so it isn't exported to every shell. Store it with
+`security add-generic-password -a "$USER" -s deepseek-api-key -w`. A
+`DEEPSEEK_API_KEY` in the environment or a key in `~/.pi/agent/auth.json`
+overrides it.
 Thinking is collapsed to a one-line label; Ctrl+T shows it, and pi saves
 that choice to `settings.json`, so revert it there if it wasn't meant to stick.
 
