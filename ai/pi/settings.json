@@ -2,6 +2,7 @@
   "defaultProvider": "deepseek",
   "defaultModel": "deepseek-flash",
   "defaultThinkingLevel": "high",
+  "hideThinkingBlock": true,
   "enabledModels": [
     "deepseek-flash"
   ],

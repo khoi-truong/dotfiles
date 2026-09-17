@@ -122,6 +122,8 @@ effort with `/thinking` (`off`/`low`/`high`/`max`, default `high`) rather
 than the model. The key goes in `ai/env.local.zsh` as `DEEPSEEK_API_KEY`.
 `deepseek-flash` comes from the model catalog pi downloads, not the one it
 ships with, so run `pi` online once on a new machine.
+Thinking is collapsed to a one-line label; Ctrl+T shows it, and pi saves
+that choice to `settings.json`, so revert it there if it wasn't meant to stick.
 
 `ai/pi/` holds the settings, a Gruvbox Dark theme, prompt templates
 (`/review`, `/commit`, `/pr`, `/explain`, `/fix-ci`, and the subagent
