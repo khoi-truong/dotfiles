@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# ai — Claude Code and GitHub Copilot CLI configuration.
+# ai — Claude Code, pi and GitHub Copilot CLI configuration.
 #
 # Only the declarative config is versioned. Credentials are NOT:
 #   ~/.claude.json                       project history + auth
 #   ~/.claude/.credentials.json          OAuth tokens
 #   ~/.config/github-copilot/apps.json   OAuth tokens
+#   ~/.pi/agent/auth.json                pi API keys (DEEPSEEK_API_KEY lives
+#                                        in ai/env.local.zsh instead)
 # Those stay on the machine and are re-created by logging in.
 set -euo pipefail
 
@@ -35,6 +37,24 @@ if command -v claude >/dev/null 2>&1; then
   ok "claude $(claude --version 2>/dev/null || echo 'installed')"
 else
   warn "claude not found — installed by brew/setup.sh (cask \"claude-code\")."
+fi
+
+# --- pi --------------------------------------------------------------------
+# Installed by mise (mise/global.toml). pi writes settings.json in place
+# (/model Ctrl+S, pi install, lastChangelogVersion), so the symlink survives
+# and those edits show up as repo diffs to commit or discard.
+# auth.json, models-store.json, trust.json, sessions/ and npm/ stay local.
+PI_DIR="${HOME}/.pi/agent"
+for item in settings.json APPEND_SYSTEM.md agents extensions prompts themes; do
+  link "${CURRENT_DIR}/pi/${item}" "${PI_DIR}/${item}"
+done
+# Same global rules as Claude Code.
+link "${CURRENT_DIR}/rules/common.md" "${PI_DIR}/AGENTS.md"
+
+if command -v pi >/dev/null 2>&1; then
+  ok "pi $(pi --version 2>/dev/null || echo 'installed')"
+else
+  warn "pi not found — installed by mise (mise/global.toml)."
 fi
 
 # --- GitHub Copilot CLI ----------------------------------------------------

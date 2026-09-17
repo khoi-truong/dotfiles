@@ -1,0 +1,35 @@
+{
+  "defaultProvider": "deepseek",
+  "defaultModel": "deepseek-flash",
+  "defaultThinkingLevel": "high",
+  "enabledModels": [
+    "deepseek-flash"
+  ],
+  "theme": "gruvbox-dark",
+  "quietStartup": true,
+  "collapseChangelog": true,
+  "enableInstallTelemetry": false,
+  "showCacheMissNotices": true,
+  "markdown": {
+    "mermaid": "final"
+  },
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 32768,
+    "keepRecentTokens": 60000
+  },
+  "httpIdleTimeoutMs": 600000,
+  "retry": {
+    "enabled": true,
+    "maxRetries": 3,
+    "provider": {
+      "timeoutMs": 600000,
+      "maxRetries": 0
+    }
+  },
+  "skills": [
+    "~/.dotfiles/ai/claude/skills"
+  ],
+  "packages": [],
+  "lastChangelogVersion": "0.85.1"
+}

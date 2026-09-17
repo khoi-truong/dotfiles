@@ -9,6 +9,10 @@ alias cc="claude"
 alias ccc="claude --continue"
 alias ccr="claude --resume"
 
+# pi (DeepSeek)
+alias pic="pi --continue"
+alias pir="pi --resume"
+
 # GitHub Copilot CLI (gh extension)
 alias '??'="gh copilot suggest -t shell"
 alias 'git?'="gh copilot suggest -t git"

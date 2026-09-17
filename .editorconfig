@@ -12,6 +12,10 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# pi rewrites this with JSON.stringify, which adds no final newline.
+[ai/pi/settings.json]
+insert_final_newline = unset
+
 [*.txt]
 indent_style = tab
 indent_size = 4
