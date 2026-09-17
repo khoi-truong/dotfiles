@@ -17,10 +17,10 @@
 
 # --- language runtimes -------------------------------------------------------
 # Loose pins: these are fallbacks for projects that don't specify their own.
-python = "3.13"
+python = "3.14"
 node   = "lts"
 ruby   = "3.4"
-go     = "1.26"
+go     = "1.27"
 rust   = "stable"
 java   = "temurin-25"   # mise exports JAVA_HOME on its own
 
