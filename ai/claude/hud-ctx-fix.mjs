@@ -3,6 +3,8 @@
 // effective auto-compact window (200k) instead of the advertised 1M ceiling,
 // unless the session is genuinely past the 200k boundary. Keeps the OMC HUD
 // ctx bar aligned with the point where Claude Code actually starts compacting.
+// Also prefixes the model name with CC_PROVIDER_LABEL (set by
+// ai/claude-providers.zsh) so a non-Anthropic session is obvious.
 // Lives in dotfiles so plugin updates cannot clobber it.
 
 let raw = "";
@@ -25,6 +27,8 @@ try {
     cw.used_percentage = pct;
     cw.remaining_percentage = 100 - pct;
   }
+  const label = process.env.CC_PROVIDER_LABEL;
+  if (label && d.model) d.model.display_name = `${label}·${d.model.display_name ?? d.model.id ?? ""}`;
   process.stdout.write(JSON.stringify(d));
 } catch {
   process.stdout.write(raw); // never break the statusline

@@ -4,10 +4,8 @@
 #
 # The `claude` wrapper function itself lives in zsh/functions.zsh.
 
-# Claude Code
-alias cc="claude"
-alias ccc="claude --continue"
-alias ccr="claude --resume"
+# Claude Code: cc/ccc/ccr (Pro) and the other-provider launchers.
+[[ -r ${DOTFILES}/ai/claude-providers.zsh ]] && source "${DOTFILES}/ai/claude-providers.zsh"
 
 # pi (DeepSeek)
 alias pic="pi --continue"

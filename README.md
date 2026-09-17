@@ -78,7 +78,7 @@ directory, so edits in the repo are live immediately.
 3. `zsh/omz.zsh` — oh-my-zsh settings; must precede the plugin bundle.
 4. `zsh/local/plugins.zsh` — the antidote bundle.
 5. `zsh/aliases.zsh`, `zsh/aliases.macos.zsh`, `zsh/functions.zsh`,
-   `ai/aliases.zsh` — after plugins, so these win.
+   `ai/aliases.zsh` (which sources `ai/claude-providers.zsh`) — after plugins, so these win.
 6. mise, fzf, zoxide. Their init scripts are cached in `zsh/local/init-*.zsh`,
    keyed by binary path and rebuilt when the binary or `zshrc` changes (delete
    them to force a rebuild). The mise cache is also keyed on `$PATH`, the
@@ -203,6 +203,58 @@ normalization that `protected-paths.ts` mirrors from pi, and commit the
 `lastChangelogVersion` pi writes to `settings.json` on its first run.
 
 `pic` continues the last session and `pir` picks one to resume.
+
+## Claude Code on other providers
+
+Claude Code can talk to any Anthropic-compatible API. `ai/claude-providers.zsh`
+(sourced by `ai/aliases.zsh`) sets that up per process, so the Pro login and
+`~/.claude/settings.json` are never touched.
+
+| Command | Runs |
+| --- | --- |
+| `cc` / `ccc` / `ccr` | Pro (new, `--continue`, `--resume`), with every provider variable cleared |
+| `ccd` / `ccdc` / `ccdr` | DeepSeek V4.1 Flash, same three forms |
+| `ccd --pro …` | DeepSeek, with the Opus slot on `deepseek-v4-pro` |
+| `claude-deepseek` | Long form of `ccd` |
+| `cc-providers` | List configured providers |
+
+A provider is one `cc_provider` call at the bottom of the file:
+
+```zsh
+cc_provider deepseek \
+  url=https://api.deepseek.com/anthropic \
+  key=op://…/PI_CODING_AGENT \
+  model=deepseek-flash pro=deepseek-v4-pro label=DS short=ccd
+```
+
+`url`, `key` and `model` are required. `key` is an `op://` reference (read
+when the command starts; 1Password must be unlocked) or `env:VAR`. `small`
+sets the Sonnet, Haiku and subagent model (default `model`), `pro` enables
+`--pro`, `label` is the status-line prefix (default: the name in capitals),
+`short` adds the `X`/`Xc`/`Xr` commands, and `env.VAR=value` sets any extra
+variable the provider needs. It always generates `claude-<name>`. Check a new
+provider's endpoint and model ids in its own docs first.
+
+Each launch clears every variable any provider sets before exporting its own,
+and refuses to start with an empty key: otherwise Claude Code falls back to
+the Pro login and the provider answers "Authentication Fails". The status
+line prefixes the model with the label (`DS·deepseek-flash`). `--pro` is only
+recognised as the first argument.
+
+**Which to use.** Pro costs quota, DeepSeek costs money but Flash is cheap. If
+tests, CI or a quick diff read will catch a wrong answer, use DeepSeek:
+executing a written plan, boilerplate, tests, lint and CI fixes, exploration,
+docs. If a mistake would ship silently or shape later work, use Pro:
+planning, architecture, API and schema design, security, pre-merge
+`/code-review`, and debugging after one failed DeepSeek attempt. Web
+research goes to pi, since Claude Code's web search doesn't work on other
+providers. A DeepSeek session sends the code it reads to DeepSeek, so deny
+`.env` reads in private repos first.
+
+**Switching mid-task.** Hand off through the plan file, not the transcript:
+plan with `cc`, then `ccd "execute .omc/plans/<task>.md"`, then review with
+`cc`. `--continue` picks the directory's latest session whichever provider
+ran it, so prefer `ccdr`/`ccr` and pick the session.
 
 ## tmux
 
