@@ -6,7 +6,7 @@
 #   ~/.claude/.credentials.json          OAuth tokens
 #   ~/.config/github-copilot/apps.json   OAuth tokens
 #   ~/.pi/agent/auth.json                pi API keys (the DeepSeek key lives
-#                                        in Keychain; see ai/pi/models.json)
+#                                        in 1Password; see ai/pi/models.json)
 # Those stay on the machine and are re-created by logging in.
 set -euo pipefail
 

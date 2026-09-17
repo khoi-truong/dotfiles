@@ -1,7 +1,7 @@
 {
   "providers": {
     "deepseek": {
-      "apiKey": "!security find-generic-password -a \"$USER\" -s deepseek-api-key -w",
+      "apiKey": "!op read --account my.1password.com op://cvlkani4a45n37bmnnwzvynboi/wu7wmnnyk2qpmz6lyij5ubrqvi/PI_CODING_AGENT",
       "models": [
         {
           "id": "deepseek-flash",
