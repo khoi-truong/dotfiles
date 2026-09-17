@@ -43,7 +43,11 @@ test("mise pins the installed pi version", () => {
   assert.equal(mise.match(/^"npm:@earendil-works\/pi-coding-agent"\s*=\s*"([^"]+)"/m)?.[1], version);
 });
 
-const vendored = readdirSync(extensions, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith(".ts"));
+// Written for this repo, not copied from pi's examples.
+const own = ["footer.ts"];
+const vendored = readdirSync(extensions, { recursive: true, encoding: "utf8" }).filter(
+  (f) => f.endsWith(".ts") && !own.includes(f),
+);
 
 test("every extension is vendored", () => {
   assert.deepEqual(vendored.sort(), [
