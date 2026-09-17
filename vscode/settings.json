@@ -481,7 +481,7 @@
   "python.terminal.activateEnvInCurrentTerminal": true,
   "redhat.telemetry.enabled": true,
   "remote.SSH.configFile": "~/.ssh/config.local",
-  "rubyLsp.rubyExecutablePath": "/Users/khoi/.rbenv/shims/ruby",
+  "rubyLsp.rubyVersionManager": { "identifier": "mise" },
   "solidity.telemetry": true,
   "swift.disableAutoResolve": true,
   "swift.disableSwiftPackageManagerIntegration": true,
