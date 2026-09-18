@@ -1,0 +1,28 @@
+# lazygit — linked to ~/Library/Application Support/lazygit/config.yml by
+# git/setup.sh. state.yml and the recent-repo list live there and stay local.
+#
+# lazygit ignores git's core.pager, so the delta setup in git/gitconfig does
+# not reach it. diffRenderers is its own mechanism; `|` cycles through them.
+
+git:
+  diffRenderers:
+    # delta post-processes git's output, so line- and hunk-staging still work.
+    # --features=lazygit is the [delta "lazygit"] block in git/gitconfig.
+    - name: delta
+      command: delta --paging=never --features=lazygit
+    # Structural diff: a reindent or a moved function reads as no change.
+    # Staging individual lines does not work here — git never produces a
+    # patch. Press `|` back to delta for that.
+    - name: difftastic
+      type: extDiff
+      command: difft --color=always --context={{diffContext}}
+    # Word-level, straight from git. Good for prose and long lines.
+    - name: word-diff
+      type: rawGit
+      args: [--color-words]
+  mainBranches:
+    - main
+
+os:
+  # Makes the delta hyperlinks above open nvim at the clicked line.
+  editPreset: nvim

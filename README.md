@@ -43,6 +43,7 @@ directory, so edits in the repo are live immediately.
 | `zsh/zshenv`, `zsh/zshrc`                               | `~/.zshenv`, `~/.zshrc`                 |
 | `git/gitconfig`                                         | `~/.gitconfig`                          |
 | `git/ignore`                                            | `~/.config/git/ignore`                  |
+| `git/lazygit.yml`                                       | lazygit's Application Support dir       |
 | `ssh/config`                                            | `~/.ssh/config`                         |
 | `curl/curlrc`, `tmux/tmux.conf`, `vim/vimrc`            | `~/.curlrc`, `~/.tmux.conf`, `~/.vimrc` |
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |
@@ -272,7 +273,13 @@ the Pro login.
 [difftastic](https://difftastic.wilfred.me.uk) diff where a reindent or a moved
 function reads as no change. delta is only used on a TTY, so a diff an agent
 captures is still plain text. `prefix+alt+g` opens lazygit in a popup for staging
-and committing, and herdr-reviewr is the review surface: mark lines, comment,
+and committing; it ignores git's `core.pager`, so `git/lazygit.yml` configures
+the same renderers again under `git.diffRenderers` and `|` cycles delta →
+difftastic → `--color-words`. delta runs there with `--features=lazygit`, a
+`[delta "lazygit"]` block in `git/gitconfig` that drops `navigate` and
+side-by-side for the narrow panel and turns on clickable line numbers. Stage
+lines under delta, not difftastic — an external diff produces no patch for
+lazygit to apply. herdr-reviewr is the review surface: mark lines, comment,
 `s` to send the comments into the agent's pane. The merge decision still goes
 through `/code-review` and a signed PR — the AI review pass stays in its own
 session, separate from the one that wrote the code.
