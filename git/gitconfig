@@ -107,6 +107,17 @@
   # Names: `delta --list-syntax-themes`.
   syntax-theme = gruvbox-dark
 
+# The options above suit a full-width terminal pager; lazygit's diff panel is
+# narrow and drives its own scrolling, so git/lazygit.yml calls delta with
+# --features=lazygit to override them. navigate needs a real pager to work.
+[delta "lazygit"]
+  navigate = false
+  side-by-side = false
+  line-numbers = true
+  # Clickable line numbers that open the file in $EDITOR at that line.
+  hyperlinks = true
+  hyperlinks-file-link-format = lazygit-edit://{path}:{line}
+
 [interactive]
   # Colour `git add -p` hunks through delta too.
   diffFilter = delta --color-only

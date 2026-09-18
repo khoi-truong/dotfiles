@@ -14,6 +14,8 @@ link "${CURRENT_DIR}/ignore" "${HOME}/.config/git/ignore"
 # init.templateDir: new repos get hooks/pre-commit (gitleaks secret scan) and
 # hooks/post-checkout (seeds new worktrees from .worktreeclone).
 link "${CURRENT_DIR}/template" "${HOME}/.config/git/template"
+# lazygit has no XDG path on macOS; it reads its Application Support dir.
+link "${CURRENT_DIR}/lazygit.yml" "${HOME}/Library/Application Support/lazygit/config.yml"
 
 # git/gitconfig ends with `[include] path = ~/.config/git/gitconfig.local`.
 # That file holds everything machine-specific: user.name/user.email, and the
