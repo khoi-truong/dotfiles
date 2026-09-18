@@ -350,8 +350,7 @@ On a new machine:
    `git/setup.sh` writes the correct `gpg.program` path for the architecture,
    asks for `user.name`/`user.email` if they are missing, and
    `gpg/setup.sh` installs `gpg.conf` / `gpg-agent.conf`.
-7. `gh auth login`, then `sh ai/setup.sh` for the Copilot CLI extension and the
-   herdr integrations.
+7. `gh auth login`, then `sh ai/setup.sh` for the herdr integrations.
 8. `herdr plugin install cloudmanic/herdr-plus` and
    `herdr plugin install persiyanov/herdr-reviewr`, then re-run `sh ai/setup.sh`
    to link their versioned config. Plugins run unsandboxed, so this stays manual.

@@ -102,22 +102,10 @@ else
 fi
 
 # --- GitHub Copilot CLI ----------------------------------------------------
-# Two separate products, both used:
-#   `copilot`             the standalone Copilot CLI, config in ~/.copilot
-#   `gh copilot suggest`  the gh extension
+# The standalone `copilot` CLI, config in ~/.copilot. The github/gh-copilot gh
+# extension is archived upstream and no longer installed.
 link "${CURRENT_DIR}/copilot/settings.json" "${HOME}/.copilot/settings.json"
 link "${CURRENT_DIR}/copilot/copilot-instructions.md" "${HOME}/.copilot/copilot-instructions.md"
-
-if command -v gh >/dev/null 2>&1; then
-  if gh extension list 2>/dev/null | grep -q 'github/gh-copilot'; then
-    ok "gh-copilot extension already installed"
-  else
-    info "Installing the gh-copilot extension..."
-    gh extension install github/gh-copilot || warn "gh extension install failed (run \`gh auth login\` first)."
-  fi
-else
-  warn "gh not found — installed by brew/setup.sh."
-fi
 
 # --- secrets ---------------------------------------------------------------
 # ai/env.local.zsh is gitignored and sourced by ai/aliases.zsh. Put API keys
