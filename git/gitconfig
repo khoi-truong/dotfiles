@@ -14,6 +14,9 @@
   trustctime = false
   # Cache untracked-file lookups to speed up `git status`.
   untrackedCache = true
+  # delta (brew/Brewfile). Only used when stdout is a TTY, so a captured
+  # `git diff` — an agent reading a diff, a script — is still plain text.
+  pager = delta
 
 [init]
   defaultBranch = main
@@ -95,6 +98,19 @@
   # Detect copies as well as renames.
   renames = copies
 
+[delta]
+  # n / N jump between files in the diff.
+  navigate = true
+  line-numbers = true
+  side-by-side = true
+  # delta borrows bat's themes; matches the iTerm2 Gruvbox preset.
+  # Names: `delta --list-syntax-themes`.
+  syntax-theme = gruvbox-dark
+
+[interactive]
+  # Colour `git add -p` hunks through delta too.
+  diffFilter = delta --color-only
+
 [apply]
   # Fix whitespace errors when applying a patch.
   whitespace = fix
@@ -165,6 +181,11 @@
   # on that branch, creating it if needed.
   wt = worktree list
   wta = "!f() { b=\"$1\"; d=\"../$(basename \"$PWD\")-$(printf %s \"$b\" | tr / -)\"; if git show-ref --verify --quiet \"refs/heads/$b\"; then git worktree add \"$d\" \"$b\"; else git worktree add -b \"$b\" \"$d\"; fi; }; f"
+
+  # Structural diff (difftastic): compares syntax trees, so a pure reindent or
+  # a moved function reads as no change. Slower than delta; on demand only, and
+  # scoped to this alias so nothing else sees diff.external.
+  dft = -c diff.external=difft diff
 
   # Searching: branches containing a commit; commits by code or message.
   fb = "!f() { git branch --all --contains \"$1\"; }; f"

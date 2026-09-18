@@ -1,0 +1,17 @@
+# Layout applied when a dotfiles worktree is opened in herdr.
+#
+# Panes go through this repo's wrappers (`cc`, `ccd`, `omp`), never
+# `claude --dangerously-skip-permissions` as herdr-plus's README shows: that
+# unsets the provider environment and Claude Code silently falls back to the
+# Pro login (ai/claude/providers.zsh). `zsh -ic` is required because `cc` is a
+# shell function, not a binary.
+
+repo = "dotfiles"
+branch = "main"
+
+[[tabs]]
+name = "claude"
+command = "zsh -ic cc"
+
+[[tabs]]
+name = "shell"
