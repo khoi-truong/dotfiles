@@ -83,6 +83,14 @@ if command -v herdr >/dev/null 2>&1; then
       warn "herdr integration install ${integration} failed: ${herdr_out}"
     fi
   done
+  # herdr rewrites the harness settings files and drops the trailing newline
+  # .editorconfig requires, which CI then fails on. Put it back.
+  for settings in "${CURRENT_DIR}/claude/settings.json" "${CURRENT_DIR}/copilot/settings.json"; do
+    [ -f "${settings}" ] || continue
+    [ -n "$(tail -c 1 "${settings}")" ] || continue
+    printf '\n' >>"${settings}"
+    ok "restored trailing newline in ${settings#"${CURRENT_DIR}/"}"
+  done
   # Plugins are installed by hand (they run unsandboxed as your user); this
   # only links the versioned templates once a plugin exists. See README.
   for plugin in cloudmanic.herdr-plus persiyanov.reviewr; do
