@@ -1,5 +1,14 @@
 {
   "banner": "never",
-  "theme": "auto",
-  "render_markdown": true
+  "hooks": {
+    "SessionStart": [
+      {
+        "bash": "bash '/Users/khoi/.copilot/hooks/herdr-agent-state.sh'",
+        "timeoutSec": 10,
+        "type": "command"
+      }
+    ]
+  },
+  "render_markdown": true,
+  "theme": "auto"
 }

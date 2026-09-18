@@ -51,6 +51,13 @@ for item in config.yml models.yml mcp.json APPEND_SYSTEM.md commands; do
   link "${CURRENT_DIR}/omp/${item}" "${OMP_DIR}/${item}"
 done
 link "${CURRENT_DIR}/shared/skills" "${OMP_DIR}/skills"
+# An older version of this script linked omp/extensions, which the repo no
+# longer ships. The dangling link makes anything writing an extension fail
+# (herdr's omp integration, for one), so drop it.
+if [ -L "${OMP_DIR}/extensions" ] && [ ! -e "${OMP_DIR}/extensions" ]; then
+  rm "${OMP_DIR}/extensions"
+  ok "removed stale ${OMP_DIR}/extensions link"
+fi
 # Same global rules as Claude Code.
 link "${CURRENT_DIR}/shared/rules/common.md" "${OMP_DIR}/AGENTS.md"
 
@@ -70,10 +77,10 @@ link "${CURRENT_DIR}/herdr/config.toml" "${HOME}/.config/herdr/config.toml"
 
 if command -v herdr >/dev/null 2>&1; then
   for integration in claude omp copilot; do
-    if herdr integration install "${integration}" >/dev/null 2>&1; then
+    if herdr_out="$(herdr integration install "${integration}" 2>&1)"; then
       ok "herdr integration: ${integration}"
     else
-      warn "herdr integration install ${integration} failed"
+      warn "herdr integration install ${integration} failed: ${herdr_out}"
     fi
   done
   # Plugins are installed by hand (they run unsandboxed as your user); this
@@ -95,22 +102,10 @@ else
 fi
 
 # --- GitHub Copilot CLI ----------------------------------------------------
-# Two separate products, both used:
-#   `copilot`             the standalone Copilot CLI, config in ~/.copilot
-#   `gh copilot suggest`  the gh extension
+# The standalone `copilot` CLI, config in ~/.copilot. The github/gh-copilot gh
+# extension is archived upstream and no longer installed.
 link "${CURRENT_DIR}/copilot/settings.json" "${HOME}/.copilot/settings.json"
 link "${CURRENT_DIR}/copilot/copilot-instructions.md" "${HOME}/.copilot/copilot-instructions.md"
-
-if command -v gh >/dev/null 2>&1; then
-  if gh extension list 2>/dev/null | grep -q 'github/gh-copilot'; then
-    ok "gh-copilot extension already installed"
-  else
-    info "Installing the gh-copilot extension..."
-    gh extension install github/gh-copilot || warn "gh extension install failed (run \`gh auth login\` first)."
-  fi
-else
-  warn "gh not found — installed by brew/setup.sh."
-fi
 
 # --- secrets ---------------------------------------------------------------
 # ai/env.local.zsh is gitignored and sourced by ai/aliases.zsh. Put API keys
