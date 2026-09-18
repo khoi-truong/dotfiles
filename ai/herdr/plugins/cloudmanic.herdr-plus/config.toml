@@ -1,0 +1,12 @@
+# cloudmanic/herdr-plus — worktree layouts, project picker, quick actions.
+# Linked into `herdr plugin config-dir cloudmanic.herdr-plus` by ai/setup.sh.
+
+[worktree]
+# `git wta` names branches as typed; keep the prefix empty so both paths agree.
+branch_prefix = ""
+
+[projects]
+placement = "zoomed"
+
+[quick_actions]
+placement = "overlay"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ai — Claude Code, oh-my-pi and GitHub Copilot CLI configuration.
+# ai — Claude Code, oh-my-pi, GitHub Copilot CLI and herdr configuration.
 #
 # Only the declarative config is versioned. Credentials are NOT:
 #   ~/.claude.json                       project history + auth
@@ -63,6 +63,37 @@ if [ -d "${HOME}/.pi" ]; then
   warn "${HOME}/.pi is left over from pi; delete it once nothing there is needed."
 fi
 
+# --- herdr -----------------------------------------------------------------
+# Terminal workspace manager for agents (brew/Brewfile). The config is
+# versioned; logs, the socket, plugin binaries and plugin state stay local.
+link "${CURRENT_DIR}/herdr/config.toml" "${HOME}/.config/herdr/config.toml"
+
+if command -v herdr >/dev/null 2>&1; then
+  for integration in claude omp copilot; do
+    if herdr integration install "${integration}" >/dev/null 2>&1; then
+      ok "herdr integration: ${integration}"
+    else
+      warn "herdr integration install ${integration} failed"
+    fi
+  done
+  # Plugins are installed by hand (they run unsandboxed as your user); this
+  # only links the versioned templates once a plugin exists. See README.
+  for plugin in cloudmanic.herdr-plus persiyanov.reviewr; do
+    if plugin_config="$(herdr plugin config-dir "${plugin}" 2>/dev/null)" \
+      && [ -n "${plugin_config}" ]; then
+      for item in "${CURRENT_DIR}"/herdr/plugins/"${plugin}"/*; do
+        [ -e "$item" ] || continue
+        link "$item" "${plugin_config}/$(basename "$item")"
+      done
+    else
+      info "herdr plugin ${plugin} not installed — see README."
+    fi
+  done
+  ok "herdr $(herdr --version 2>/dev/null || echo installed)"
+else
+  warn "herdr not found — installed by brew/setup.sh."
+fi
+
 # --- GitHub Copilot CLI ----------------------------------------------------
 # Two separate products, both used:
 #   `copilot`             the standalone Copilot CLI, config in ~/.copilot
@@ -92,7 +123,8 @@ fi
 # --- dangling links -------------------------------------------------------
 # Files moved in the repo leave stale links behind. Report them; the user
 # decides whether to delete.
-for dir in "${HOME}/.claude" "${HOME}/.claude/skills" "${OMP_DIR}" "${HOME}/.copilot"; do
+for dir in "${HOME}/.claude" "${HOME}/.claude/skills" "${OMP_DIR}" "${HOME}/.copilot" \
+  "${HOME}/.config/herdr"; do
   [ -d "$dir" ] || continue
   for entry in "$dir"/*; do
     if [ -L "$entry" ] && [ ! -e "$entry" ]; then

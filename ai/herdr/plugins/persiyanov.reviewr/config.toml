@@ -1,0 +1,15 @@
+# persiyanov/herdr-reviewr — mark lines, comment, send the comments back to the
+# agent in the pane. Linked into `herdr plugin config-dir persiyanov.reviewr`
+# by ai/setup.sh. Note the plugin id is `persiyanov.reviewr`.
+
+# Review the branch by default: matches the one-branch-per-PR workflow.
+default_scope = "branch"
+navigator_position = "left"
+# Don't steal a pane on every new workspace; open it when reviewing.
+auto_open = false
+# nvim is $EDITOR (zsh/config.zsh).
+editor = "nvim +{line} {file}"
+
+# `theme` is deliberately unset: the plugin ships 18 palettes and names none of
+# them in its README, and an invented string falls back silently. Read the real
+# name off the plugin's help screen on first run and set it here.

@@ -31,6 +31,8 @@ brew "git"
 brew "gh"
 brew "gitleaks"       # secret scan in the git pre-commit hook
 brew "lazygit"        # terminal UI for git
+brew "git-delta"      # git pager: side-by-side, syntax-highlighted diffs
+brew "difftastic"     # structural (AST) diff; `git dft`
 brew "gnupg"
 brew "pinentry-mac"   # GUI passphrase prompt for gpg-agent
 brew "mas"
@@ -53,6 +55,7 @@ brew "transmission-cli"
 
 # ai
 brew "ollama"         # local LLMs
+brew "herdr"          # agent workspace manager
 
 # ---------------------------------------------------------------- casks -----
 

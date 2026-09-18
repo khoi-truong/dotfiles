@@ -1,0 +1,38 @@
+# herdr — terminal workspace manager for coding agents.
+# Linked to ~/.config/herdr/config.toml by ai/setup.sh.
+# Defaults: `herdr --default-config`. Apply edits: `herdr server reload-config`.
+
+# Onboarding ran once; do not show it again.
+onboarding = false
+
+[theme]
+# Matches the iTerm2 Gruvbox preset and omp's dark-gruvbox.
+name = "gruvbox"
+
+[update]
+# Homebrew owns the binary (brew/Brewfile). `herdr update` would fight it, so
+# don't nag about new versions; the agent-detection manifest still updates.
+version_check = false
+
+[ui.toast]
+# iTerm2 raises a real macOS notification, so a finished agent is visible from
+# another window. Requires iTerm2 > Settings > Profiles > Terminal >
+# "Send notifications".
+delivery = "terminal"
+
+[ui.sound]
+enabled = true
+
+[session]
+# Resume claude/omp conversations after a server restart. Needs the
+# integrations installed by ai/setup.sh.
+resume_agents_on_restore = true
+
+# Diff review in a popup, the equivalent of tmux's `prefix g` scratch popup
+# (tmux/tmux.conf). lazygit is already in brew/Brewfile.
+[[keys.command]]
+key = "prefix+alt+g"
+type = "popup"
+command = "lazygit"
+width = "90%"
+height = "90%"

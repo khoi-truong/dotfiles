@@ -50,6 +50,7 @@ directory, so edits in the repo are live immediately.
 | `ai/copilot/*`                                          | `~/.copilot/`                           |
 | `ai/omp/*`, `ai/shared/skills`, `ai/shared/rules/common.md` (as `AGENTS.md`) | `~/.omp/agent/` |
 | `ai/shared/skills/*`                                    | `~/.claude/skills/`                     |
+| `ai/herdr/config.toml`                                  | `~/.config/herdr/config.toml`           |
 | `vscode/{settings,keybindings}.json`, `vscode/snippets` | VS Code user dir                        |
 
 `ai/` is split by harness (`claude/`, `omp/`, `copilot/`), with what they
@@ -226,11 +227,62 @@ session whichever provider ran it, so prefer `ccdr`/`ccr` and pick the session
 you meant. Only single-turn sessions have been tested; a long tool-heavy
 transcript is untried.
 
+## herdr
+
+herdr is the workspace manager the coding agents run in:
+one workspace per repository, tabs for agents / dev server / tests, one pane per
+agent, with a state sidebar showing which agent is working, blocked or done.
+`prefix` is `ctrl+b` (tmux uses `C-a`, so the two don't collide). `prefix+q`
+detaches and `herdr` reattaches — `herdr server stop` is different, it kills the
+pane processes.
+
+herdr owns agent work; tmux stays for plain shells and ssh. Never run two agents
+in the same directory: herdr gives no file isolation, so use `git wta <branch>`
+for parallel work and open the worktree as its own workspace.
+
+`ai/herdr/config.toml` is the only versioned part. `~/.config/herdr/*.log`, the
+socket, plugin binaries and plugin state are machine-local. `ai/setup.sh`
+installs the `claude`, `omp` and `copilot` integrations, which report agent state
+through hooks instead of screen-scraping and are what makes
+`[session] resume_agents_on_restore` work. They write into
+`ai/claude/settings.json` and `ai/copilot/settings.json`, which are symlinks into
+this repo, so review `git diff` after running it.
+
+Upgrade with `brew upgrade herdr`, never `herdr update` — Homebrew owns the
+binary, and `[update] version_check = false` silences the nag. Re-run
+`sh ai/setup.sh` afterwards so the integrations migrate.
+
+**Plugins are installed by hand**, because they run unsandboxed as your user with
+your full environment. Read the manifest preview; never `--yes`.
+
+```sh
+herdr plugin install cloudmanic/herdr-plus      # worktree layouts, project picker
+herdr plugin install persiyanov/herdr-reviewr   # line comments back to the agent
+```
+
+`ai/setup.sh` only links the versioned templates under `ai/herdr/plugins/<plugin
+id>/` into each plugin's `herdr plugin config-dir`, and skips a plugin that isn't
+installed. Pane commands in those templates go through this repo's wrappers
+(`cc`, `ccd`, `omp`) — not `claude --dangerously-skip-permissions` as herdr-plus's
+README shows, which unsets the provider environment and silently falls back to
+the Pro login.
+
+**Diff and review.** `git diff` pages through [delta](https://dandavison.github.io/delta/)
+(side-by-side, `n`/`N` between files), and `git dft` runs a structural
+[difftastic](https://difftastic.wilfred.me.uk) diff where a reindent or a moved
+function reads as no change. delta is only used on a TTY, so a diff an agent
+captures is still plain text. `prefix+alt+g` opens lazygit in a popup for staging
+and committing, and herdr-reviewr is the review surface: mark lines, comment,
+`s` to send the comments into the agent's pane. The merge decision still goes
+through `/code-review` and a signed PR — the AI review pass stays in its own
+session, separate from the one that wrote the code.
+
 ## tmux
 
-`tmux/tmux.conf` is set up for running several Claude Code agents at once —
-one agent per pane, tiled and labelled, with layouts that survive a reboot.
-Prefix is `C-a`.
+`tmux/tmux.conf` predates herdr and keeps the same shape — one pane per agent,
+tiled and labelled, layouts that survive a reboot. herdr now runs the agents, so
+tmux is for plain shells, ssh and anything herdr shouldn't own. Prefix is `C-a`,
+and `[experimental] allow_nested` is off in herdr, so don't nest the two.
 
 | Binding | Action |
 | --- | --- |
@@ -298,8 +350,12 @@ On a new machine:
    `git/setup.sh` writes the correct `gpg.program` path for the architecture,
    asks for `user.name`/`user.email` if they are missing, and
    `gpg/setup.sh` installs `gpg.conf` / `gpg-agent.conf`.
-7. `gh auth login`, then `sh ai/setup.sh` for the Copilot CLI extension.
-8. `./setup.sh --all` if this machine needs VS Code or Xcode.
+7. `gh auth login`, then `sh ai/setup.sh` for the Copilot CLI extension and the
+   herdr integrations.
+8. `herdr plugin install cloudmanic/herdr-plus` and
+   `herdr plugin install persiyanov/herdr-reviewr`, then re-run `sh ai/setup.sh`
+   to link their versioned config. Plugins run unsandboxed, so this stays manual.
+9. `./setup.sh --all` if this machine needs VS Code or Xcode.
 
 ## Conventions
 
