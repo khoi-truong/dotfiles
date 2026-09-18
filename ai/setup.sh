@@ -51,6 +51,13 @@ for item in config.yml models.yml mcp.json APPEND_SYSTEM.md commands; do
   link "${CURRENT_DIR}/omp/${item}" "${OMP_DIR}/${item}"
 done
 link "${CURRENT_DIR}/shared/skills" "${OMP_DIR}/skills"
+# An older version of this script linked omp/extensions, which the repo no
+# longer ships. The dangling link makes anything writing an extension fail
+# (herdr's omp integration, for one), so drop it.
+if [ -L "${OMP_DIR}/extensions" ] && [ ! -e "${OMP_DIR}/extensions" ]; then
+  rm "${OMP_DIR}/extensions"
+  ok "removed stale ${OMP_DIR}/extensions link"
+fi
 # Same global rules as Claude Code.
 link "${CURRENT_DIR}/shared/rules/common.md" "${OMP_DIR}/AGENTS.md"
 
@@ -70,10 +77,10 @@ link "${CURRENT_DIR}/herdr/config.toml" "${HOME}/.config/herdr/config.toml"
 
 if command -v herdr >/dev/null 2>&1; then
   for integration in claude omp copilot; do
-    if herdr integration install "${integration}" >/dev/null 2>&1; then
+    if herdr_out="$(herdr integration install "${integration}" 2>&1)"; then
       ok "herdr integration: ${integration}"
     else
-      warn "herdr integration install ${integration} failed"
+      warn "herdr integration install ${integration} failed: ${herdr_out}"
     fi
   done
   # Plugins are installed by hand (they run unsandboxed as your user); this

@@ -248,6 +248,16 @@
             "command": "cd \"$(jq -r .cwd)\" && $HOME/.dotfiles/git/template/hooks/post-checkout 0 HEAD 1 >/dev/null"
           }
         ]
+      },
+      {
+        "matcher": "^(startup|resume|clear|compact|fork)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/khoi/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [
