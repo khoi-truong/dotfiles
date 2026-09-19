@@ -287,19 +287,21 @@ Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
 comments back to the agent) and usagebar (context, prompt-cache and
 provider-limit meters in the sidebar, `ctrl+shift+u` for the limits pane). Its
 sidebar rows and keybindings live in `ai/herdr/config.toml` rather than the
-plugin's own config, and only `$limit` and `$context` are used. A row is named
-by the built-in `workspace` and `tab` tokens, which say different things —
-`team.sh` labels the workspace after the agent and the tab after its branch,
-so a team row reads `exec-1 feat/team-json`. Under that,
-`terminal_title_stripped`: Claude Code keeps the terminal title as a live
+plugin's own config, and `$provider`, `$limit`, `$cache_*` and `$context` are
+all used. A row is named by the built-in `workspace` and `tab` tokens, which
+say different things — `team.sh` labels the workspace after the agent and the
+tab after its branch — and they get a line each, because herdr joins tokens on
+one row with `·` and truncates the tail, which on a branch is the part that
+tells it apart. Under those, `terminal_title_stripped`: Claude Code keeps the terminal title as a live
 summary of what it is doing, which is the only thing that tells two panes in
-one tab apart. usagebar's `$provider` does not — it
-reports the detected agent kind, `claude` on a `ccd` pane as much as a `cc`
-one, so the sidebar cannot show the provider split and `$limit` reports the
-Pro window on both. The status line is where that split is visible. The
-`$cache_*` tokens are left off: the prompt-cache hit rate and its expiry are
-real per-pane numbers, but nothing you would do differs between `ttl≈8m` and
-`ttl≈60m`. Pane commands in the templates go through
+one tab apart. Then `$provider · $limit`, which is where the cc/ccd split
+shows: `$provider` names the billing identity, the quota provider on a
+subscription pane and the backend actually billed on a pay-as-you-go one, so a
+`ccd` pane reads `deepseek · Σ 425k $0.04` against a `cc` pane's
+`claude · 5h 60%`. Then the `$cache_*` trio — the plugin sets exactly one of
+high/mid/low by the session prompt-cache hit rate, so all three on one row
+render a single value in the band's colour, gruvbox yellow below 80% and red
+below 50%. Pane commands in the templates go through
 this repo's wrappers (`cc`, `ccd`, `omp`) — not
 `claude --dangerously-skip-permissions` as herdr-plus's README shows, which
 unsets the provider environment and silently falls back to the Pro login.

@@ -43,8 +43,13 @@ enabled = true
 # rest are herdr built-ins.
 #
 # `workspace` and `tab` are the built-ins, and they say different things:
-# team.sh labels the workspace after the agent and the tab after its branch,
-# so a team row reads `exec-1 feat/team-json` — who, then what on.
+# team.sh labels the workspace after the agent and the tab after its branch.
+# They get a line each rather than sharing one. herdr joins tokens on a row
+# with `·` and has no separator setting, so `exec-1 · feat/team-json` put two
+# identities of different kinds on one line and truncated the branch first —
+# and a branch is the one field where the tail (`…/team-json`) is what
+# distinguishes it. Stacked, the name is the heading and the branch is a full
+# line of its own.
 #
 # usagebar's `$title` was here first, because a tab keeping its auto-assigned
 # number renders the built-in `tab` blank. That is no longer reachable:
@@ -60,28 +65,45 @@ enabled = true
 # one that says anything about the work. Dimmed: it is the subtitle of the row
 # above, not a second heading.
 #
-# `$provider` is deliberately absent. It reports the detected agent kind, which
-# is `claude` on every pane here — including a `ccd` one, whose status line
-# says `DS·deepseek-flash`. It cannot see the cc/ccd split, so it was a
-# constant word costing a third of the sidebar width on every row.
+# `$provider` is what says which billing identity a pane is on. It reports the
+# quota provider on a subscription pane (`claude`) and the backend actually
+# billed on a pay-as-you-go one, so a `ccd` pane reads `deepseek · Σ 425k
+# $0.04` where a `cc` pane reads `claude · 5h 60%`. That is the cc/ccd split
+# the sidebar could not show before, and the reason the row is worth its
+# width; `$limit`'s Pro-window fallback is no longer the only thing on it.
 #
-# `$limit` and `$context` share a row because they are one thought (what this
-# pane has left) and together fit the width. Note `$limit` is the Pro 5h/7d
-# window even on a DeepSeek pane: Claude Code reports no limits over a custom
-# endpoint and usagebar falls back to the last Pro reading.
+# `$limit` is the shortest provider window (`5h 60%`) on a subscription pane
+# and the session burn on its backend on a pay-as-you-go one. Shortest is not
+# a setting: the plugin takes the minimum window it has and formats one, so
+# the 7d number cannot reach this sidebar. It is in the Agent Usage pane
+# (ctrl+shift+u), the status line, and ~/.claude/cache/pro-quota.json.
 #
-# The `$cache_*` tokens are deliberately absent. They report this pane's
-# prompt-cache hit rate and the expiry of its cached prefix, which is real
-# per-pane data but not actionable: nothing you would do about "ttl≈8m"
-# differs from what you would do about "ttl≈60m", short of sending filler to
-# keep it warm. It cost a row and 25 columns to say so.
+# No row carries an icon of its own. herdr rejects a literal in `rows`
+# (`unknown sidebar token; custom tokens must start with $`) and keeps the
+# previous settings, so a glyph has to be baked into a token's value by
+# whoever publishes it — the plugin for `$*`, or `herdr pane report-metadata
+# --token` for one of ours. `state_icon` and `$context`'s ⛁ are the only two.
+#
+# The `$cache_*` trio is one row: the plugin sets exactly one of high/mid/low
+# by the session hit rate, so listing all three renders a single value in the
+# band's colour. Gruvbox yellow below 80%, red below 50% — the number only
+# matters when it is bad, and a red `cache hit 35.0% · ttl≈20m` is the cue to
+# stop growing the prefix and let it rotate. The TTL only appears when the
+# plugin has a recorded expiry.
 [ui.sidebar.agents]
 # One blank line between agents; gap 0 ran the entries together.
 row_gap = 1
 rows = [
-  ["state_icon", "workspace", "tab"],
+  ["state_icon", "workspace"],
+  ["tab"],
   [{ token = "terminal_title_stripped", dim = true }],
-  ["$limit", "$context"],
+  ["$provider", "$limit"],
+  [
+    "$cache_high",
+    { token = "$cache_mid", fg = "#fabd2f" },
+    { token = "$cache_low", fg = "#fb4934" },
+  ],
+  ["$context"],
 ]
 
 [session]
