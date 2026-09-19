@@ -1,0 +1,17 @@
+# herdr plugins, read by ai/setup.sh. One per line:
+#
+#   <plugin id>  <owner/repo>  <tag>
+#
+# The id is what `herdr plugin config-dir` wants and the repo is what
+# `herdr plugin install` wants; they are unrelated, because each plugin's
+# herdr-plugin.toml declares its own id. Look it up there, never guess it.
+#
+# Pinned to a release tag: `herdr plugin` has no update command, so an
+# unpinned install re-fetches the default branch every time ai/setup.sh runs.
+# To bump one, edit the tag, `herdr plugin uninstall <id>`, then re-run
+# ai/setup.sh. Versioned config templates, if any, live in
+# ai/herdr/plugins/<plugin id>/.
+
+cloudmanic.herdr-plus  cloudmanic/herdr-plus         v0.1.24
+persiyanov.reviewr     persiyanov/herdr-reviewr      v0.38.0
+usagebar               senna-lang/herdr-agent-usage  v0.5.14

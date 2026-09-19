@@ -253,21 +253,30 @@ Upgrade with `brew upgrade herdr`, never `herdr update` — Homebrew owns the
 binary, and `[update] version_check = false` silences the nag. Re-run
 `sh ai/setup.sh` afterwards so the integrations migrate.
 
-**Plugins** are installed by `ai/setup.sh`, pinned to a release tag — the spec
-list in its herdr block is the source of truth for the version. Once a plugin is
-installed, the script links the versioned templates under
-`ai/herdr/plugins/<plugin id>/` into its `herdr plugin config-dir`, and skips a
-plugin that isn't installed. The pin is not decoration: `herdr plugin` has no
-update command, and an unpinned install re-fetches the default branch, so
-re-running the script would otherwise move a plugin to current HEAD.
+**Plugins** are listed in `ai/herdr/plugins.list`, one `<plugin id>
+<owner/repo> <tag>` per line, and installed by `ai/setup.sh` at that tag. The id
+and the repo are unrelated — each plugin's `herdr-plugin.toml` declares its own
+id, so `senna-lang/herdr-agent-usage` is just `usagebar` — and `config-dir`
+wants the id while `install` wants the repo, which is why the list carries both.
+Once a plugin is installed, the script links the versioned templates under
+`ai/herdr/plugins/<plugin id>/` into its `herdr plugin config-dir`; a plugin
+with no template directory gets nothing linked. The pin is not decoration:
+`herdr plugin` has no update command, and an unpinned install re-fetches the
+default branch, so re-running the script would otherwise move a plugin to
+current HEAD.
 
 First install still stops for the manifest preview — never `--yes` — because
 plugins run unsandboxed as your user with your full environment; that is the
 reason for the prompt, not for a manual install. To bump one, edit the tag in
-`ai/setup.sh`, run `herdr plugin uninstall <id>`, then re-run the script. Pane
-commands in those templates go through this repo's wrappers (`cc`, `ccd`, `omp`)
-— not `claude --dangerously-skip-permissions` as herdr-plus's README shows,
-which unsets the provider environment and silently falls back to the Pro login.
+`ai/herdr/plugins.list`, run `herdr plugin uninstall <id>`, then re-run the
+script.
+
+Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
+comments back to the agent) and usagebar (context and quota meters in the
+sidebar). Pane commands in the templates go through this repo's wrappers (`cc`,
+`ccd`, `omp`) — not `claude --dangerously-skip-permissions` as herdr-plus's
+README shows, which unsets the provider environment and silently falls back to
+the Pro login.
 
 **Diff and review.** `git diff` pages through [delta](https://dandavison.github.io/delta/)
 (side-by-side, `n`/`N` between files), and `git dft` runs a structural
