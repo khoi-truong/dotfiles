@@ -223,7 +223,10 @@ planning, architecture, API and schema design, security, pre-merge
 `/code-review`, and debugging after one failed DeepSeek attempt. Web
 research goes to omp, since Claude Code's web search doesn't work on other
 providers. A DeepSeek session sends the code it reads to DeepSeek, so deny
-`.env` reads in private repos first.
+`.env` reads in private repos first. The quota half of that decision is
+automated: see the `pro-quota.json` cache below. The other half — whether a
+task is big enough to be worth handing over at all — is not, and below the
+break-even doing it inline on Pro costs less than the handover.
 
 **Switching mid-task.** Hand off through the plan file, not the transcript:
 plan with `cc`, then `ccd "execute .omc/plans/<task>.md"`, then review with
@@ -314,6 +317,20 @@ commit, so it survives reinstalls and tag bumps. Confirm it with
 `herdr plugin list --plugin usagebar --json`. This runs wherever Claude runs,
 including outside herdr, but the meters themselves are sidebar rows: a
 standalone session only keeps the cache warm for the next herdr pane.
+
+The same payload feeds a second tee branch that caches just the two windows to
+`~/.claude/cache/pro-quota.json`, because the status line is rendered for you
+and Claude never sees it — the model doing the routing would otherwise have no
+idea the 5h window is nearly spent. `ai/claude/quota-advice.sh`, a
+`UserPromptSubmit` hook, reads that cache and prints a routing advisory, which
+Claude Code injects as context. Account-wide on purpose: the limits are, so
+whichever pane rendered last refreshes them for every other one. Three things
+keep it honest — a `ccd` pane reports its own endpoint's limits, so
+`CC_PROVIDER` gates the write the same way `ai/herdr/team.sh` asserts on it; a
+window whose `resets_at` has passed is treated as unknown rather than as
+headroom; and the hook stays silent below 50%, since an advisory on every
+prompt is noise by the time it matters. The HUD can show the same numbers to
+you with `omcHud.elements.rateLimits`, which is off.
 
 **Diff and review.** `git diff` pages through [delta](https://dandavison.github.io/delta/)
 (side-by-side, `n`/`N` between files), and `git dft` runs a structural

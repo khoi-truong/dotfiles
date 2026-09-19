@@ -296,6 +296,11 @@
           {
             "type": "command",
             "command": "$HOME/.config/iterm2/cc-status"
+          },
+          {
+            "type": "command",
+            "command": "bash $HOME/.dotfiles/ai/claude/quota-advice.sh",
+            "timeout": 5
           }
         ]
       }
