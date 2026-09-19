@@ -82,3 +82,15 @@ owns the protocol.
 Only `team.sh` starts an agent. It is the only place that knows `cc` and `ccd`
 are shell functions rather than binaries, which is what keeps work off the
 wrong provider.
+
+Two things the table does not say for you:
+
+- **`status` lists every herdr agent**, not only the ones this Run spawned. An
+  agent you started by hand in another workspace appears in the roster exactly
+  like a team pane. Match on the Run's own names before reading a row as a
+  dispatch target.
+- **`release` cannot run before the work is pushed.** It delegates to
+  `teardown`, which refuses a worktree holding unpushed commits — correctly, as
+  releasing would destroy them. The order is `settle <name> retain`, push, then
+  `settle <name> release`. Settlement is still immediate and exactly once; the
+  retain is the recorded decision, and the release is the teardown it licenses.
