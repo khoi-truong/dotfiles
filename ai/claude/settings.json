@@ -47,7 +47,7 @@
   "model": "opus",
   "statusLine": {
     "type": "command",
-    "command": "$HOME/.local/share/mise/shims/node $HOME/.dotfiles/ai/claude/hud-ctx-fix.mjs | $HOME/.local/share/mise/shims/node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs | perl -CSD -pe 's/Model:\\x{a0}?\\s?//g; s/session://g; s/ctx://g'"
+    "command": "bash $HOME/.dotfiles/ai/claude/statusline.sh"
   },
   "enabledPlugins": {
     "clangd-lsp@claude-plugins-official": true,
