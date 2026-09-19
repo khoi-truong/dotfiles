@@ -32,6 +32,22 @@ delivery = "terminal"
 [ui.sound]
 enabled = true
 
+# Sidebar rows for the usagebar plugin (herdr.plugins). `$title` replaces
+# herdr's built-in tab/pane tokens, which render blank while a tab still has
+# its auto-assigned number; `$provider` replaces `agent` and shows the billing
+# identity — the subscription provider on a Pro pane, the backend (`deepseek`)
+# on a pay-as-you-go one, which is exactly the `cc` vs `ccd` split. Exactly one
+# of the three `$cache_*` tokens is ever set; mid and low are colored here
+# because high uses the default.
+[ui.sidebar.agents]
+row_gap = 0
+rows = [
+  ["state_icon", "$title"],
+  ["$provider", "$limit"],
+  ["$cache_high", { token = "$cache_mid", fg = "#e0af68" }, { token = "$cache_low", fg = "#f7768e" }],
+  ["$context"],
+]
+
 [session]
 # Resume claude/omp conversations after a server restart. Needs the
 # integrations installed by ai/setup.sh.
@@ -60,6 +76,21 @@ type = "popup"
 command = "zsh -ic '~/.dotfiles/ai/herdr/team.sh status; read -k'"
 width = "70%"
 height = "50%"
+
+# Agent Usage (usagebar). Single chords, deliberately outside prefix mode: a
+# quota check is a glance, not a command. Neither collides with the prefix
+# bindings above.
+[[keys.command]]
+key = "ctrl+shift+u"
+type = "plugin_action"
+command = "usagebar.open-limits"
+description = "Agent Usage: open limits pane"
+
+[[keys.command]]
+key = "ctrl+shift+m"
+type = "plugin_action"
+command = "usagebar.refresh"
+description = "Agent Usage: refresh sidebar meters"
 
 [experimental]
 # Keep pane screen history across a full server restart, so a restarted server

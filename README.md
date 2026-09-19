@@ -271,8 +271,13 @@ reason for the prompt, not for a manual install. To bump one, edit the tag in
 `ai/herdr/herdr.plugins`, run `herdr plugin uninstall <id>`, then re-run the
 script.
 
-Installed today: herdr-plus (worktree layouts, project picker) and reviewr
-(line comments back to the agent). Pane commands in the templates go through
+Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
+comments back to the agent) and usagebar (context, prompt-cache and
+provider-limit meters in the sidebar, `ctrl+shift+u` for the limits pane). Its
+sidebar rows and keybindings live in `ai/herdr/config.toml` rather than the
+plugin's own config, and its `$provider` token is what makes the `cc`/`ccd`
+split visible per pane — Pro shows the subscription window, DeepSeek shows the
+backend and what the session burned. Pane commands in the templates go through
 this repo's wrappers (`cc`, `ccd`, `omp`) — not
 `claude --dangerously-skip-permissions` as herdr-plus's README shows, which
 unsets the provider environment and silently falls back to the Pro login.
