@@ -19,6 +19,7 @@
 #   team.sh run [new]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
+#   team.sh plan lint <plan.md>
 #   team.sh settle <name> <reuse|retain|release>
 #   team.sh teardown <name> [--force]
 #
@@ -471,6 +472,35 @@ cmd_run() {
   esac
 }
 
+# --- plan ------------------------------------------------------------------
+# A thin alias over plan_rows. It owns no parsing of its own: a linter that
+# read the block separately from the dispatcher would eventually bless a plan
+# the dispatcher refuses, or worse, the other way round.
+
+cmd_plan() {
+  case "${1:-}" in
+    lint)
+      shift
+      [ -n "${1:-}" ] || die "plan: lint needs a plan file"
+      {
+        plan_parser_py
+        cat <<'PY'
+plan = os.path.abspath(sys.argv[1])
+findings = plan_rows(plan)["findings"]
+for finding in findings:
+    print(finding)
+if not findings:
+    print("%s: ok" % plan)
+# Every finding at once, where dispatch stops at the first: a planner fixing
+# its own output should not have to run the check seven times.
+sys.exit(1 if findings else 0)
+PY
+      } | python3 - "$1"
+      ;;
+    *) die "plan: expected 'lint'" ;;
+  esac
+}
+
 # --- dispatch --------------------------------------------------------------
 # The completion contract is handed over verbatim, never reconstructed by the
 # orchestrator from memory: that is the whole point of having a command for it.
@@ -519,6 +549,29 @@ def _cycles(by_id):
         if colour.get(tid) is None:
             walk(tid)
     return found
+
+
+def _masks_exit(verify):
+    """True when `verify` pipes without `set -o pipefail` leading.
+
+    A pipeline exits with its last stage's status, so `… | tail -1` exits 0
+    whatever the check did. An executor observes 0 and claims `evidence:
+    verified` on something that cannot fail, which turns the one invariant
+    the protocol rests on into a rubber stamp. Narrow, and it will flag a
+    deliberate pipeline — the remedy is `set -o pipefail; …`, correct anyway.
+    """
+    if verify.lstrip().startswith("set -o pipefail"):
+        return False
+    quote = ""
+    for ch in verify:
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "|":
+            return True
+    return False
 
 
 def plan_rows(plan):
@@ -579,6 +632,11 @@ def plan_rows(plan):
 
     for cycle in _cycles(by_id):
         say("blocks has a cycle: %s" % " -> ".join(cycle))
+
+    for tid in sorted(by_id):
+        if _masks_exit(by_id[tid].get("verify") or ""):
+            say("%s: verify pipes without a leading 'set -o pipefail', so its "
+                "exit code is the last stage's and the check cannot fail" % tid)
 
     return out
 PY
@@ -834,6 +892,7 @@ case "${1:-}" in
   run) shift; cmd_run "$@" ;;
   status) shift; cmd_status "$@" ;;
   collect) shift; cmd_collect "$@" ;;
+  plan) shift; cmd_plan "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;
   -h | --help | help) usage 0 ;;

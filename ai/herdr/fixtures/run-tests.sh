@@ -281,5 +281,66 @@ else
 fi
 
 echo
+echo "plan lint"
+
+# expect_lint <want-exit> <stdout-regex> <label> <file>
+expect_lint() {
+  local want="$1" re="$2" label="$3" file="$4"
+  local got
+  "${TEAM}" plan lint "${FIXTURES}/${file}" >"${TMP}/out" 2>"${TMP}/err"
+  got=$?
+  if [ "$got" -ne "$want" ]; then
+    no "$label" "exit ${got}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif [ -n "$re" ] && ! grep -qE "$re" "${TMP}/out"; then
+    no "$label" "no /${re}/ in: $(tr '\n' '|' <"${TMP}/out")"
+  else
+    ok "$label"
+  fi
+}
+
+# 21-27. One fixture per finding. A check with no fixture is a check nobody
+#        has seen fail, which is the same as not having it.
+expect_lint 1 "no '## Tasks' json block" "21 missing task block" plan-no-block.md
+expect_lint 1 'not valid JSON' "22 invalid JSON" plan-bad-json.md
+expect_lint 1 'T-01 blocks on T-09' "23 blocks names a task with no row" plan-dangling.md
+expect_lint 1 'cycle: T-01 -> T-02 -> T-01' "24 a cycle in blocks" plan-cycle.md
+expect_lint 1 "row for T-02 but no '### T-02' section" "25 a row with no section" plan-no-section.md
+expect_lint 1 'sections with no row: T-02' "26 a section with no row" plan-orphan.md
+expect_lint 1 "verify pipes without a leading 'set -o pipefail'" \
+  "27 a verify whose exit code is masked" plan-masking-verify.md
+
+# 28. The passing case. plan-ok's piped verify leads with `set -o pipefail`,
+#     which is exactly the shape the check is meant to allow.
+expect_lint 0 ': ok$' "28 a well-formed plan passes" plan-ok.md
+
+# 29. Every finding in one run — the whole reason plan_rows returns them
+#     rather than raising on the first.
+"${TEAM}" plan lint "${FIXTURES}/plan-many.md" >"${TMP}/out" 2>/dev/null
+if [ "$(wc -l <"${TMP}/out")" -eq 3 ]; then
+  ok "29 a plan with three problems reports all three"
+else
+  no "29 a plan with three problems reports all three" \
+    "got $(wc -l <"${TMP}/out") line(s): $(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 30. The same plan through dispatch stops at the first, and still refuses.
+reset
+expect_exit 1 "30 dispatch refuses the same plan" \
+  --task T-01 --from-plan "${FIXTURES}/plan-many.md"
+if [ "$(grep -c '^dispatch: ' "${TMP}/err")" -eq 1 ]; then
+  ok "30b dispatch reports one finding, not all of them"
+else
+  no "30b dispatch reports one finding, not all of them" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 31. No file named is an error, not a clean plan.
+if "${TEAM}" plan lint >/dev/null 2>&1; then
+  no "31 plan lint with no file exits non-zero" "exited 0"
+else
+  ok "31 plan lint with no file exits non-zero"
+fi
+
+echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ]
