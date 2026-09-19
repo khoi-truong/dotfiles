@@ -14,6 +14,15 @@ name = "gruvbox"
 # don't nag about new versions; the agent-detection manifest still updates.
 version_check = false
 
+[ui]
+# Distinct static glyphs for blocked / working / done / idle instead of
+# color-only dots, so a row still reads where the theme's colors sit close.
+status_indicators = "symbols"
+
+# One pane per agent (README), so put the agent on its split border rather than
+# making the sidebar the only place that says who is where.
+show_agent_labels_on_pane_borders = true
+
 [ui.toast]
 # iTerm2 raises a real macOS notification, so a finished agent is visible from
 # another window. Requires iTerm2 > Settings > Profiles > Terminal >
@@ -28,6 +37,12 @@ enabled = true
 # integrations installed by ai/setup.sh.
 resume_agents_on_restore = true
 
+[keys]
+# One workspace per repository (README): a repo is one prefix+shift+N away, and
+# prefix+alt+N lands on the Nth agent row.
+switch_workspace = "prefix+shift+1..9"
+focus_agent = "prefix+alt+1..9"
+
 # Diff review in a popup, the equivalent of tmux's `prefix g` scratch popup
 # (tmux/tmux.conf). lazygit is already in brew/Brewfile.
 [[keys.command]]
@@ -36,3 +51,13 @@ type = "popup"
 command = "lazygit"
 width = "90%"
 height = "90%"
+
+[experimental]
+# Keep pane screen history across a full server restart, so a restarted server
+# brings back the scrollback behind the conversations that
+# session.resume_agents_on_restore already resumes.
+pane_history = true
+
+# Prefix mode swaps the macOS input source for an ASCII-capable layout and
+# restores it on exit, so prefix commands still register under a Vietnamese IME.
+switch_ascii_input_source_in_prefix = true
