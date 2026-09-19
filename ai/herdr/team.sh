@@ -115,14 +115,20 @@ cmd_spawn() {
   # so state and handoffs go to the main checkout.
   mkdir -p "${HANDOFFS}"
 
-  local created ws pane
-  created="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus \
-    --env "OMC_STATE_DIR=${DOTFILES}/.omc/state" \
-    --env "HERDR_TEAM_HANDOFFS=${HANDOFFS}")"
+  # `worktree open` rather than `workspace create --cwd`: the same directory
+  # either way, but this one carries the checkout's provenance, so herdr groups
+  # the space under the .dotfiles row instead of adding an unrelated top-level
+  # one, and "Open worktree..." (prefix+shift+o) finds it later. It is
+  # idempotent — an already-open checkout comes back as `already_open` with its
+  # existing workspace — so only a space this call opened may be rolled back.
+  local created ws pane reused
+  created="$(herdr worktree open --cwd "${DOTFILES}" --path "$dir" \
+    --label "$name" --no-focus)"
   ws="$(printf '%s' "$created" | jget "d['result']['workspace']['workspace_id']")"
-  # The agent must occupy the root pane: `--env` reaches that pane only, not
-  # anything split from it later.
+  # The agent must occupy the root pane: the env below is typed into that
+  # pane's shell, not inherited by anything split from it later.
   pane="$(printf '%s' "$created" | jget "d['result']['root_pane']['pane_id']")"
+  reused="$(printf '%s' "$created" | jget "'1' if d['result'].get('already_open') else ''")"
   # The workspace label is the agent name; herdr auto-numbers the tab inside
   # it, which renders as a bare "1" wherever a tab token appears. Name it after
   # the branch, so the two levels say different things: who, then what on.
@@ -131,21 +137,29 @@ cmd_spawn() {
   [ -z "$tab" ] || herdr tab rename "$tab" "$branch" >/dev/null 2>&1 || true
   if [ -z "$ws" ] || [ -z "$pane" ]; then
     [ "$made_worktree" -eq 1 ] && git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null
-    die "spawn: workspace create returned no workspace/pane id"
+    die "spawn: worktree open returned no workspace/pane id"
   fi
 
   # Undo everything this call created, so a failed spawn leaves no debris.
   spawn_rollback() {
-    herdr workspace close "$ws" >/dev/null 2>&1 || true
+    [ -n "$reused" ] || herdr workspace close "$ws" >/dev/null 2>&1 || true
     if [ "$made_worktree" -eq 1 ]; then
       git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null || true
       git -C "${DOTFILES}" branch -D "$branch" >/dev/null 2>&1 || true
     fi
   }
 
+  # `worktree open` has no `--env`, so the two variables the agent needs are
+  # exported into the pane's shell ahead of the wrapper. Typed rather than
+  # inherited, which is the better half of the trade: they survive the agent
+  # exiting, so a hand-restarted `ccd` in the same pane still writes its
+  # handoff to the main checkout.
+  #
   # `pane run` types the command; it does NOT submit it. Without the Enter the
   # spawn hangs forever and looks exactly like a slow start.
-  herdr pane run "$pane" "zsh -ic ${provider}" >/dev/null
+  herdr pane run "$pane" \
+    "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_HANDOFFS=${HANDOFFS}; zsh -ic ${provider}" \
+    >/dev/null
   herdr pane send-keys "$pane" enter >/dev/null
 
   local waited=0

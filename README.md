@@ -253,6 +253,15 @@ herdr owns agent work; tmux stays for plain shells and ssh. Never run two agents
 in the same directory: herdr gives no file isolation, so use `git wta <branch>`
 for parallel work and open the worktree as its own workspace.
 
+A worktree *is* a workspace here, so `New worktree` (`prefix+shift+g`) creates a
+checkout and a space every time it is pressed — a duplicate space when the
+branch already has one. `Open worktree...` is the half that reuses: it lists the
+repo's checkouts and focuses the space an open one already has. herdr ships it
+unbound, so `config.toml` binds it to `prefix+shift+o`. The other half of the
+duplication was the path: `[worktrees] directory` now points at `~/.worktrees`,
+herdr's own `<repo>/<branch with / as ->` layout below it being identical to
+`git wta`'s, so both routes to a branch land on one checkout rather than two.
+
 `ai/herdr/config.toml` is the only versioned part. `~/.config/herdr/*.log`, the
 socket, plugin binaries and plugin state are machine-local. `ai/setup.sh`
 installs the `claude`, `omp` and `copilot` integrations, which report agent state
@@ -370,6 +379,14 @@ ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
 ai/herdr/team.sh settle <name> reuse|retain|release
 ai/herdr/team.sh teardown <name> [--force]
 ```
+
+`spawn` opens the worktree with `herdr worktree open`, not `workspace create`,
+so the agent's space is grouped under the `.dotfiles` row and `Open worktree...`
+finds it later. That command takes no `--env`, so `OMC_STATE_DIR` and
+`HERDR_TEAM_HANDOFFS` are exported into the pane's shell ahead of the wrapper
+instead of inherited — which is the better half of the trade, since they then
+survive the agent exiting and a hand-restarted `ccd` still writes its handoff to
+the main checkout.
 
 `prefix+alt+t` opens `status` in a popup. One agent per worktree; agents report
 outcomes by writing `.omc/handoffs/<task>-<dispatch>.md` in the **main**
