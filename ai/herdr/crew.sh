@@ -57,8 +57,12 @@ agent_field() {
     "next((a.get('$2','') for a in d['result']['agents'] if a.get('name')=='$1'), '')"
 }
 
+# The worktree checked out on <branch>, or empty. Asked of git rather than
+# rebuilt from the `git wta` layout, so moving that layout cannot silently
+# leave spawn predicting a path nothing is at.
 worktree_path() {
-  printf '%s-%s' "${DOTFILES}" "$(printf '%s' "$1" | tr / -)"
+  git -C "${DOTFILES}" worktree list --porcelain |
+    awk -v b="refs/heads/$1" '/^worktree /{p=substr($0,10)} /^branch /{if($2==b){print p;exit}}'
 }
 
 # --- spawn -----------------------------------------------------------------
@@ -89,10 +93,13 @@ cmd_spawn() {
 
   local dir made_worktree=0
   dir="$(worktree_path "$branch")"
-  if [ ! -d "$dir" ]; then
-    info "creating worktree ${dir}"
+  if [ -z "$dir" ]; then
+    info "creating worktree for ${branch}"
     (cd "${DOTFILES}" && git wta "$branch") >/dev/null
+    dir="$(worktree_path "$branch")"
+    [ -n "$dir" ] || die "spawn: git wta ${branch} created no worktree"
     made_worktree=1
+    info "worktree ${dir}"
   fi
   # A worktree that starts dirty hands every later failure an ambiguous cause.
   [ -z "$(git -C "$dir" status --porcelain)" ] ||

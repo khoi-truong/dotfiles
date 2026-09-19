@@ -15,12 +15,6 @@ name = "gruvbox"
 version_check = false
 
 [ui]
-# Default 26 truncates the cache row ("cache hit 98.8% · ttl≈60m" is 25
-# characters before the row indent), which is how it read as an ellipsis rather
-# than a number. 32 is the narrowest width that fits it, and well under the
-# sidebar_max_width of 36.
-sidebar_width = 32
-
 # Distinct static glyphs for blocked / working / done / idle instead of
 # color-only dots, so a row still reads where the theme's colors sit close.
 status_indicators = "symbols"
@@ -28,6 +22,13 @@ status_indicators = "symbols"
 # One pane per agent (README), so put the agent on its split border rather than
 # making the sidebar the only place that says who is where.
 show_agent_labels_on_pane_borders = true
+
+# The layout here is workspace → panes; the tab level is unused. Navigation is
+# already two-dimensional (prefix+shift+N picks the repo, prefix+alt+N the
+# agent row), so a tab row showing one auto-named tab was a line of chrome
+# saying "1". Hidden, not disabled: a second tab brings the row back, which is
+# what a dev server or a test watcher would want.
+hide_tab_bar_when_single_tab = true
 
 [ui.toast]
 # iTerm2 raises a real macOS notification, so a finished agent is visible from
@@ -62,17 +63,18 @@ enabled = true
 # window even on a DeepSeek pane: Claude Code reports no limits over a custom
 # endpoint and usagebar falls back to the last Pro reading.
 #
-# Exactly one of the three `$cache_*` tokens is ever set; mid and low are
-# colored here because high uses the default.
+# The `$cache_*` tokens are deliberately absent. They report this pane's
+# prompt-cache hit rate and the expiry of its cached prefix, which is real
+# per-pane data but not actionable: nothing you would do about "ttl≈8m"
+# differs from what you would do about "ttl≈60m", short of sending filler to
+# keep it warm. It cost a row and 25 columns to say so.
 [ui.sidebar.agents]
-# One blank line between agents. With four rows each, gap 0 ran three entries
-# together into a wall of text.
+# One blank line between agents; gap 0 ran the entries together.
 row_gap = 1
 rows = [
   ["state_icon", "$title"],
   [{ token = "terminal_title_stripped", dim = true }],
   ["$limit", "$context"],
-  ["$cache_high", { token = "$cache_mid", fg = "#e0af68" }, { token = "$cache_low", fg = "#f7768e" }],
 ]
 
 [session]
