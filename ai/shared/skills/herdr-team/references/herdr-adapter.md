@@ -86,6 +86,52 @@ What herdr does get right for us: `agent wait` pins the resolved pane
 occupant, so a replacement cannot satisfy the wait — the substrate already
 enforces the identity rule.
 
+## Dispatching from a plan
+
+`team.sh dispatch <name> --task T-nn --from-plan <plan.md>` builds the body
+from the plan instead of from something the orchestrator retypes. The plan
+carries a `## Tasks` heading followed by one fenced `json` block:
+
+```json
+[
+  {"task": "T-01", "provider": "ccd", "files": ["ai/setup.sh"],
+   "verify": "shellcheck -x ai/setup.sh", "blocks": []},
+  {"task": "T-02", "provider": "cc", "files": ["README.md"],
+   "verify": "npx markdownlint-cli2 README.md | tail -1", "blocks": ["T-01"]}
+]
+```
+
+JSON rather than a markdown table because a `verify` command contains pipes,
+and rather than YAML because `python3` has no YAML in its standard library and
+this script takes no new runtime dependency. Every row needs a matching
+`### T-nn` prose section; the parser refuses a plan where the two disagree in
+either direction.
+
+**The body is a pointer.** It tells the executor to read that section out of
+the plan file at an absolute path, names the files in scope, and names the
+`verify` command as the thing that must run before it may claim
+`evidence: verified`. Nothing is copied. The plan lives in the main checkout,
+which outlives any worktree, so the path stays readable from every pane —
+which is also why `--from-plan` is resolved by the orchestrator and not by the
+agent.
+
+`blocks` is enforced at dispatch: exit **3** and the unmet ids on stderr unless
+every one of them has a `succeeded` + `verified` handoff **under the current
+Run**. `--force` overrides with a warning, because retry is human-gated and a
+gate with no key is a trap.
+
+`provider` is advisory metadata for whoever chooses the target agent. The
+script does not check it: an agent's provider is fixed when it spawns, the
+only live evidence of it is on the pane's visible screen, and reading a pane
+is not passive.
+
+Body precedence is argv, then `--from-plan`, then stdin — and stdin only when
+it is not a terminal. Reading a terminal here would hang with no prompt and
+look exactly like a slow dispatch.
+
+`ai/herdr/fixtures/run-tests.sh` covers all of this. `shellcheck` and `bash -n`
+do not see inside the embedded python, so it is the only check the parser has.
+
 ## Naming
 
 Agent names match `[a-z][a-z0-9_-]{0,31}` and must be unique among live agents.

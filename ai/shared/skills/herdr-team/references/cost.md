@@ -14,6 +14,26 @@ The orchestrator is a dispatcher and must never be the most expensive thing
 running. Configuring the dispatcher changes the cost of the courier, never the
 quality of the work it drives.
 
+## The discriminator is verifiability, not price
+
+Read the table above as a consequence, not a rule. What puts a stage on a tier
+is whether a mechanical command catches a wrong answer:
+
+- **`ccd`** — a command in the task's `verify` field catches the mistake.
+  Implementation, boilerplate, tests, lint and CI fixes. The cheap tier is
+  safe here because the check, not the model, is what makes it safe.
+- **`cc`** — the work shapes later work: API or schema shape, security,
+  architecture, review, merge. It stays on Pro no matter how cheap the
+  alternative is, because a wrong answer ships silently and there is no
+  command that would have caught it. Quota pressure never moves a task off
+  this tier; the reason it is here is correctness, not budget.
+- **`omp`** — the task needs web or docs lookup. This is a **capability** axis,
+  not a cheaper `ccd`: Claude Code's web search does not work on a non-Pro
+  provider, so research goes here regardless of price.
+
+The corollary is that a task with no `verify` command is not a `ccd` task yet.
+Either find the command or keep the work on `cc`.
+
 ## Why the split is also a quality mechanism
 
 A reviewer sharing the author's model family shares its blind spots. `cc` plan
