@@ -91,7 +91,7 @@ if command -v herdr >/dev/null 2>&1; then
     printf '\n' >>"${settings}"
     ok "restored trailing newline in ${settings#"${CURRENT_DIR}/"}"
   done
-  # Plugins are installed here, pinned to a release tag by herdr/plugins.list.
+  # Plugins are installed here, pinned to a release tag by herdr/herdr.plugins.
   # `herdr plugin` has no update command — reinstalling is updating — and an
   # unpinned install re-fetches the default branch, so leaving the ref off
   # would silently move a plugin to current HEAD. This script is re-run after
@@ -125,7 +125,7 @@ if command -v herdr >/dev/null 2>&1; then
       [ -e "$item" ] || continue
       link "$item" "${plugin_config}/$(basename "$item")"
     done
-  done 3<"${CURRENT_DIR}/herdr/plugins.list"
+  done 3<"${CURRENT_DIR}/herdr/herdr.plugins"
   ok "herdr $(herdr --version 2>/dev/null || echo installed)"
 else
   warn "herdr not found — installed by brew/setup.sh."
