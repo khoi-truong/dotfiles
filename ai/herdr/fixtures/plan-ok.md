@@ -9,12 +9,17 @@ Status: fixture. Not a real plan; `run-tests.sh` dispatches against this file.
   {"task": "T-01", "provider": "ccd", "files": ["ai/setup.sh"],
    "verify": "shellcheck -x ai/setup.sh", "blocks": []},
   {"task": "T-02", "provider": "cc", "files": ["README.md"],
-   "verify": "npx markdownlint-cli2 README.md | tail -1", "blocks": ["T-01"]}
+   "verify": "set -o pipefail; npx markdownlint-cli2 README.md | tail -1",
+   "blocks": ["T-01"]}
 ]
 ```
 
 The `verify` string on T-02 contains a pipe on purpose: it is the case a
-markdown table could not carry without an escaping rule.
+markdown table could not carry without an escaping rule. It leads with
+`set -o pipefail` for the same reason every `verify` with a pipe must — a
+pipeline's exit status is the last command's, so `… | tail -1` would exit 0
+whatever markdownlint did, and an executor would observe 0 and claim
+`evidence: verified` on a check that cannot fail.
 
 ### T-01 — A task with no blockers
 

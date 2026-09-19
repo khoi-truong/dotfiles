@@ -97,9 +97,16 @@ carries a `## Tasks` heading followed by one fenced `json` block:
   {"task": "T-01", "provider": "ccd", "files": ["ai/setup.sh"],
    "verify": "shellcheck -x ai/setup.sh", "blocks": []},
   {"task": "T-02", "provider": "cc", "files": ["README.md"],
-   "verify": "npx markdownlint-cli2 README.md | tail -1", "blocks": ["T-01"]}
+   "verify": "set -o pipefail; npx markdownlint-cli2 README.md | tail -1",
+   "blocks": ["T-01"]}
 ]
 ```
+
+**A `verify` that contains a pipe must lead with `set -o pipefail`.** A
+pipeline's exit status is the last command's, so `cmd | tail -1` exits 0
+however `cmd` exited. The executor observes 0, claims `evidence: verified`, and
+the blocker gate unblocks the next task — turning the top of the evidence
+ordering into a rubber stamp.
 
 JSON rather than a markdown table because a `verify` command contains pipes,
 and rather than YAML because `python3` has no YAML in its standard library and
