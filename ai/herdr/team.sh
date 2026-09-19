@@ -364,8 +364,9 @@ if unmet:
             "  retry is human-gated: pass --force to dispatch anyway\n"
             % (task, " ".join(unmet), run))
         sys.exit(3)
-    sys.stderr.write("dispatch: --force: %s dispatched over unmet %s\n"
-                     % (task, " ".join(unmet)))
+    sys.stderr.write(
+        "dispatch: --force: %s dispatched over unmet %s\n"
+        % (task, " ".join(unmet)))
 
 verify = row.get("verify") or ""
 body = ['Read %s, section "### %s". Do that task and nothing else.' % (plan, task)]
