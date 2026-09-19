@@ -26,12 +26,12 @@ same script. Never list a virtualenv — they embed absolute paths.
 ## At creation: verify a clean baseline
 
 A worktree that starts with a failing build hands every downstream failure an
-ambiguous cause. `crew.sh spawn` refuses a worktree whose tree is already
+ambiguous cause. `team.sh spawn` refuses a worktree whose tree is already
 dirty.
 
 ## At teardown: an explicit finish decision
 
-Merge, open a PR, keep, or discard — never implicit. `crew.sh teardown` refuses
+Merge, open a PR, keep, or discard — never implicit. `team.sh teardown` refuses
 on a dirty tree or unpushed commits unless forced, prompts for the decision,
 then closes the workspace, runs `git worktree remove` and `git tidy`.
 

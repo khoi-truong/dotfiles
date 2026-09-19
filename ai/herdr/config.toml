@@ -43,12 +43,12 @@ enabled = true
 # rest are herdr built-ins.
 #
 # `workspace` and `tab` are the built-ins, and they say different things:
-# crew.sh labels the workspace after the agent and the tab after its branch,
-# so a crew row reads `exec-1 feat/crew-json` — who, then what on.
+# team.sh labels the workspace after the agent and the tab after its branch,
+# so a team row reads `exec-1 feat/team-json` — who, then what on.
 #
 # usagebar's `$title` was here first, because a tab keeping its auto-assigned
 # number renders the built-in `tab` blank. That is no longer reachable:
-# crew.sh names the tab it creates, and `prompt_new_tab_name` (herdr's
+# team.sh names the tab it creates, and `prompt_new_tab_name` (herdr's
 # default) asks for a name on a hand-made one. `$title` was also not
 # deterministic — it resolved to the tab label on one pane and the workspace
 # label on another — and it is cached, so it lagged a rename until the plugin
@@ -104,12 +104,12 @@ command = "lazygit"
 width = "90%"
 height = "90%"
 
-# Crew roster and outstanding handoffs at a glance. `zsh -ic` because crew.sh
+# Team roster and outstanding handoffs at a glance. `zsh -ic` because team.sh
 # is read through the repo, not $PATH, and `read -k` holds the popup open.
 [[keys.command]]
-key = "prefix+alt+c"
+key = "prefix+alt+t"
 type = "popup"
-command = "zsh -ic '~/.dotfiles/ai/herdr/crew.sh status; read -k'"
+command = "zsh -ic '~/.dotfiles/ai/herdr/team.sh status; read -k'"
 width = "70%"
 height = "50%"
 
