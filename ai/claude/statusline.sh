@@ -15,7 +15,7 @@ HUD="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/hud/omc-hud.mjs"
 # empty. It is a tee side-branch, not a pipeline stage: `usagebar statusline`
 # prints its own summary rather than passing JSON through, so chaining it
 # inline would feed omc-hud garbage and drop the provider label that
-# herdr/crew.sh asserts on.
+# herdr/team.sh asserts on.
 #
 # herdr installs a plugin to <plugin id>-<first 12 hex of sha256(plugin id)>,
 # which carries no version or commit, so this path survives reinstalls and tag

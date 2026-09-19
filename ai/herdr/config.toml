@@ -23,6 +23,13 @@ status_indicators = "symbols"
 # making the sidebar the only place that says who is where.
 show_agent_labels_on_pane_borders = true
 
+# The layout here is workspace → panes; the tab level is unused. Navigation is
+# already two-dimensional (prefix+shift+N picks the repo, prefix+alt+N the
+# agent row), so a tab row showing one auto-named tab was a line of chrome
+# saying "1". Hidden, not disabled: a second tab brings the row back, which is
+# what a dev server or a test watcher would want.
+hide_tab_bar_when_single_tab = true
+
 [ui.toast]
 # iTerm2 raises a real macOS notification, so a finished agent is visible from
 # another window. Requires iTerm2 > Settings > Profiles > Terminal >
@@ -32,20 +39,49 @@ delivery = "terminal"
 [ui.sound]
 enabled = true
 
-# Sidebar rows for the usagebar plugin (plugins.list). `$title` replaces
-# herdr's built-in tab/pane tokens, which render blank while a tab still has
-# its auto-assigned number; `$provider` replaces `agent` and shows the billing
-# identity — the subscription provider on a Pro pane, the backend (`deepseek`)
-# on a pay-as-you-go one, which is exactly the `cc` vs `ccd` split. Exactly one
-# of the three `$cache_*` tokens is ever set; mid and low are colored here
-# because high uses the default.
+# Sidebar rows. `$*` tokens come from the usagebar plugin (plugins.list), the
+# rest are herdr built-ins.
+#
+# `workspace` and `tab` are the built-ins, and they say different things:
+# team.sh labels the workspace after the agent and the tab after its branch,
+# so a team row reads `exec-1 feat/team-json` — who, then what on.
+#
+# usagebar's `$title` was here first, because a tab keeping its auto-assigned
+# number renders the built-in `tab` blank. That is no longer reachable:
+# team.sh names the tab it creates, and `prompt_new_tab_name` (herdr's
+# default) asks for a name on a hand-made one. `$title` was also not
+# deterministic — it resolved to the tab label on one pane and the workspace
+# label on another — and it is cached, so it lagged a rename until the plugin
+# next refreshed.
+#
+# `terminal_title_stripped` is what names the agent. Claude Code keeps the
+# terminal title as a live summary of what it is doing ("Herdr config PR"), so
+# it is both the only token that separates two panes in one tab and the only
+# one that says anything about the work. Dimmed: it is the subtitle of the row
+# above, not a second heading.
+#
+# `$provider` is deliberately absent. It reports the detected agent kind, which
+# is `claude` on every pane here — including a `ccd` one, whose status line
+# says `DS·deepseek-flash`. It cannot see the cc/ccd split, so it was a
+# constant word costing a third of the sidebar width on every row.
+#
+# `$limit` and `$context` share a row because they are one thought (what this
+# pane has left) and together fit the width. Note `$limit` is the Pro 5h/7d
+# window even on a DeepSeek pane: Claude Code reports no limits over a custom
+# endpoint and usagebar falls back to the last Pro reading.
+#
+# The `$cache_*` tokens are deliberately absent. They report this pane's
+# prompt-cache hit rate and the expiry of its cached prefix, which is real
+# per-pane data but not actionable: nothing you would do about "ttl≈8m"
+# differs from what you would do about "ttl≈60m", short of sending filler to
+# keep it warm. It cost a row and 25 columns to say so.
 [ui.sidebar.agents]
-row_gap = 0
+# One blank line between agents; gap 0 ran the entries together.
+row_gap = 1
 rows = [
-  ["state_icon", "$title"],
-  ["$provider", "$limit"],
-  ["$cache_high", { token = "$cache_mid", fg = "#e0af68" }, { token = "$cache_low", fg = "#f7768e" }],
-  ["$context"],
+  ["state_icon", "workspace", "tab"],
+  [{ token = "terminal_title_stripped", dim = true }],
+  ["$limit", "$context"],
 ]
 
 [session]
@@ -68,12 +104,12 @@ command = "lazygit"
 width = "90%"
 height = "90%"
 
-# Crew roster and outstanding handoffs at a glance. `zsh -ic` because crew.sh
+# Team roster and outstanding handoffs at a glance. `zsh -ic` because team.sh
 # is read through the repo, not $PATH, and `read -k` holds the popup open.
 [[keys.command]]
-key = "prefix+alt+c"
+key = "prefix+alt+t"
 type = "popup"
-command = "zsh -ic '~/.dotfiles/ai/herdr/crew.sh status; read -k'"
+command = "zsh -ic '~/.dotfiles/ai/herdr/team.sh status; read -k'"
 width = "70%"
 height = "50%"
 

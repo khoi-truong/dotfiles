@@ -80,8 +80,14 @@ harness keeps its own model/provider and MCP config, since the formats differ.
   with APFS copy-on-write, so there is nothing to reinstall or regenerate.
   Claude Code's `--worktree` skips git hooks, so a `SessionStart` hook in
   `ai/claude/settings.json` runs the same script. Don't list virtualenvs;
-  they embed absolute paths. `git wta <branch>` adds `../<repo>-<branch>`,
-  `wt` jumps between worktrees with fzf, and `git tidy` prunes stale ones.
+  they embed absolute paths. `git wta <branch>` adds
+  `~/.worktrees/<repo>/<branch>` — one place rather than scattered beside
+  whichever checkout spawned them, and deliberately not inside the repo, where
+  every tree walk from the root would see a full copy per worktree and a
+  `git clean -xdff` would delete them all. The repo name comes from
+  `--git-common-dir`, so `git wta` works the same from a subdirectory or from
+  inside another worktree. `wt` jumps between them with fzf, `git wtrm <path>`
+  removes one, and `git tidy` prunes stale records.
 - Stats (menu bar monitor) has its prefs imported by `misc/stats/setup.sh` from
   `misc/stats/eu.exelban.Stats.plist`; re-dump with `bash misc/stats/update.sh`.
 
@@ -233,6 +239,9 @@ transcript is untried.
 herdr is the workspace manager the coding agents run in:
 one workspace per repository, tabs for agents / dev server / tests, one pane per
 agent, with a state sidebar showing which agent is working, blocked or done.
+The tab level goes unused — navigation is already two-dimensional
+(`prefix+shift+N` picks the repo, `prefix+alt+N` the agent row) — so
+`hide_tab_bar_when_single_tab` drops the row. A second tab brings it back.
 `prefix` is `ctrl+b` (tmux uses `C-a`, so the two don't collide). `prefix+q`
 detaches and `herdr` reattaches — `herdr server stop` is different, it kills the
 pane processes.
@@ -275,9 +284,19 @@ Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
 comments back to the agent) and usagebar (context, prompt-cache and
 provider-limit meters in the sidebar, `ctrl+shift+u` for the limits pane). Its
 sidebar rows and keybindings live in `ai/herdr/config.toml` rather than the
-plugin's own config, and its `$provider` token is what makes the `cc`/`ccd`
-split visible per pane — Pro shows the subscription window, DeepSeek shows the
-backend and what the session burned. Pane commands in the templates go through
+plugin's own config, and only `$limit` and `$context` are used. A row is named
+by the built-in `workspace` and `tab` tokens, which say different things —
+`team.sh` labels the workspace after the agent and the tab after its branch,
+so a team row reads `exec-1 feat/team-json`. Under that,
+`terminal_title_stripped`: Claude Code keeps the terminal title as a live
+summary of what it is doing, which is the only thing that tells two panes in
+one tab apart. usagebar's `$provider` does not — it
+reports the detected agent kind, `claude` on a `ccd` pane as much as a `cc`
+one, so the sidebar cannot show the provider split and `$limit` reports the
+Pro window on both. The status line is where that split is visible. The
+`$cache_*` tokens are left off: the prompt-cache hit rate and its expiry are
+real per-pane numbers, but nothing you would do differs between `ttl≈8m` and
+`ttl≈60m`. Pane commands in the templates go through
 this repo's wrappers (`cc`, `ccd`, `omp`) — not
 `claude --dangerously-skip-permissions` as herdr-plus's README shows, which
 unsets the provider environment and silently falls back to the Pro login.
@@ -312,35 +331,35 @@ lazygit to apply. herdr-reviewr is the review surface: mark lines, comment,
 through `/code-review` and a signed PR — the AI review pass stays in its own
 session, separate from the one that wrote the code.
 
-**Agent crews.** A *crew* is agents in panes, one git worktree each — not to be
+**Agent teams.** A *team* is agents in panes, one git worktree each — not to be
 confused with OMC's `/team` skill, which fans work out to in-process subagents
-inside a single pane. Reach for `/team` first; a crew costs more and buys
+inside a single pane. Reach for `/team` first; a team costs more and buys
 isolation.
 
-`ai/herdr/crew.sh` is the only thing that starts one, because `herdr agent
+`ai/herdr/team.sh` is the only thing that starts one, because `herdr agent
 start` execs the binary directly and drops what `ai/claude/providers.zsh`
 exports — Claude Code then falls back to the Pro login silently. Every spawn
 goes through `zsh -ic <wrapper>` and the provider is asserted afterwards.
 
 ```sh
-ai/herdr/crew.sh run new                        # mint a Run id
-ai/herdr/crew.sh spawn exec-1 --branch feat/x   # worktree + workspace + agent
-ai/herdr/crew.sh dispatch exec-1 --task T-01 "…"  # hand over the contract
-ai/herdr/crew.sh status                         # roster and pending handoffs
-ai/herdr/crew.sh collect [<run-id>]             # outcomes from the handoffs
-ai/herdr/crew.sh settle <name> reuse|retain|release
-ai/herdr/crew.sh teardown <name> [--force]
+ai/herdr/team.sh run new                        # mint a Run id
+ai/herdr/team.sh spawn exec-1 --branch feat/x   # worktree + workspace + agent
+ai/herdr/team.sh dispatch exec-1 --task T-01 "…"  # hand over the contract
+ai/herdr/team.sh status                         # roster and pending handoffs
+ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
+ai/herdr/team.sh settle <name> reuse|retain|release
+ai/herdr/team.sh teardown <name> [--force]
 ```
 
-`prefix+alt+c` opens `status` in a popup. One agent per worktree; agents report
+`prefix+alt+t` opens `status` in a popup. One agent per worktree; agents report
 outcomes by writing `.omc/handoffs/<task>-<dispatch>.md` in the **main**
 checkout, never by leaving them in a transcript. The protocol the agents follow
-lives in `ai/shared/skills/herdr-crew/`, which is linked into `~/.claude/skills`
+lives in `ai/shared/skills/herdr-team/`, which is linked into `~/.claude/skills`
 and `~/.omp/agent/skills` by `ai/setup.sh`.
 
 `dispatch` exists so the completion contract — Run, Task and Dispatch ids, the
 absolute handoff path, the frontmatter template — is handed over verbatim
-instead of retyped from memory. The Run id is kept in `.omc/state/crew-run`, so
+instead of retyped from memory. The Run id is kept in `.omc/state/team-run`, so
 it survives a compaction. With no `--dispatch` it picks the lowest id with no
 handoff file yet, which enforces "a settled id is never reused" mechanically;
 `--dry-run` prints the prompt instead of sending it.

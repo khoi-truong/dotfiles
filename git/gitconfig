@@ -193,10 +193,23 @@
   # Delete local branches merged into the default branch or gone upstream.
   tidy = "!f() { git fetch --prune; base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null || echo main); git branch --merged \"$base\" --format='%(refname:short)' | grep -vxE \"main|master|${base#origin/}|$(git branch --show-current)\" | xargs -n 1 git branch -d; git branch --format='%(refname:short) %(upstream:track)' | awk '$2 == \"[gone]\" { print $1 }' | xargs -n 1 git branch -D; git worktree prune; }; f"
 
-  # Worktrees: `git wt` lists them; `git wta <branch>` adds ../<repo>-<branch>
-  # on that branch, creating it if needed.
+  # Worktrees live under ~/.worktrees/<repo>/<branch>, one place rather than
+  # scattered beside whichever checkout spawned them. Not inside the repo:
+  # anything walking the tree from the root (find, the `zsh -n zsh/*.zsh` and
+  # `shellcheck -x` globs CI runs, editor indexing) would see a full copy per
+  # worktree, and a `git clean -xdff` in the main checkout would delete them
+  # all, unpushed commits included.
+  #
+  # The repo name comes from --git-common-dir, not $PWD, so `git wta` from a
+  # subdirectory or from inside another worktree still groups under the main
+  # checkout's name.
+  #
+  # `git wt` lists them, `git wta <branch>` adds one (creating the branch if
+  # needed), `git wtrm <path>` removes one and its directory, and `git tidy`
+  # prunes the stale admin records.
   wt = worktree list
-  wta = "!f() { b=\"$1\"; d=\"../$(basename \"$PWD\")-$(printf %s \"$b\" | tr / -)\"; if git show-ref --verify --quiet \"refs/heads/$b\"; then git worktree add \"$d\" \"$b\"; else git worktree add -b \"$b\" \"$d\"; fi; }; f"
+  wtrm = worktree remove
+  wta = "!f() { b=\"$1\"; r=\"$(basename \"$(dirname \"$(git rev-parse --path-format=absolute --git-common-dir)\")\")\"; d=\"$HOME/.worktrees/$r/$(printf %s \"$b\" | tr / -)\"; mkdir -p \"$(dirname \"$d\")\"; if git show-ref --verify --quiet \"refs/heads/$b\"; then git worktree add \"$d\" \"$b\"; else git worktree add -b \"$b\" \"$d\"; fi; }; f"
 
   # Structural diff (difftastic): compares syntax trees, so a pure reindent or
   # a moved function reads as no change. Slower than delta; on demand only, and

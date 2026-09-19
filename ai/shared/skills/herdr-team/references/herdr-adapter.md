@@ -38,7 +38,7 @@ Measured in a throwaway workspace, herdr 0.9.1:
   in that workspace does **not** inherit it (`HERDR_ENV=1` is injected by herdr
   regardless, so its presence proves nothing). Consequence: run the agent in
   the workspace's **root pane**, or pass `--env` again on `pane split`. An
-  executor spawned this way did read `$HERDR_CREW_HANDOFFS` and write its
+  executor spawned this way did read `$HERDR_TEAM_HANDOFFS` and write its
   handoff into the main checkout, so the propagation is confirmed end to end.
 - `workspace create` already returns the root pane: `result.workspace_id` is
   under `result.workspace`, and the pane under `result.root_pane.pane_id`.
@@ -66,7 +66,7 @@ Measured in a throwaway workspace, herdr 0.9.1:
   spawn goes through `pane run "zsh -ic <wrapper>"`.
 - Metadata sources are capped at **32 distinct `source` ids per pane** for its
   lifetime, and clearing or expiry does not release a slot. Use one source id
-  per pane (`herdr-crew`), never one per Dispatch.
+  per pane (`herdr-team`), never one per Dispatch.
 - Presentation values are trimmed, stripped of control characters and capped at
   **80 characters**. The bus carries status tokens, not payloads.
 - **Event subscriptions do not replay.** Subscribe first, dispatch second.
@@ -89,4 +89,4 @@ enforces the identity rule.
 ## Naming
 
 Agent names match `[a-z][a-z0-9_-]{0,31}` and must be unique among live agents.
-`crew.sh` enforces both before it creates anything.
+`team.sh` enforces both before it creates anything.

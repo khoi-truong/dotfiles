@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
-# crew.sh — the only thing that starts an agent for a herdr crew.
+# team.sh — the only thing that starts an agent for a herdr team.
 #
-# "crew", not "team": OMC ships a `/team` skill that fans work out to
-# in-process subagents inside one pane. This is the other mechanism — real
-# panes, one git worktree each. Sharing the word cost a paragraph of
-# disambiguation every time either was mentioned.
+# OMC also ships a `/team` skill, which fans work out to in-process subagents
+# inside one pane. This is the other mechanism with the same name: real panes,
+# one git worktree each. They are told apart by where you invoke them —
+# `/team` is a skill, this is a script — and the skill descriptions in
+# ai/shared/skills/herdr-team/SKILL.md are written to keep the router from
+# confusing the two.
 #
 # It exists because `herdr agent start --kind claude` execs the binary
 # directly, which drops everything ai/claude/providers.zsh exports and
 # silently bills the Pro plan. Every spawn here goes through
 # `zsh -ic <wrapper>` instead, and the provider is asserted afterwards.
 #
-#   crew.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
-#   crew.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
-#   crew.sh run [new]
-#   crew.sh status
-#   crew.sh collect [<run-id>]
-#   crew.sh settle <name> <reuse|retain|release>
-#   crew.sh teardown <name> [--force]
+#   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
+#   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
+#   team.sh run [new]
+#   team.sh status
+#   team.sh collect [<run-id>]
+#   team.sh settle <name> <reuse|retain|release>
+#   team.sh teardown <name> [--force]
 #
-# See ai/shared/skills/herdr-crew/ for the protocol these commands implement.
+# See ai/shared/skills/herdr-team/ for the protocol these commands implement.
 set -euo pipefail
 
 DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -28,7 +30,7 @@ require_macos
 
 HANDOFFS="${DOTFILES}/.omc/handoffs"
 # The current Run id, so `dispatch` does not have to be told it every time.
-RUN_FILE="${DOTFILES}/.omc/state/crew-run"
+RUN_FILE="${DOTFILES}/.omc/state/team-run"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
 
@@ -37,10 +39,10 @@ command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml p
 
 # --- helpers ---------------------------------------------------------------
 
-# The usage block is the run of `#   crew.sh ...` lines in the header, found by
+# The usage block is the run of `#   team.sh ...` lines in the header, found by
 # pattern rather than line number so editing the comment above cannot break it.
 usage() {
-  grep -E '^#   crew\.sh ' "$0" | sed 's/^# \{0,1\}//'
+  grep -E '^#   team\.sh ' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-1}"
 }
 
@@ -57,8 +59,12 @@ agent_field() {
     "next((a.get('$2','') for a in d['result']['agents'] if a.get('name')=='$1'), '')"
 }
 
+# The worktree checked out on <branch>, or empty. Asked of git rather than
+# rebuilt from the `git wta` layout, so moving that layout cannot silently
+# leave spawn predicting a path nothing is at.
 worktree_path() {
-  printf '%s-%s' "${DOTFILES}" "$(printf '%s' "$1" | tr / -)"
+  git -C "${DOTFILES}" worktree list --porcelain |
+    awk -v b="refs/heads/$1" '/^worktree /{p=substr($0,10)} /^branch /{if($2==b){print p;exit}}'
 }
 
 # --- spawn -----------------------------------------------------------------
@@ -89,10 +95,13 @@ cmd_spawn() {
 
   local dir made_worktree=0
   dir="$(worktree_path "$branch")"
-  if [ ! -d "$dir" ]; then
-    info "creating worktree ${dir}"
+  if [ -z "$dir" ]; then
+    info "creating worktree for ${branch}"
     (cd "${DOTFILES}" && git wta "$branch") >/dev/null
+    dir="$(worktree_path "$branch")"
+    [ -n "$dir" ] || die "spawn: git wta ${branch} created no worktree"
     made_worktree=1
+    info "worktree ${dir}"
   fi
   # A worktree that starts dirty hands every later failure an ambiguous cause.
   [ -z "$(git -C "$dir" status --porcelain)" ] ||
@@ -105,11 +114,17 @@ cmd_spawn() {
   local created ws pane
   created="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus \
     --env "OMC_STATE_DIR=${DOTFILES}/.omc/state" \
-    --env "HERDR_CREW_HANDOFFS=${HANDOFFS}")"
+    --env "HERDR_TEAM_HANDOFFS=${HANDOFFS}")"
   ws="$(printf '%s' "$created" | jget "d['result']['workspace']['workspace_id']")"
   # The agent must occupy the root pane: `--env` reaches that pane only, not
   # anything split from it later.
   pane="$(printf '%s' "$created" | jget "d['result']['root_pane']['pane_id']")"
+  # The workspace label is the agent name; herdr auto-numbers the tab inside
+  # it, which renders as a bare "1" wherever a tab token appears. Name it after
+  # the branch, so the two levels say different things: who, then what on.
+  local tab
+  tab="$(printf '%s' "$created" | jget "d['result']['workspace'].get('active_tab_id','')")"
+  [ -z "$tab" ] || herdr tab rename "$tab" "$branch" >/dev/null 2>&1 || true
   if [ -z "$ws" ] || [ -z "$pane" ]; then
     [ "$made_worktree" -eq 1 ] && git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null
     die "spawn: workspace create returned no workspace/pane id"
@@ -247,7 +262,7 @@ cmd_run() {
   case "${1:-show}" in
     show)
       local run
-      run="$(current_run)" || die "run: none started — crew.sh run new"
+      run="$(current_run)" || die "run: none started — team.sh run new"
       printf '%s\n' "$run"
       ;;
     new)
@@ -299,7 +314,7 @@ cmd_dispatch() {
     die "dispatch: --task must look like T-01"
 
   [ -n "$run" ] || run="$(current_run)" ||
-    die "dispatch: no Run started — crew.sh run new"
+    die "dispatch: no Run started — team.sh run new"
   [ -n "$dispatch" ] || dispatch="$(next_dispatch "$task")"
   printf '%s' "$dispatch" | grep -qE '^D-[0-9]{2}$' ||
     die "dispatch: --dispatch must look like D-01"
@@ -381,9 +396,9 @@ cmd_settle() {
     *) die "settle: decision must be reuse, retain or release" ;;
   esac
 
-  # One source id for the whole crew, one token: a pane allows 32 distinct
+  # One source id for the whole team, one token: a pane allows 32 distinct
   # metadata sources for its lifetime and never releases a slot.
-  herdr pane report-metadata "$pane" --source herdr-crew \
+  herdr pane report-metadata "$pane" --source herdr-team \
     --token "settle=${decision}" >/dev/null ||
     warn "settle: could not label ${pane} (the decision still stands)"
 
