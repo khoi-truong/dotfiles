@@ -32,7 +32,7 @@ delivery = "terminal"
 [ui.sound]
 enabled = true
 
-# Sidebar rows for the usagebar plugin (herdr.plugins). `$title` replaces
+# Sidebar rows for the usagebar plugin (plugins.list). `$title` replaces
 # herdr's built-in tab/pane tokens, which render blank while a tab still has
 # its auto-assigned number; `$provider` replaces `agent` and shows the billing
 # identity — the subscription provider on a Pro pane, the backend (`deepseek`)
@@ -68,12 +68,12 @@ command = "lazygit"
 width = "90%"
 height = "90%"
 
-# Team roster and outstanding handoffs at a glance. `zsh -ic` because team.sh
+# Crew roster and outstanding handoffs at a glance. `zsh -ic` because crew.sh
 # is read through the repo, not $PATH, and `read -k` holds the popup open.
 [[keys.command]]
-key = "prefix+alt+t"
+key = "prefix+alt+c"
 type = "popup"
-command = "zsh -ic '~/.dotfiles/ai/herdr/team.sh status; read -k'"
+command = "zsh -ic '~/.dotfiles/ai/herdr/crew.sh status; read -k'"
 width = "70%"
 height = "50%"
 
