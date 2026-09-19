@@ -1,9 +1,9 @@
 # CLAUDE.md
 
-`README.md` is canonical for layout and installation. Read it first, and keep
-it updated when the structure changes.
-
-@README.md
+`README.md` is canonical for layout and installation. Read it before changing
+structure, the install flow or shell startup, and keep it updated when any of
+those change. Don't `@`-include it here: at 29KB it costs ~7k tokens of every
+session's context window, whether or not the task goes near it.
 
 ## Rules
 
