@@ -39,6 +39,23 @@ Shape the work **wide, not deep**: prefer parallel waves to dependency chains
 deeper than three or four steps. Depth is where these systems fail; width is
 cheap. Planning and implementation parallelize; **merge is always serialized**.
 
+### Ordering is a predicate, not a memory
+
+When a plan declares which Tasks block which, "blocked never" stops being
+something the orchestrator remembers and becomes something the dispatcher
+refuses. A Task is dispatchable only when **every** Task it blocks on has a
+handoff that is `succeeded` **and** `verified` — a `reported` success does not
+settle it, by the rule below — **and** that handoff belongs to the current Run.
+
+The Run clause is not pedantry. Task ids restart at `T-01` every Run, so a
+handoff left by an earlier Run answers to the same Task id and will unblock
+work it never did, silently, unless the predicate reads the Run from the
+handoff itself.
+
+A refusal is not a retry decision. Retry stays human-gated, so the dispatcher
+must offer an explicit override rather than leaving a human with no way past
+its own gate.
+
 ## Completion contract
 
 Every dispatched agent is told, verbatim and never reconstructed: its Task and

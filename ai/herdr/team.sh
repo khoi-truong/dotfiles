@@ -15,6 +15,7 @@
 #
 #   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
+#   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
 #   team.sh run [new]
 #   team.sh status
 #   team.sh collect [<run-id>]
@@ -28,7 +29,10 @@ DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
 . "${DOTFILES}/lib/common.sh"
 require_macos
 
-HANDOFFS="${DOTFILES}/.omc/handoffs"
+# Agents are told where to write through HERDR_TEAM_HANDOFFS; honour it here
+# too, so a test run can point the whole script at a throwaway directory
+# instead of writing fixtures into live state.
+HANDOFFS="${HERDR_TEAM_HANDOFFS:-${DOTFILES}/.omc/handoffs}"
 # The current Run id, so `dispatch` does not have to be told it every time.
 RUN_FILE="${DOTFILES}/.omc/state/team-run"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
@@ -293,14 +297,100 @@ next_dispatch() {
   die "dispatch: ${1} has 99 settled dispatches — that is a loop, not a retry"
 }
 
+# plan_body <plan> <task> <run> <force> — the body for a task named in a plan's
+# `## Tasks` block. Prints it on stdout; exits 3 when a blocker is unmet.
+#
+# The body is a pointer, not a copy: the executor reads the section out of the
+# plan file itself. The plan lives in the main checkout, which outlives any
+# worktree, so an absolute path stays readable from every pane.
+plan_body() {
+  python3 - "$1" "$2" "$3" "$HANDOFFS" "$4" <<'PY'
+import glob, json, os, re, sys
+
+plan, task, run, handoffs, force = sys.argv[1:6]
+plan = os.path.abspath(plan)
+try:
+    text = open(plan, encoding="utf-8").read()
+except OSError as e:
+    sys.exit("dispatch: cannot read plan: %s" % e)
+
+m = re.search(r"^## Tasks\s*\n+```json\n(.*?)\n```", text, re.S | re.M)
+if not m:
+    sys.exit("dispatch: %s has no '## Tasks' json block" % plan)
+try:
+    rows = json.loads(m.group(1))
+except ValueError as e:
+    sys.exit("dispatch: task block is not valid JSON: %s" % e)
+
+by_id = {r.get("task"): r for r in rows}
+row = by_id.get(task)
+if row is None:
+    sys.exit("dispatch: %s has no row for %s" % (plan, task))
+
+# A row and its prose section must agree, in both directions: a row with no
+# section dispatches an executor to read nothing, and a section with no row is
+# work nobody will ever be sent to do.
+sections = set(re.findall(r"^### (T-\d{2})\b", text, re.M))
+if task not in sections:
+    sys.exit("dispatch: %s has a row for %s but no '### %s' section" % (plan, task, task))
+orphans = sorted(sections - set(by_id))
+if orphans:
+    sys.exit("dispatch: %s has sections with no row: %s" % (plan, " ".join(orphans)))
+
+# Settled, for this Run only. Task ids restart every Run and handoff filenames
+# carry no Run, so the frontmatter is the only thing that scopes them.
+settled = set()
+for path in glob.glob(os.path.join(handoffs, "*.md")):
+    meta, lines = {}, open(path, encoding="utf-8").read().splitlines()
+    if not lines or lines[0].strip() != "---":
+        continue
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    if meta.get("run") != run:
+        continue
+    # 'succeeded' at 'reported' is a claim, not a result: it does not settle.
+    if meta.get("outcome") == "succeeded" and meta.get("evidence") == "verified":
+        settled.add(meta.get("task"))
+
+unmet = [b for b in row.get("blocks", []) if b not in settled]
+if unmet:
+    if force != "1":
+        sys.stderr.write(
+            "dispatch: %s is blocked on %s (no verified handoff under run %s)\n"
+            "  retry is human-gated: pass --force to dispatch anyway\n"
+            % (task, " ".join(unmet), run))
+        sys.exit(3)
+    sys.stderr.write("dispatch: --force: %s dispatched over unmet %s\n"
+                     % (task, " ".join(unmet)))
+
+verify = row.get("verify") or ""
+body = ['Read %s, section "### %s". Do that task and nothing else.' % (plan, task)]
+files = row.get("files") or []
+if files:
+    body.append("Files in scope: %s" % " ".join(files))
+if verify:
+    body.append(
+        "Your verification command is:\n\n  %s\n\n"
+        "Run it, record it in commands: with the exit code you observed, and\n"
+        "only then claim evidence: verified." % verify)
+print("\n\n".join(body))
+PY
+}
+
 cmd_dispatch() {
-  local name="${1:-}" task="" dispatch="" run="" dry=0
+  local name="${1:-}" task="" dispatch="" run="" dry=0 plan="" force=0
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
       --task) task="${2:-}"; shift 2 ;;
       --dispatch) dispatch="${2:-}"; shift 2 ;;
       --run) run="${2:-}"; shift 2 ;;
+      --from-plan) plan="${2:-}"; shift 2 ;;
+      --force) force=1; shift ;;
       --dry-run) dry=1; shift ;;
       --) shift; break ;;
       -*) die "dispatch: unknown option $1" ;;
@@ -323,9 +413,19 @@ cmd_dispatch() {
   [ ! -e "$handoff" ] ||
     die "dispatch: ${task}/${dispatch} already settled (${handoff}) — use a new Dispatch id"
 
-  # Body: what is left on the command line, or stdin when nothing is.
+  # Body, in precedence order: the command line, else the plan, else stdin —
+  # and stdin only when something is actually piped in. Reading a terminal
+  # here would hang with no prompt and look like a slow dispatch.
   local body
-  if [ $# -gt 0 ]; then body="$*"; else body="$(cat)"; fi
+  if [ $# -gt 0 ]; then
+    body="$*"
+  elif [ -n "$plan" ]; then
+    body="$(plan_body "$plan" "$task" "$run" "$force")" || exit $?
+  elif [ ! -t 0 ]; then
+    body="$(cat)"
+  else
+    die "dispatch: no work description given — pass text, --from-plan, or pipe it in"
+  fi
   [ -n "$body" ] || die "dispatch: no work description given"
 
   if [ "$dry" -eq 0 ]; then

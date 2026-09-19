@@ -362,6 +362,7 @@ goes through `zsh -ic <wrapper>` and the provider is asserted afterwards.
 ai/herdr/team.sh run new                        # mint a Run id
 ai/herdr/team.sh spawn exec-1 --branch feat/x   # worktree + workspace + agent
 ai/herdr/team.sh dispatch exec-1 --task T-01 "…"  # hand over the contract
+ai/herdr/team.sh dispatch exec-1 --task T-01 --from-plan .omc/plans/x.md
 ai/herdr/team.sh status                         # roster and pending handoffs
 ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
 ai/herdr/team.sh settle <name> reuse|retain|release
@@ -380,6 +381,21 @@ instead of retyped from memory. The Run id is kept in `.omc/state/team-run`, so
 it survives a compaction. With no `--dispatch` it picks the lowest id with no
 handoff file yet, which enforces "a settled id is never reused" mechanically;
 `--dry-run` prints the prompt instead of sending it.
+
+`--from-plan` takes the same idea one step further: the body stops being prose
+the orchestrator retypes and becomes a pointer into the plan. The plan carries
+a `## Tasks` json block — one row per task, with its `files`, its `verify`
+command and the tasks it `blocks` on — and dispatch reads the row, refuses
+(exit 3) when a blocker has no `succeeded` + `verified` handoff **under the
+current Run**, and hands the executor the plan path, the section id and the
+command that must run before it may claim `evidence: verified`. The Run clause
+is the whole point: task ids restart at `T-01` every Run and handoff filenames
+carry no Run, so a gate that only globs the directory unblocks work with a
+previous Run's result. `--force` overrides it, because retry is human-gated and
+a gate with no key is a trap. A plan with no json block dispatches exactly as
+before. `ai/herdr/fixtures/run-tests.sh` is the only check the embedded parser
+gets — `shellcheck` cannot see inside a heredoc — so run it after touching
+`plan_body`.
 
 ## tmux
 
