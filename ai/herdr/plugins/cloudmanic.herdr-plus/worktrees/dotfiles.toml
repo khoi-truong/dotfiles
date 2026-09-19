@@ -13,5 +13,11 @@ branch = "main"
 name = "claude"
 command = "zsh -ic cc"
 
+# Execution tier: DeepSeek Flash runs the written plan (README, "Which to
+# use"). One agent per directory, so this tab is the worktree's only executor.
+[[tabs]]
+name = "exec"
+command = "zsh -ic ccd"
+
 [[tabs]]
 name = "shell"
