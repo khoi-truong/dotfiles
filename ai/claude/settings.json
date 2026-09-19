@@ -60,8 +60,7 @@
     "skill-creator@claude-plugins-official": true,
     "swift-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "context7@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true
+    "context7@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "gitkraken": {
