@@ -282,6 +282,20 @@ this repo's wrappers (`cc`, `ccd`, `omp`) — not
 `claude --dangerously-skip-permissions` as herdr-plus's README shows, which
 unsets the provider environment and silently falls back to the Pro login.
 
+Claude's 5h/7d rate-limit windows and its prompt-cache expiry are reported
+nowhere but the statusLine payload, so `ai/claude/statusline.sh` (the
+`statusLine` command in `ai/claude/settings.json`) tees that stdin to
+`usagebar statusline` before rendering the HUD. It is a side branch, not a
+pipeline stage — `usagebar statusline` prints its own summary rather than
+passing the JSON through — so the status line is byte-identical with or without
+it, and the script falls back to the plain pipeline when the binary is missing.
+The hardcoded plugin path is stable: herdr installs to
+`<plugin id>-<first 12 hex of sha256(plugin id)>`, which carries no version or
+commit, so it survives reinstalls and tag bumps. Confirm it with
+`herdr plugin list --plugin usagebar --json`. This runs wherever Claude runs,
+including outside herdr, but the meters themselves are sidebar rows: a
+standalone session only keeps the cache warm for the next herdr pane.
+
 **Diff and review.** `git diff` pages through [delta](https://dandavison.github.io/delta/)
 (side-by-side, `n`/`N` between files), and `git dft` runs a structural
 [difftastic](https://difftastic.wilfred.me.uk) diff where a reindent or a moved
