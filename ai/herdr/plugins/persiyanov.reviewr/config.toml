@@ -10,6 +10,8 @@ auto_open = false
 # nvim is $EDITOR (zsh/config.zsh).
 editor = "nvim +{line} {file}"
 
-# `theme` is deliberately unset: the plugin ships 18 palettes and names none of
-# them in its README, and an invented string falls back silently. Read the real
-# name off the plugin's help screen on first run and set it here.
+# Dark Gruvbox, matching herdr/config.toml, the iTerm2 preset and omp's
+# dark-gruvbox. The pane keeps the terminal's background and the plugin has no
+# light/dark autodetect, so this has to be set by hand; `gruvbox-light` is the
+# light half of the pair.
+theme = "gruvbox"
