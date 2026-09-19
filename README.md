@@ -275,9 +275,13 @@ Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
 comments back to the agent) and usagebar (context, prompt-cache and
 provider-limit meters in the sidebar, `ctrl+shift+u` for the limits pane). Its
 sidebar rows and keybindings live in `ai/herdr/config.toml` rather than the
-plugin's own config, and its `$provider` token is what makes the `cc`/`ccd`
-split visible per pane — Pro shows the subscription window, DeepSeek shows the
-backend and what the session burned. Pane commands in the templates go through
+plugin's own config. What names each row there is `terminal_title_stripped`,
+a herdr built-in: Claude Code keeps the terminal title as a live summary of
+what it is doing, which is the only thing that tells two panes in one tab
+apart. Its `$provider` token does not — it reports the detected agent kind,
+`claude` on a `ccd` pane as much as a `cc` one, so the sidebar cannot show the
+provider split and `$limit` reports the Pro window on both. The status line is
+where that split is visible. Pane commands in the templates go through
 this repo's wrappers (`cc`, `ccd`, `omp`) — not
 `claude --dangerously-skip-permissions` as herdr-plus's README shows, which
 unsets the provider environment and silently falls back to the Pro login.
