@@ -311,6 +311,100 @@ next_dispatch() {
   die "dispatch: ${1} has 99 settled dispatches — that is a loop, not a retry"
 }
 
+# plan_parser_py — the one reader of a plan's `## Tasks` block, emitted as
+# python source so `dispatch` and every later caller run the same code. Two
+# readers that disagreed about a plan would be a silent unblock.
+plan_parser_py() {
+  cat <<'PY'
+import json, os, re, sys
+
+
+def _cycles(by_id):
+    """Every cycle in `blocks`, as a list of id paths ending where it began."""
+    colour, stack, found = {}, [], []
+
+    def walk(tid):
+        colour[tid] = 1
+        stack.append(tid)
+        for b in sorted(by_id[tid].get("blocks") or []):
+            if b not in by_id:
+                continue
+            if colour.get(b) == 1:
+                found.append(stack[stack.index(b):] + [b])
+            elif colour.get(b) is None:
+                walk(b)
+        stack.pop()
+        colour[tid] = 2
+
+    for tid in sorted(by_id):
+        if colour.get(tid) is None:
+            walk(tid)
+    return found
+
+
+def plan_rows(plan):
+    """Read a plan's `## Tasks` block.
+
+    Returns {"rows", "sections", "findings"} and raises nothing: the caller
+    decides whether to stop at the first finding (dispatch) or report them
+    all (plan lint). `findings` are human-readable and carry no prefix, so a
+    caller can name itself.
+    """
+    out = {"rows": [], "sections": [], "findings": []}
+    say = out["findings"].append
+    try:
+        text = open(plan, encoding="utf-8").read()
+    except OSError as e:
+        say("cannot read plan: %s" % e)
+        return out
+
+    m = re.search(r"^## Tasks\s*\n+```json\n(.*?)\n```", text, re.S | re.M)
+    if not m:
+        say("%s has no '## Tasks' json block" % plan)
+        return out
+    try:
+        rows = json.loads(m.group(1))
+    except ValueError as e:
+        say("task block is not valid JSON: %s" % e)
+        return out
+    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+        say("%s: the task block must be a list of objects" % plan)
+        return out
+
+    out["rows"] = rows
+    out["sections"] = sorted(set(re.findall(r"^### (T-\d{2})\b", text, re.M)))
+    sections = set(out["sections"])
+
+    by_id = {}
+    for r in rows:
+        missing = [k for k in ("task", "files", "verify", "blocks") if k not in r]
+        if missing:
+            say("row %s is missing %s" % (r.get("task", "(unnamed)"), " ".join(missing)))
+        if r.get("task"):
+            by_id[r["task"]] = r
+
+    # A row and its prose section must agree, in both directions: a row with no
+    # section dispatches an executor to read nothing, and a section with no row
+    # is work nobody will ever be sent to do.
+    for tid in sorted(by_id):
+        if tid not in sections:
+            say("%s has a row for %s but no '### %s' section" % (plan, tid, tid))
+    orphans = sorted(sections - set(by_id))
+    if orphans:
+        say("%s has sections with no row: %s" % (plan, " ".join(orphans)))
+
+    for tid in sorted(by_id):
+        dangling = sorted(b for b in (by_id[tid].get("blocks") or []) if b not in by_id)
+        if dangling:
+            say("%s blocks on %s, which has no row" % (tid, " ".join(dangling)))
+
+    for cycle in _cycles(by_id):
+        say("blocks has a cycle: %s" % " -> ".join(cycle))
+
+    return out
+PY
+}
+
 # plan_body <plan> <task> <run> <force> — the body for a task named in a plan's
 # `## Tasks` block. Prints it on stdout; exits 3 when a blocker is unmet.
 #
@@ -318,41 +412,29 @@ next_dispatch() {
 # plan file itself. The plan lives in the main checkout, which outlives any
 # worktree, so an absolute path stays readable from every pane.
 plan_body() {
-  python3 - "$1" "$2" "$3" "$HANDOFFS" "$4" <<'PY'
-import glob, json, os, re, sys
+  {
+    plan_parser_py
+    cat <<'PY'
+import glob
 
 plan, task, run, handoffs, force = sys.argv[1:6]
 plan = os.path.abspath(plan)
-try:
-    text = open(plan, encoding="utf-8").read()
-except OSError as e:
-    sys.exit("dispatch: cannot read plan: %s" % e)
 
-m = re.search(r"^## Tasks\s*\n+```json\n(.*?)\n```", text, re.S | re.M)
-if not m:
-    sys.exit("dispatch: %s has no '## Tasks' json block" % plan)
-try:
-    rows = json.loads(m.group(1))
-except ValueError as e:
-    sys.exit("dispatch: task block is not valid JSON: %s" % e)
+# A malformed plan fails whole, before any pane is spawned, so the linter and
+# the dispatcher can never disagree about whether a document is dispatchable.
+parsed = plan_rows(plan)
+if parsed["findings"]:
+    sys.exit("dispatch: %s" % parsed["findings"][0])
 
-by_id = {r.get("task"): r for r in rows}
+by_id = {r["task"]: r for r in parsed["rows"]}
 row = by_id.get(task)
 if row is None:
     sys.exit("dispatch: %s has no row for %s" % (plan, task))
 
-# A row and its prose section must agree, in both directions: a row with no
-# section dispatches an executor to read nothing, and a section with no row is
-# work nobody will ever be sent to do.
-sections = set(re.findall(r"^### (T-\d{2})\b", text, re.M))
-if task not in sections:
-    sys.exit("dispatch: %s has a row for %s but no '### %s' section" % (plan, task, task))
-orphans = sorted(sections - set(by_id))
-if orphans:
-    sys.exit("dispatch: %s has sections with no row: %s" % (plan, " ".join(orphans)))
-
 # Settled, for this Run only. Task ids restart every Run and handoff filenames
-# carry no Run, so the frontmatter is the only thing that scopes them.
+# carry no Run, so the frontmatter is the only thing that scopes them. This
+# stays out of plan_rows: it is the dispatch gate, not a property of the
+# document.
 settled = set()
 for path in glob.glob(os.path.join(handoffs, "*.md")):
     meta, lines = {}, open(path, encoding="utf-8").read().splitlines()
@@ -394,6 +476,7 @@ if verify:
         "only then claim evidence: verified." % verify)
 print("\n\n".join(body))
 PY
+  } | python3 - "$1" "$2" "$3" "$HANDOFFS" "$4"
 }
 
 cmd_dispatch() {

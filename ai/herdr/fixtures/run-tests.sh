@@ -121,6 +121,11 @@ fi
 expect_exit 1 "7 refuses a plan whose sections and rows disagree" \
   --task T-01 --from-plan "${FIXTURES}/plan-orphan.md"
 
+# 7b. A cycle in `blocks` is a whole-document property: the row for T-01 only
+#     knows it waits on T-02, so this fails only if the parser reads every row.
+expect_exit 1 "7b refuses a plan whose blocks form a cycle" \
+  --task T-01 --from-plan "${FIXTURES}/plan-cycle.md"
+
 echo
 echo "body precedence"
 
