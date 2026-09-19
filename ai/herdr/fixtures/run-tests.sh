@@ -21,6 +21,10 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 export HERDR_TEAM_HANDOFFS="${TMP}/handoffs"
 mkdir -p "${HERDR_TEAM_HANDOFFS}"
+# Same reason: without an override `collect --plan` with no positional Run
+# would read whatever Run the developer happens to have started.
+export HERDR_TEAM_RUN_FILE="${TMP}/team-run"
+printf '%s\n' "${RUN}" >"${HERDR_TEAM_RUN_FILE}"
 
 pass=0 fail=0 skip=0
 
@@ -29,13 +33,14 @@ no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); }
 # A case the environment cannot run is not a case that passed. Say so.
 sk() { printf '  skip %s\n    %s\n' "$1" "$2"; skip=$((skip + 1)); }
 
-# handoff <task> <run> <outcome> <evidence> — one fixture handoff.
+# handoff <task> <run> <outcome> <evidence> [dispatch] — one fixture handoff.
 handoff() {
-  cat >"${HERDR_TEAM_HANDOFFS}/${1}-D-01.md" <<EOF
+  local d="${5:-D-01}"
+  cat >"${HERDR_TEAM_HANDOFFS}/${1}-${d}.md" <<EOF
 ---
 run: ${2}
 task: ${1}
-dispatch: D-01
+dispatch: ${d}
 outcome: ${3}
 evidence: ${4}
 ---
@@ -43,6 +48,17 @@ evidence: ${4}
 ## What was done
 Fixture.
 EOF
+}
+
+# sent <run> <task> <dispatch> — one line in the dispatch journal, standing in
+# for a real `dispatch` that has not been answered yet.
+sent() {
+  printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"${HERDR_TEAM_HANDOFFS}/.dispatched"
+}
+
+# reset — no handoffs, no journal.
+reset() {
+  rm -f "${HERDR_TEAM_HANDOFFS}"/*.md "${HERDR_TEAM_HANDOFFS}/.dispatched"
 }
 
 # dispatch <args...> — always --dry-run, so no agent is required. Prints the
@@ -167,6 +183,101 @@ if [ -n "$out" ]; then
     no "10 a terminal with no body errors instead of hanging" \
       "got: $(printf '%s' "$out" | head -2)"
   fi
+fi
+
+echo
+echo "collect --plan"
+
+# expect_collect <want-exit> <stdout-regex> <label> <args...> — an empty regex
+# checks the exit code only.
+expect_collect() {
+  local want="$1" re="$2" label="$3"; shift 3
+  local got
+  "${TEAM}" collect "$@" >"${TMP}/out" 2>"${TMP}/err"
+  got=$?
+  if [ "$got" -ne "$want" ]; then
+    no "$label" "exit ${got}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif [ -n "$re" ] && ! grep -qE "$re" "${TMP}/out"; then
+    no "$label" "no /${re}/ in: $(tr '\n' '|' <"${TMP}/out")"
+  else
+    ok "$label"
+  fi
+}
+
+# 11. The live bug this flag had to fix: `collect --plan f` used to bind
+#     "--plan" to the positional Run and report nothing, with exit 0.
+reset
+handoff T-01 "${RUN}" succeeded verified
+expect_collect 0 '^T-01 +done' "11 --plan resolves the current Run, not the flag" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 12. No Run at all is a precondition failure, not an empty report.
+reset
+mv "${HERDR_TEAM_RUN_FILE}" "${TMP}/run.away"
+expect_collect 1 "" "12 --plan with no Run exits 1" --plan "${FIXTURES}/plan-ok.md"
+mv "${TMP}/run.away" "${HERDR_TEAM_RUN_FILE}"
+
+# 13. The fold rule. A Task that failed and was retried to success must read
+#     `done`, or a loop watching this table can never terminate.
+reset
+handoff T-01 "${RUN}" failed reported D-01
+handoff T-01 "${RUN}" succeeded verified D-02
+expect_collect 0 '^T-01 +done +D-02' "13 the highest dispatch wins over an earlier failure" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 14. The C1 case at the collect layer: a blocker verified under a different
+#     Run must leave the dependent blocked, exactly as the dispatch gate does.
+reset
+handoff T-01 "R-fixture-9999" succeeded verified
+expect_collect 0 '^T-02 +blocked +- +blocked on T-01' \
+  "14 a blocker verified under another Run leaves the dependent blocked" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 15. `succeeded` at `reported` is a claim: actionable as `review`, never done.
+reset
+handoff T-01 "${RUN}" succeeded reported
+expect_collect 0 '^T-01 +review' "15 succeeded/reported is review, not done" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 16. Dispatched with no handoff yet. Nothing but the journal can tell this
+#     apart from never dispatched.
+reset
+sent "${RUN}" T-01 D-01
+expect_collect 0 '^T-01 +running +D-01' "16 a journalled dispatch with no handoff is running" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 17. Nothing actionable and something failed: the orchestrator stops.
+reset
+handoff T-01 "${RUN}" failed tool_error
+expect_collect 2 '^T-01 +failed' "17 exits 2 when nothing is actionable and a Task failed" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 18. A malformed plan fails whole, before any of it is reported.
+reset
+expect_collect 1 "" "18 --plan refuses a plan with a cycle" \
+  --plan "${FIXTURES}/plan-cycle.md"
+
+echo
+echo "collect without --plan"
+
+# 19. Unchanged: no Run named still means every Run. Defaulting this path to
+#     the current Run would silently drop rows `collect` has always printed.
+reset
+handoff T-01 "${RUN}" succeeded verified
+handoff T-02 "R-fixture-9999" failed reported
+if "${TEAM}" collect >"${TMP}/out" 2>"${TMP}/err" &&
+  grep -q "${RUN}" "${TMP}/out" && grep -q 'R-fixture-9999' "${TMP}/out"; then
+  ok "19 no Run named still lists every Run"
+else
+  no "19 no Run named still lists every Run" "$(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 20. A positional Run still filters, and is still not confused with a flag.
+if "${TEAM}" collect "${RUN}" >"${TMP}/out" 2>"${TMP}/err" &&
+  grep -q "${RUN}" "${TMP}/out" && ! grep -q 'R-fixture-9999' "${TMP}/out"; then
+  ok "20 a positional Run still filters"
+else
+  no "20 a positional Run still filters" "$(tr '\n' '|' <"${TMP}/out")"
 fi
 
 echo
