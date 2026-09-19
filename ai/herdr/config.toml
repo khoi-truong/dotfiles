@@ -52,6 +52,15 @@ command = "lazygit"
 width = "90%"
 height = "90%"
 
+# Team roster and outstanding handoffs at a glance. `zsh -ic` because team.sh
+# is read through the repo, not $PATH, and `read -k` holds the popup open.
+[[keys.command]]
+key = "prefix+alt+t"
+type = "popup"
+command = "zsh -ic '~/.dotfiles/ai/herdr/team.sh status; read -k'"
+width = "70%"
+height = "50%"
+
 [experimental]
 # Keep pane screen history across a full server restart, so a restarted server
 # brings back the scrollback behind the conversations that

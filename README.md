@@ -284,6 +284,26 @@ lazygit to apply. herdr-reviewr is the review surface: mark lines, comment,
 through `/code-review` and a signed PR — the AI review pass stays in its own
 session, separate from the one that wrote the code.
 
+**Agent teams.** `ai/herdr/team.sh` is the only thing that starts an agent for
+a multi-pane run, because `herdr agent start` execs the binary directly and
+drops what `ai/claude/providers.zsh` exports — Claude Code then falls back to
+the Pro login silently. Every spawn goes through `zsh -ic <wrapper>` and the
+provider is asserted afterwards.
+
+```sh
+ai/herdr/team.sh spawn exec-1 --branch feat/x   # worktree + workspace + agent
+ai/herdr/team.sh status                         # roster and pending handoffs
+ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
+ai/herdr/team.sh settle <name> reuse|retain|release
+ai/herdr/team.sh teardown <name> [--force]
+```
+
+`prefix+alt+t` opens `status` in a popup. One agent per worktree; agents report
+outcomes by writing `.omc/handoffs/<task>-<dispatch>.md` in the **main**
+checkout, never by leaving them in a transcript. The protocol the agents follow
+lives in `ai/shared/skills/herdr-team/`, which is linked into `~/.claude/skills`
+and `~/.omp/agent/skills` by `ai/setup.sh`.
+
 ## tmux
 
 `tmux/tmux.conf` predates herdr and keeps the same shape — one pane per agent,
