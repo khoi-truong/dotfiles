@@ -9,13 +9,13 @@ set -uo pipefail
 NODE="${HOME}/.local/share/mise/shims/node"
 HUD="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/hud/omc-hud.mjs"
 
-# usagebar (herdr/herdr.plugins) caches Claude's 5h/7d rate-limit windows and
+# usagebar (herdr/plugins.list) caches Claude's 5h/7d rate-limit windows and
 # the prompt-cache expiry from this stdin payload; nothing else reports them,
 # so without this branch the sidebar $limit and Claude rate-limit toasts stay
 # empty. It is a tee side-branch, not a pipeline stage: `usagebar statusline`
 # prints its own summary rather than passing JSON through, so chaining it
 # inline would feed omc-hud garbage and drop the provider label that
-# herdr/team.sh asserts on.
+# herdr/crew.sh asserts on.
 #
 # herdr installs a plugin to <plugin id>-<first 12 hex of sha256(plugin id)>,
 # which carries no version or commit, so this path survives reinstalls and tag

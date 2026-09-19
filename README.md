@@ -253,7 +253,7 @@ Upgrade with `brew upgrade herdr`, never `herdr update` — Homebrew owns the
 binary, and `[update] version_check = false` silences the nag. Re-run
 `sh ai/setup.sh` afterwards so the integrations migrate.
 
-**Plugins** are listed in `ai/herdr/herdr.plugins`, one `<plugin id>
+**Plugins** are listed in `ai/herdr/plugins.list`, one `<plugin id>
 <owner/repo> <tag>` per line, and installed by `ai/setup.sh` at that tag. The id
 and the repo are unrelated — each plugin's `herdr-plugin.toml` declares its own
 id, so `persiyanov/herdr-reviewr` is `persiyanov.reviewr` — and `config-dir`
@@ -268,7 +268,7 @@ current HEAD.
 First install still stops for the manifest preview — never `--yes` — because
 plugins run unsandboxed as your user with your full environment; that is the
 reason for the prompt, not for a manual install. To bump one, edit the tag in
-`ai/herdr/herdr.plugins`, run `herdr plugin uninstall <id>`, then re-run the
+`ai/herdr/plugins.list`, run `herdr plugin uninstall <id>`, then re-run the
 script.
 
 Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
@@ -312,25 +312,38 @@ lazygit to apply. herdr-reviewr is the review surface: mark lines, comment,
 through `/code-review` and a signed PR — the AI review pass stays in its own
 session, separate from the one that wrote the code.
 
-**Agent teams.** `ai/herdr/team.sh` is the only thing that starts an agent for
-a multi-pane run, because `herdr agent start` execs the binary directly and
-drops what `ai/claude/providers.zsh` exports — Claude Code then falls back to
-the Pro login silently. Every spawn goes through `zsh -ic <wrapper>` and the
-provider is asserted afterwards.
+**Agent crews.** A *crew* is agents in panes, one git worktree each — not to be
+confused with OMC's `/team` skill, which fans work out to in-process subagents
+inside a single pane. Reach for `/team` first; a crew costs more and buys
+isolation.
+
+`ai/herdr/crew.sh` is the only thing that starts one, because `herdr agent
+start` execs the binary directly and drops what `ai/claude/providers.zsh`
+exports — Claude Code then falls back to the Pro login silently. Every spawn
+goes through `zsh -ic <wrapper>` and the provider is asserted afterwards.
 
 ```sh
-ai/herdr/team.sh spawn exec-1 --branch feat/x   # worktree + workspace + agent
-ai/herdr/team.sh status                         # roster and pending handoffs
-ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
-ai/herdr/team.sh settle <name> reuse|retain|release
-ai/herdr/team.sh teardown <name> [--force]
+ai/herdr/crew.sh run new                        # mint a Run id
+ai/herdr/crew.sh spawn exec-1 --branch feat/x   # worktree + workspace + agent
+ai/herdr/crew.sh dispatch exec-1 --task T-01 "…"  # hand over the contract
+ai/herdr/crew.sh status                         # roster and pending handoffs
+ai/herdr/crew.sh collect [<run-id>]             # outcomes from the handoffs
+ai/herdr/crew.sh settle <name> reuse|retain|release
+ai/herdr/crew.sh teardown <name> [--force]
 ```
 
-`prefix+alt+t` opens `status` in a popup. One agent per worktree; agents report
+`prefix+alt+c` opens `status` in a popup. One agent per worktree; agents report
 outcomes by writing `.omc/handoffs/<task>-<dispatch>.md` in the **main**
 checkout, never by leaving them in a transcript. The protocol the agents follow
-lives in `ai/shared/skills/herdr-team/`, which is linked into `~/.claude/skills`
+lives in `ai/shared/skills/herdr-crew/`, which is linked into `~/.claude/skills`
 and `~/.omp/agent/skills` by `ai/setup.sh`.
+
+`dispatch` exists so the completion contract — Run, Task and Dispatch ids, the
+absolute handoff path, the frontmatter template — is handed over verbatim
+instead of retyped from memory. The Run id is kept in `.omc/state/crew-run`, so
+it survives a compaction. With no `--dispatch` it picks the lowest id with no
+handoff file yet, which enforces "a settled id is never reused" mechanically;
+`--dry-run` prints the prompt instead of sending it.
 
 ## tmux
 
