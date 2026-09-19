@@ -150,9 +150,9 @@ cmd_spawn() {
     done
     if [ "$found" -eq 0 ]; then
       spawn_rollback
-      die "spawn: ${name} never showed the '${marker}' status-line marker — it may have
-     fallen back to the Pro login. Unlock 1Password and retry, or pass
-     --skip-provider-check if you know the marker is absent by design."
+      warn "${name} never showed the '${marker}' status-line marker — it may have"
+      warn "fallen back to the Pro login. Unlock 1Password and retry, or pass"
+      die "--skip-provider-check if you know the marker is absent by design."
     fi
   fi
 
@@ -230,7 +230,7 @@ PY
 
 cmd_settle() {
   local name="${1:-}" decision="${2:-}"
-  [ -n "$name" ] && [ -n "$decision" ] || usage
+  if [ -z "$name" ] || [ -z "$decision" ]; then usage; fi
   valid_name "$name" || die "settle: bad agent name: ${name}"
   local pane
   pane="$(agent_field "$name" pane_id)"
