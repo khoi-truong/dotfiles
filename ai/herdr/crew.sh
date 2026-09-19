@@ -117,6 +117,12 @@ cmd_spawn() {
   # The agent must occupy the root pane: `--env` reaches that pane only, not
   # anything split from it later.
   pane="$(printf '%s' "$created" | jget "d['result']['root_pane']['pane_id']")"
+  # The workspace label is the agent name; herdr auto-numbers the tab inside
+  # it, which renders as a bare "1" wherever a tab token appears. Name it after
+  # the branch, so the two levels say different things: who, then what on.
+  local tab
+  tab="$(printf '%s' "$created" | jget "d['result']['workspace'].get('active_tab_id','')")"
+  [ -z "$tab" ] || herdr tab rename "$tab" "$branch" >/dev/null 2>&1 || true
   if [ -z "$ws" ] || [ -z "$pane" ]; then
     [ "$made_worktree" -eq 1 ] && git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null
     die "spawn: workspace create returned no workspace/pane id"

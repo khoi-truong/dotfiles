@@ -284,10 +284,13 @@ Installed today: herdr-plus (worktree layouts, project picker), reviewr (line
 comments back to the agent) and usagebar (context, prompt-cache and
 provider-limit meters in the sidebar, `ctrl+shift+u` for the limits pane). Its
 sidebar rows and keybindings live in `ai/herdr/config.toml` rather than the
-plugin's own config, and only `$limit` and `$context` are used. What names
-each row is `terminal_title_stripped`, a herdr built-in: Claude Code keeps the
-terminal title as a live summary of what it is doing, which is the only thing
-that tells two panes in one tab apart. Its `$provider` token does not — it
+plugin's own config, and only `$limit` and `$context` are used. A row is named
+by the built-in `workspace` and `tab` tokens, which say different things —
+`crew.sh` labels the workspace after the agent and the tab after its branch,
+so a crew row reads `exec-1 feat/crew-json`. Under that,
+`terminal_title_stripped`: Claude Code keeps the terminal title as a live
+summary of what it is doing, which is the only thing that tells two panes in
+one tab apart. usagebar's `$provider` does not — it
 reports the detected agent kind, `claude` on a `ccd` pane as much as a `cc`
 one, so the sidebar cannot show the provider split and `$limit` reports the
 Pro window on both. The status line is where that split is visible. The
