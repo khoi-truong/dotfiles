@@ -74,9 +74,9 @@ dispatch --task T-01 --from-plan "${FIXTURES}/plan-ok.md" >"${TMP}/out"
 sed -e "s#${FIXTURES}#<FIXTURES>#g" -e "s#${HERDR_TEAM_HANDOFFS}#<HANDOFFS>#g" \
   "${TMP}/out" >"${TMP}/norm"
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
-  cp "${TMP}/norm" "${FIXTURES}/golden/T-01-dispatch.txt"
+  cp "${TMP}/norm" "${FIXTURES}/golden/T-01-dispatch.prompt"
   ok "1 golden updated"
-elif diff -u "${FIXTURES}/golden/T-01-dispatch.txt" "${TMP}/norm" >"${TMP}/diff"; then
+elif diff -u "${FIXTURES}/golden/T-01-dispatch.prompt" "${TMP}/norm" >"${TMP}/diff"; then
   ok "1 unblocked dispatch matches the golden prompt"
 else
   no "1 unblocked dispatch matches the golden prompt" "$(head -20 "${TMP}/diff")"
