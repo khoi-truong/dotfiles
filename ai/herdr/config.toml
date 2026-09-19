@@ -117,6 +117,14 @@ resume_agents_on_restore = true
 switch_workspace = "prefix+shift+1..9"
 focus_agent = "prefix+alt+1..9"
 
+# A worktree is a workspace in herdr, so `New worktree` (prefix+shift+g, a
+# default) mints a fresh space every time it is pressed — correct for a new
+# branch, a duplicate for one that already has a checkout. `Open worktree...`
+# is the one that reuses: it lists the repo's checkouts and focuses the space
+# an open one already has. herdr leaves it unbound, which is why the duplicates
+# were the only path anyone found.
+open_worktree = "prefix+shift+o"
+
 # Diff review in a popup, the equivalent of tmux's `prefix g` scratch popup
 # (tmux/tmux.conf). lazygit is already in brew/Brewfile.
 [[keys.command]]
@@ -149,6 +157,16 @@ key = "ctrl+shift+m"
 type = "plugin_action"
 command = "usagebar.refresh"
 description = "Agent Usage: refresh sidebar meters"
+
+[worktrees]
+# Where `New worktree` puts a checkout. herdr's default is ~/.herdr/worktrees;
+# `git wta` (git/gitconfig) has always used ~/.worktrees. The rest of the
+# layout below the root is already identical — <repo>/<branch with / as ->,
+# and the repo name comes out `.dotfiles` on both sides — so pointing herdr at
+# the same root makes the two produce the *same* directory for a branch
+# instead of two checkouts that only look alike. That is what lets
+# `Open worktree...` find a tree `git wta` made, and vice versa.
+directory = "~/.worktrees"
 
 [experimental]
 # Keep pane screen history across a full server restart, so a restarted server
