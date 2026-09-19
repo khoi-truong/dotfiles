@@ -91,23 +91,22 @@ if command -v herdr >/dev/null 2>&1; then
     printf '\n' >>"${settings}"
     ok "restored trailing newline in ${settings#"${CURRENT_DIR}/"}"
   done
-  # Plugins are installed here, pinned to a release tag. `herdr plugin` has no
-  # update command — reinstalling is updating — and an unpinned install
-  # re-fetches the default branch, so leaving the ref off would silently move a
-  # plugin to current HEAD. This script is re-run after every `brew upgrade
-  # herdr`, after a plugin install and on a new machine, so that drift would be
-  # routine. To bump one: edit the tag below, `herdr plugin uninstall <id>`,
-  # then re-run this script.
+  # Plugins are installed here, pinned to a release tag by herdr/herdr.plugins.
+  # `herdr plugin` has no update command — reinstalling is updating — and an
+  # unpinned install re-fetches the default branch, so leaving the ref off
+  # would silently move a plugin to current HEAD. This script is re-run after
+  # every `brew upgrade herdr`, after a plugin install and on a new machine, so
+  # that drift would be routine.
   #
   # Installs stop for the manifest preview (no --yes) because plugins run
   # unsandboxed as your user. Once a plugin is installed, this links the
-  # versioned templates under herdr/plugins/<plugin id>/ into its config dir.
-  # The ids differ from the repo names: config-dir wants the id, install wants
-  # the repo.
-  for spec in \
-    "cloudmanic.herdr-plus cloudmanic/herdr-plus v0.1.24" \
-    "persiyanov.reviewr persiyanov/herdr-reviewr v0.38.0"; do
-    read -r plugin repo ref <<<"$spec"
+  # versioned templates under herdr/plugins/<plugin id>/ into its config dir;
+  # a plugin with no template dir simply gets nothing linked.
+  #
+  # The list is read on fd 3, not stdin: the install prompt reads from stdin,
+  # and would otherwise swallow the next plugin's line as its answer.
+  while read -r plugin repo ref <&3; do
+    case "${plugin}" in '' | \#*) continue ;; esac
     plugin_config="$(herdr plugin config-dir "${plugin}" 2>/dev/null)" || plugin_config=""
     if [ -z "${plugin_config}" ]; then
       info "herdr plugin ${plugin} not installed — installing ${repo}@${ref}."
@@ -126,7 +125,7 @@ if command -v herdr >/dev/null 2>&1; then
       [ -e "$item" ] || continue
       link "$item" "${plugin_config}/$(basename "$item")"
     done
-  done
+  done 3<"${CURRENT_DIR}/herdr/herdr.plugins"
   ok "herdr $(herdr --version 2>/dev/null || echo installed)"
 else
   warn "herdr not found — installed by brew/setup.sh."
