@@ -25,8 +25,13 @@
   templateDir = ~/.config/git/template/
 
 [worktree]
-  # Link worktrees with relative paths, so moving the repo doesn't break them.
-  useRelativePaths = true
+  # Absolute gitdir pointers. Relative ones survive moving the repo, but
+  # zsh/zshenv hardcodes ~/.dotfiles anyway, and GitKraken's libgit2 layer
+  # resolves a relative `gitdir: ../...` against the wrong base and refuses the
+  # worktree. This only affects worktrees created from here on: `git worktree
+  # repair` fixes broken pointers but leaves a valid relative one alone, so an
+  # existing worktree keeps its format until it is removed and re-added.
+  useRelativePaths = false
 
 [help]
   # Ask before running a mistyped command's best guess.
