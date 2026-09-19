@@ -253,20 +253,21 @@ Upgrade with `brew upgrade herdr`, never `herdr update` — Homebrew owns the
 binary, and `[update] version_check = false` silences the nag. Re-run
 `sh ai/setup.sh` afterwards so the integrations migrate.
 
-**Plugins are installed by hand**, because they run unsandboxed as your user with
-your full environment. Read the manifest preview; never `--yes`.
+**Plugins** are installed by `ai/setup.sh`, pinned to a release tag — the spec
+list in its herdr block is the source of truth for the version. Once a plugin is
+installed, the script links the versioned templates under
+`ai/herdr/plugins/<plugin id>/` into its `herdr plugin config-dir`, and skips a
+plugin that isn't installed. The pin is not decoration: `herdr plugin` has no
+update command, and an unpinned install re-fetches the default branch, so
+re-running the script would otherwise move a plugin to current HEAD.
 
-```sh
-herdr plugin install cloudmanic/herdr-plus      # worktree layouts, project picker
-herdr plugin install persiyanov/herdr-reviewr   # line comments back to the agent
-```
-
-`ai/setup.sh` only links the versioned templates under `ai/herdr/plugins/<plugin
-id>/` into each plugin's `herdr plugin config-dir`, and skips a plugin that isn't
-installed. Pane commands in those templates go through this repo's wrappers
-(`cc`, `ccd`, `omp`) — not `claude --dangerously-skip-permissions` as herdr-plus's
-README shows, which unsets the provider environment and silently falls back to
-the Pro login.
+First install still stops for the manifest preview — never `--yes` — because
+plugins run unsandboxed as your user with your full environment; that is the
+reason for the prompt, not for a manual install. To bump one, edit the tag in
+`ai/setup.sh`, run `herdr plugin uninstall <id>`, then re-run the script. Pane
+commands in those templates go through this repo's wrappers (`cc`, `ccd`, `omp`)
+— not `claude --dangerously-skip-permissions` as herdr-plus's README shows,
+which unsets the provider environment and silently falls back to the Pro login.
 
 **Diff and review.** `git diff` pages through [delta](https://dandavison.github.io/delta/)
 (side-by-side, `n`/`N` between files), and `git dft` runs a structural
@@ -378,9 +379,9 @@ On a new machine:
    asks for `user.name`/`user.email` if they are missing, and
    `gpg/setup.sh` installs `gpg.conf` / `gpg-agent.conf`.
 7. `gh auth login`, then `sh ai/setup.sh` for the herdr integrations.
-8. `herdr plugin install cloudmanic/herdr-plus` and
-   `herdr plugin install persiyanov/herdr-reviewr`, then re-run `sh ai/setup.sh`
-   to link their versioned config. Plugins run unsandboxed, so this stays manual.
+8. The herdr plugins are installed by `sh ai/setup.sh` (step 7), pinned to a
+   release tag; approve the manifest preview it prints for each one. Plugins run
+   unsandboxed, so that prompt stays manual.
 9. `./setup.sh --all` if this machine needs VS Code or Xcode.
 
 ## Conventions

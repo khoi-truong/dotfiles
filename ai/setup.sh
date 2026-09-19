@@ -91,18 +91,41 @@ if command -v herdr >/dev/null 2>&1; then
     printf '\n' >>"${settings}"
     ok "restored trailing newline in ${settings#"${CURRENT_DIR}/"}"
   done
-  # Plugins are installed by hand (they run unsandboxed as your user); this
-  # only links the versioned templates once a plugin exists. See README.
-  for plugin in cloudmanic.herdr-plus persiyanov.reviewr; do
-    if plugin_config="$(herdr plugin config-dir "${plugin}" 2>/dev/null)" \
-      && [ -n "${plugin_config}" ]; then
-      for item in "${CURRENT_DIR}"/herdr/plugins/"${plugin}"/*; do
-        [ -e "$item" ] || continue
-        link "$item" "${plugin_config}/$(basename "$item")"
-      done
-    else
-      info "herdr plugin ${plugin} not installed — see README."
+  # Plugins are installed here, pinned to a release tag. `herdr plugin` has no
+  # update command — reinstalling is updating — and an unpinned install
+  # re-fetches the default branch, so leaving the ref off would silently move a
+  # plugin to current HEAD. This script is re-run after every `brew upgrade
+  # herdr`, after a plugin install and on a new machine, so that drift would be
+  # routine. To bump one: edit the tag below, `herdr plugin uninstall <id>`,
+  # then re-run this script.
+  #
+  # Installs stop for the manifest preview (no --yes) because plugins run
+  # unsandboxed as your user. Once a plugin is installed, this links the
+  # versioned templates under herdr/plugins/<plugin id>/ into its config dir.
+  # The ids differ from the repo names: config-dir wants the id, install wants
+  # the repo.
+  for spec in \
+    "cloudmanic.herdr-plus cloudmanic/herdr-plus v0.1.24" \
+    "persiyanov.reviewr persiyanov/herdr-reviewr v0.38.0"; do
+    read -r plugin repo ref <<<"$spec"
+    plugin_config="$(herdr plugin config-dir "${plugin}" 2>/dev/null)" || plugin_config=""
+    if [ -z "${plugin_config}" ]; then
+      info "herdr plugin ${plugin} not installed — installing ${repo}@${ref}."
+      info "Read the manifest preview; this is not passed --yes."
+      if ! herdr plugin install "${repo}" --ref "${ref}"; then
+        warn "herdr plugin ${repo} install failed or was declined — skipping."
+        continue
+      fi
+      plugin_config="$(herdr plugin config-dir "${plugin}" 2>/dev/null)" || plugin_config=""
+      if [ -z "${plugin_config}" ]; then
+        warn "herdr plugin ${plugin} has no config dir after install — skipping."
+        continue
+      fi
     fi
+    for item in "${CURRENT_DIR}"/herdr/plugins/"${plugin}"/*; do
+      [ -e "$item" ] || continue
+      link "$item" "${plugin_config}/$(basename "$item")"
+    done
   done
   ok "herdr $(herdr --version 2>/dev/null || echo installed)"
 else
