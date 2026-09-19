@@ -1,0 +1,20 @@
+# senna-lang/herdr-agent-usage — context, prompt-cache and provider-limit
+# meters in the sidebar, plus an Agent Usage pane. Linked into
+# `herdr plugin config-dir usagebar` by ai/setup.sh. Note the plugin id is the
+# bare `usagebar`, not `senna-lang.usagebar`.
+#
+# `usagebar.setup` writes this file only when it is missing, so linking it
+# first keeps the settings versioned. Sidebar rows and the ctrl+shift+u /
+# ctrl+shift+m bindings live in herdr/config.toml, not here.
+
+[notify]
+# Rate-limit toasts. herdr/config.toml already sets [ui.toast] delivery, which
+# is what these ride on.
+enabled = true
+remaining_thresholds = [50, 20, 10, 5]
+
+[ui]
+# Remaining, not used: higher is safer, and the number answers "how much is
+# left" without arithmetic.
+limit_percent = "remaining"
+cache_display = true

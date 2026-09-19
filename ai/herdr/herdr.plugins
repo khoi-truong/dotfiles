@@ -12,5 +12,6 @@
 # ai/setup.sh. Versioned config templates, if any, live in
 # ai/herdr/plugins/<plugin id>/.
 
-cloudmanic.herdr-plus  cloudmanic/herdr-plus     v0.1.24
-persiyanov.reviewr     persiyanov/herdr-reviewr  v0.38.0
+cloudmanic.herdr-plus  cloudmanic/herdr-plus         v0.1.24
+persiyanov.reviewr     persiyanov/herdr-reviewr      v0.38.0
+usagebar               senna-lang/herdr-agent-usage  v0.5.14
