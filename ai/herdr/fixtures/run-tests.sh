@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # run-tests.sh — the acceptance checks for `team.sh dispatch --from-plan`,
-# `collect --plan` and `wait`.
+# `collect --plan`, `wait` and `teardown`.
 #
 # Static checks do not see inside team.sh's embedded python, and this
 # repo has no test suite, so this script is the only thing that exercises the
 # plan parser. Run it by hand after touching `plan_body`, `plan_rows`,
-# `dispatched` or `cmd_wait`:
+# `dispatched`, `cmd_wait` or the teardown guard:
 #
 #   bash ai/herdr/fixtures/run-tests.sh
 #
@@ -13,7 +13,9 @@
 # here reads or writes the live .omc/handoffs — which would also shift the
 # next-dispatch ids of a real Run. The `wait` cases drive herdr itself through
 # stubs on PATH: a fixture run has no herdr session, and a case that cannot run
-# is a skip, not a pass.
+# is a skip, not a pass. The `teardown` cases go further and register a real
+# throwaway worktree under ${TMP}: the guard is a `git` question, so a fixture
+# that answered it would be testing the fixture.
 set -uo pipefail
 
 # The tree under test is the tree this file is part of, resolved from its own
@@ -656,6 +658,162 @@ else
   no "53 the golden prompt's commands: line is JSON the check can read" \
     "value: ${cmds:-<none>}"
 fi
+
+echo
+echo "teardown"
+
+# The guard is a `git` question, so it is asked of real git state: a throwaway
+# branch cut from main in this repo, registered and removed again by these
+# cases. One path, reused — case 54's teardown removes the worktree, the next
+# case puts it back — and one stub herdr, which reports that path as exec-9's
+# cwd. A branch with an upstream is measured against it; a branch without one
+# against main, which is what a worktree branch here is cut from.
+T05_BRANCH="fixture-t05-$$"
+WT="${TMP}/throwaway"
+mkdir -p "${TMP}/teardown"
+cat >"${TMP}/teardown/herdr" <<SH
+#!/usr/bin/env bash
+if [ "\$1" = "agent" ] && [ "\$2" = "list" ]; then
+  printf '{"result": {"agents": [{"name": "exec-9", "cwd": "${WT}", "workspace_id": "ws-fixture", "pane_id": "pane-9"}]}}\n'
+  exit 0
+fi
+exit 0
+SH
+chmod +x "${TMP}/teardown/herdr"
+
+# wt_add <suffix> — the throwaway worktree, cut fresh from main. Anything left
+# at that path comes off first: a case that failed to tear the worktree down
+# would otherwise decide what the next case is looking at, and a run whose
+# guard is broken has to fail the same way every time.
+wt_add() {
+  git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null || true
+  rm -rf "${WT}"
+  git -C "${DOTFILES}" worktree add --quiet -b "${T05_BRANCH}-$1" "${WT}" main 2>"${TMP}/err"
+}
+
+# teardown_on <want-exit> <stdout-regex> <label> — teardown of exec-9, whose
+# stub herdr reports the throwaway worktree as its cwd.
+teardown_on() {
+  local want="$1" re="$2" label="$3" code=0
+  env PATH="${TMP}/teardown:${PATH}" "${TEAM}" teardown exec-9 \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif [ -n "$re" ] && ! grep -qE "$re" "${TMP}/out"; then
+    no "$label" "no /${re}/ in stdout: $(tr '\n' '|' <"${TMP}/out")"
+  else
+    ok "$label"
+  fi
+}
+
+if wt_add a; then
+  # 54. The defect this task exists for: zero commits of its own, no upstream.
+  #     There is nothing to lose, so there is nothing to refuse over — and no
+  #     reason to reach for --force on a guard that was right to fire.
+  teardown_on 0 'torn down' "54 a branch level with main tears down without --force"
+  if [ ! -d "${WT}" ]; then
+    ok "54b the worktree is gone, not just the pane"
+  else
+    no "54b the worktree is gone, not just the pane" "still at ${WT}"
+  fi
+
+  # 55. The case the guard is right about, still refused without --force. The
+  #     commit is empty and skips hooks: this is about the count of commits
+  #     ahead, not about what is in them.
+  wt_add b
+  git -C "${WT}" -c commit.gpgsign=false -c user.email=fixture@example.com \
+    -c user.name=fixture commit --quiet --no-verify --allow-empty -m "unpushed"
+  teardown_on 1 '' "55 one unpushed commit and no upstream is still refused"
+  if grep -q 'unpushed commits' "${TMP}/err" && grep -q -- '--force' "${TMP}/err"; then
+    ok "55b the refusal names the work, and the way past it"
+  else
+    no "55b the refusal names the work, and the way past it" "$(tr '\n' '|' <"${TMP}/err")"
+  fi
+  if [ -d "${WT}" ]; then
+    ok "55c the refusal left the worktree alone"
+  else
+    no "55c the refusal left the worktree alone" "the worktree it refused is gone"
+  fi
+
+  # 56. A branch with an upstream and nothing ahead of it: already pushed, by
+  #     the only test of that this suite can make without a network. The
+  #     mechanism is the same `@{u}..HEAD` a real push satisfies.
+  git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null
+  wt_add c
+  git -C "${WT}" branch --set-upstream-to=main --quiet
+  teardown_on 0 'torn down' "56 a branch level with its upstream tears down without --force"
+
+  git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null
+  for b in a b c; do git -C "${DOTFILES}" branch -D "${T05_BRANCH}-$b"; done >/dev/null 2>&1
+else
+  sk "54 a branch level with main tears down without --force" \
+    "no throwaway worktree: $(head -1 "${TMP}/err")"
+  sk "55 one unpushed commit and no upstream is still refused" "no throwaway worktree"
+  sk "56 a branch level with its upstream tears down without --force" "no throwaway worktree"
+fi
+
+echo
+echo "collect --plan: releasable"
+
+# 57. The marker's positive case: the Task is done and the agent that worked it
+#     has nothing else out under this Run, so it can be released — and the row
+#     names it, because `settle` needs a name and re-deriving one from the
+#     journal is the work this column is here to save.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+handoff T-01 "${RUN}" succeeded verified D-01
+expect_collect 0 '^T-01 +done +D-01 +releasable exec-1' "57 a done Task names its idle agent releasable" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 58. The same agent holding a second Task that is still out. Settling its pane
+#     would take it away from work it is in the middle of, so no marker — and
+#     this is the case a marker keyed on the Task rather than the agent fails.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+sent "${RUN}" T-02 D-01 exec-1
+handoff T-01 "${RUN}" succeeded verified D-01
+expect_collect 3 '^T-01 +done +D-01 +succeeded/verified' \
+  "58 a done Task is not releasable while its agent has another Task out" \
+  --plan "${FIXTURES}/plan-ok.md"
+if grep -q 'releasable' "${TMP}/out"; then
+  no "58b nothing is marked releasable" "$(tr '\n' '|' <"${TMP}/out")"
+else
+  ok "58b nothing is marked releasable"
+fi
+
+# 59. A review is not an outstanding Dispatch: the agent's work is handed in,
+#     and it is a reviewer who owes an answer now. Case 57 covers the marker's
+#     positive side; this is what keeps it from disappearing entirely.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+sent "${RUN}" T-02 D-01 exec-1
+handoff T-01 "${RUN}" succeeded verified D-01
+handoff T-02 "${RUN}" succeeded reported D-01
+expect_collect 0 '^T-01 +done +D-01 +releasable exec-1' \
+  "59 a Task awaiting review does not hold its agent back" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 60. A three-column journal: the older shape has no agent to name, so there is
+#     nothing to settle and nothing to mark. Naming a Task rather than an agent
+#     would mark this row, and `settle` would fail on the name.
+reset
+sent "${RUN}" T-01 D-01
+handoff T-01 "${RUN}" succeeded verified D-01
+expect_collect 0 '^T-01 +done +D-01 +succeeded/verified' \
+  "60 a legacy journal line marks nothing releasable" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 61. A journal entry for a Task the plan does not list. `outstanding` is a
+#     question about the Run, not about the plan: a Dispatch in the journal is
+#     out whether or not a row mentions it, so the agent is not idle and the
+#     done row must not say it is.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+sent "${RUN}" T-09 D-01 exec-1
+handoff T-01 "${RUN}" succeeded verified D-01
+expect_collect 0 '^T-01 +done +D-01 +succeeded/verified' \
+  "61 a Dispatch outside the plan still holds its agent" \
+  --plan "${FIXTURES}/plan-ok.md"
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"

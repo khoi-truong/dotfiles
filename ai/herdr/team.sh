@@ -82,6 +82,30 @@ worktree_path() {
     awk -v b="refs/heads/$1" '/^worktree /{p=substr($0,10)} /^branch /{if($2==b){print p;exit}}'
 }
 
+# default_ref <dir> — the ref a branch with no upstream is measured against, as
+# a ref this repo actually has, or empty when it names none.
+#
+# The local default branch first, because that is what a worktree branch was cut
+# from: level with it means no work of this branch's own. Origin's tip is the
+# fallback for a checkout that has no local main, and origin/HEAD is asked
+# rather than assumed so a repo whose default is neither main nor master still
+# answers. A repo that names none is unmeasurable, and unmeasurable refuses —
+# the guard exists so a release cannot destroy unpushed work, so "cannot show
+# there is none" is a refusal, not a licence.
+default_ref() {
+  local dir="$1" ref="" remote=""
+  remote="$(git -C "$dir" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+  for ref in refs/heads/main refs/heads/master "$remote" \
+    refs/remotes/origin/main refs/remotes/origin/master; do
+    [ -n "$ref" ] || continue
+    if git -C "$dir" rev-parse --verify --quiet "${ref}^{commit}" >/dev/null; then
+      printf '%s\n' "$ref"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # --- spawn -----------------------------------------------------------------
 # Runs the agent in the workspace's ROOT pane: `workspace create --env` only
 # reaches that pane, not panes split from it afterwards.
@@ -410,6 +434,13 @@ PY
 # building on it. That changes what this shows and never blocks a dispatch: a
 # false positive from a substring match must not be able to wedge a Run.
 #
+# A `done` Task's cause column also names its agent `releasable` when that agent
+# has no other outstanding Dispatch under the Run — the pane is finished and
+# nothing else needs it, so the orchestrator can see what is closeable from the
+# same table it reads everything else from. Also reporting only: nothing here
+# settles anything, because release destroys a worktree and a table is not the
+# place to make that call.
+#
 # 3 exists so a loop can tell "nothing to dispatch" from "dispatch this"
 # without reading the table back. It is not an invitation to poll: the table
 # says which of the two cases it is, and `wait` is how an orchestrator blocks
@@ -530,12 +561,55 @@ states = {}
 for row in parsed["rows"]:
     states[row["task"]] = settled_state(row)
 
+
+def outstanding(tid):
+    """True when this Task still has a Dispatch out with an agent.
+
+    The fold `wait` blocks on and `running` already means here: the journal
+    sent it, no handoff has landed. A Task the plan does not list counts as
+    outstanding too — the journal is the Run's record, and a Dispatch in it is
+    out whether or not a row mentions it.
+    """
+    if tid not in states:
+        return True
+    known = states[tid]
+    return bool(known) and known[0] == "running"
+
+
+def releasable(tid, agent):
+    """`releasable <agent>` for a done Task whose agent owes nothing else.
+
+    Reporting only: `collect` names the agent and settles nothing. Settlement
+    stays an explicit `settle` call, because it is a decision with three
+    answers and picking one silently is how a worktree someone wanted to keep
+    gets destroyed.
+
+    An agent still needed elsewhere is not named. Release destroys a worktree,
+    so the marker has to mean done with the Run rather than done with this
+    Task — an agent holding a second outstanding Task is still working away on
+    it, and settling the pane it is working in would throw that work away.
+    """
+    if not agent:
+        # A journal line written before the agent column existed: no name to
+        # settle, so nothing to name.
+        return None
+    for other in sent:
+        if other != tid and sent[other].get("agent") == agent and outstanding(other):
+            return None
+    return "releasable %s" % agent
+
+
 out = []
 for row in parsed["rows"]:
     tid = row["task"]
     known = states[tid]
     if known:
-        out.append((tid,) + known)
+        state, dispatch, detail = known
+        if state == "done":
+            mark = releasable(tid, sent.get(tid, {}).get("agent"))
+            if mark:
+                detail = "%s %s" % (mark, detail)
+        out.append((tid, state, dispatch, detail))
         continue
     blocks = row.get("blocks") or []
     unmet = [b for b in blocks if not states.get(b) or states[b][0] != "done"]
@@ -1134,6 +1208,13 @@ cmd_settle() {
 }
 
 # --- teardown --------------------------------------------------------------
+# Nothing here is about the pane: teardown answers one question, whether there
+# is work in this worktree that exists nowhere else, and refuses when there is.
+# A branch with an upstream is measured against it. A branch without one is
+# measured against the default branch, so a branch that has not diverged from
+# where it was cut tears down cleanly — refusing there taught the orchestrator
+# to reach for --force on a guard that was right to fire, which is how the
+# guard stops being read at all.
 
 cmd_teardown() {
   local name="${1:-}" force=0
@@ -1150,12 +1231,14 @@ cmd_teardown() {
   if [ "$force" -eq 0 ] && [ -n "$cwd" ] && [ -d "$cwd" ]; then
     [ -z "$(git -C "$cwd" status --porcelain)" ] ||
       die "teardown: ${cwd} has uncommitted changes — commit them or pass --force"
-    if git -C "$cwd" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-      [ -z "$(git -C "$cwd" log --oneline '@{u}..HEAD')" ] ||
-        die "teardown: ${cwd} has unpushed commits — push them or pass --force"
-    else
-      die "teardown: ${cwd} has no upstream — push the branch or pass --force"
-    fi
+    # One rule, two bases: commits not reachable from where this branch will
+    # land. `--force` keeps its meaning for the case the guard is right about.
+    local base='@{u}'
+    git -C "$cwd" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 ||
+      base="$(default_ref "$cwd")" ||
+      die "teardown: ${cwd} has no upstream and no default branch to measure against — pass --force"
+    [ -z "$(git -C "$cwd" log --oneline "${base}..HEAD")" ] ||
+      die "teardown: ${cwd} has unpushed commits — push them or pass --force"
   fi
 
   herdr workspace close "$ws" >/dev/null
