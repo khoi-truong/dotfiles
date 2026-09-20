@@ -4,11 +4,19 @@ Per **stage**, not per provider.
 
 | Stage | Tier |
 | --- | --- |
-| plan, spec, research | Pro (`cc`) |
+| plan, spec | Pro (`cc`) |
+| research | `omp` — capability, not price |
 | implement, boilerplate, tests, lint/CI fixes | DeepSeek (`ccd`) |
 | review, merge, integrate | Pro (`cc`) |
 | commit message authoring | cheapest available |
 | orchestration itself | cheap — it routes, it does not judge |
+
+Neither planning nor research earns a standing pane. A spec or research round
+is a `spec-<round>` or `res-<topic>` pane spawned for that round: it writes its
+artifact, the handoff names the path, and it settles. What a long-lived
+planning pane accumulates is context, and the protocol already says a
+transcript is not the source of truth — so the standing pane costs a slot and
+a login to hold something nothing is allowed to read.
 
 The orchestrator is a dispatcher and must never be the most expensive thing
 running. Configuring the dispatcher changes the cost of the courier, never the
@@ -47,5 +55,6 @@ A reviewer sharing the author's model family shares its blind spots. `cc` plan
 - [ ] Fire-then-wait, never sequential blocking.
 - [ ] Provider asserted at spawn — a silent fallback to Pro is invisible and
       expensive.
-- [ ] Concurrency capped at 2; the scarce resource is contended auth, not
-      review bandwidth.
+- [ ] Concurrency capped at 2 **across every orchestrator**, not per Run — the
+      cap is the machine's, because the scarce resource is contended auth (one
+      DeepSeek key, one Pro login), not review bandwidth.

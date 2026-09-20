@@ -39,7 +39,7 @@ Measured in a throwaway workspace, herdr 0.9.1:
   in that workspace does **not** inherit it (`HERDR_ENV=1` is injected by herdr
   regardless, so its presence proves nothing). Consequence: run the agent in
   the workspace's **root pane**, or pass `--env` again on `pane split`. An
-  executor spawned this way did read `$HERDR_TEAM_HANDOFFS` and write its
+  executor spawned this way did read the env the spawn exported and write its
   handoff into the main checkout, so the propagation is confirmed end to end.
 - `workspace create` already returns the root pane: `result.workspace_id` is
   under `result.workspace`, and the pane under `result.root_pane.pane_id`.
@@ -49,6 +49,29 @@ Measured in a throwaway workspace, herdr 0.9.1:
   started — it will happily report no marker on a correctly configured pane.
   Read `--source visible`, and retry: the status line
   (`DS·deepseek-flash | … | [░░░░░░░░░░]0%`) renders a beat after detection.
+
+## Environment
+
+Two variables, and the difference between them is the whole isolation story.
+
+- **`HERDR_PANE_ID` is the Run key source.** `team.sh` takes the first
+  non-empty of `HERDR_TEAM_RUN_KEY`, `HERDR_PANE_ID` and
+  `CLAUDE_CODE_SESSION_ID`, falling back to `default`, and sanitises it to
+  `[a-z0-9_-]` because it becomes a path component under `state/`. herdr sets
+  `HERDR_PANE_ID` in every pane, which is what makes "one orchestrator pane,
+  one Run" hold with nothing to export: an agent's own `export` does not
+  survive to its next Bash call, so env can never be the *primary* mechanism —
+  the pointer file is. `HERDR_TEAM_RUN_KEY` is the deliberate override, and the
+  way one shell drives two Runs or a test drives three.
+- **`HERDR_TEAM_ROOT` is what a spawn exports**, alongside `OMC_STATE_DIR`: the
+  state root, never one Run's handoff directory. A pane outlives the Dispatch
+  that spawned it, so handing it a Run's directory at spawn pins it to that Run
+  for life and sends a reused pane's handoff to the wrong place. The dispatch
+  prompt carries the absolute handoff path every time, which makes the export
+  belt-and-braces on the success path and is why it must be the root.
+
+`HERDR_TEAM_HANDOFFS` still overrides one Run's handoff directory whole,
+ignoring the Run. It is the fixture suite's hook, not a spawn's.
 
 ## Hazards
 
@@ -124,7 +147,7 @@ highest `D-nn` wins, so a task retried to success stops reading `failed`.
 
 A task that was dispatched and has not answered reads `running`, which the
 handoff files alone cannot show. `dispatch` therefore journals every real
-dispatch to `.omc/handoffs/.dispatched`, one
+dispatch to `.dispatched` inside that Run's handoff directory, one
 `run<TAB>task<TAB>dispatch<TAB>agent` line, written only once
 `herdr agent prompt` has accepted it. The fourth column is `wait`'s — see below.
 

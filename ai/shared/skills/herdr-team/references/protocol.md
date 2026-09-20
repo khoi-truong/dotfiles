@@ -6,7 +6,7 @@ Substrate-independent. No herdr commands appear here; see `herdr-adapter.md`.
 
 | Object | Meaning | Lifetime |
 | --- | --- | --- |
-| **Run** | one user objective; durable namespace and orchestrator inbox | one task, survives pane death |
+| **Run** | one user objective; durable namespace and orchestrator inbox, one per orchestrator | one task, survives pane death |
 | **Task** | one unit of work within the Run | until settled |
 | **Dispatch** | one *authoritative attempt* at a Task | until settled; never reused |
 
@@ -18,7 +18,19 @@ second attempt at task three.
   only one Dispatch is ever current for a Task.
 - Task and Dispatch ids are **immutable within a Run**, and a settled id is
   never reused. This is what stops a stale retry completing the wrong work.
+  The id is unique *within its Run*, which is what makes the uniqueness
+  affordable: what scopes a handoff name is the **Run's own directory**, not a
+  filter over one shared namespace, so `T-01/D-01` in two concurrent Runs is
+  two files that never meet.
 - Every message and every handoff file carries **both** ids.
+- A Run is **namespaced per orchestrator**: one orchestrator pane holds one
+  Run. Two orchestrators driving two objectives in one checkout are two Runs
+  with two id sequences, two handoff directories and no shared state — not two
+  views of one Run taking turns.
+- A **pane belongs to no Run; only a Dispatch does.** A pane retained after one
+  Run's Task settles may be dispatched by another Run, and the handoff it then
+  writes belongs to the Run that dispatched it, never to the one that spawned
+  it. Nothing handed to a pane at spawn may pin it to a Run for its lifetime.
 
 ## Dispatch
 
@@ -27,9 +39,9 @@ algorithm is:
 
 1. Enumerate agents with their live status.
 2. Classify the task **judgment** or **volume**; that selects the role.
-3. Resolve by cardinality. A singular role (`orchestrator`, `spec`) matches its
-   name **exactly**; if busy, queue. A pool role (`exec-`, `plan-`, `rev-`)
-   matches by **prefix** and may spawn up to the cap.
+3. Resolve by cardinality. The one singular role (`orchestrator`) matches its
+   name **exactly**; if busy, queue. A pool role (`exec-`, `spec-`, `res-`,
+   `plan-`, `rev-`) matches by **prefix** and may spawn up to the cap.
 4. Rank: ready first, busy last, **blocked never**.
 5. At the cap, queue. Never spawn past it.
 6. A status that cannot be classified confidently is **not** proof of
@@ -49,8 +61,13 @@ settle it, by the rule below — **and** that handoff belongs to the current Run
 
 The Run clause is not pedantry. Task ids restart at `T-01` every Run, so a
 handoff left by an earlier Run answers to the same Task id and will unblock
-work it never did, silently, unless the predicate reads the Run from the
-handoff itself.
+work it never did, silently, unless the predicate is scoped to the Run.
+
+The scoping is **structural first**: the dispatcher reads only the current
+Run's handoff directory, so another Run's `T-01-D-01.md` is not filtered out —
+it is not there to be read. The `run:` field in the frontmatter stays and is
+now redundant, which is the point: a file hand-placed in the right directory
+with the wrong Run still cannot unblock work.
 
 A refusal is not a retry decision. Retry stays human-gated, so the dispatcher
 must offer an explicit override rather than leaving a human with no way past
@@ -71,6 +88,7 @@ outcome: succeeded | failed | blocked
 cause: null | timeout | blocked_on_approval | tool_error | precondition_failed
 evidence: verified | reported | heuristic | asserted
 files_changed: [path, ...]
+artifacts: [path, ...]
 commands: [{cmd: "...", exit: 0}, ...]
 ---
 
@@ -89,6 +107,11 @@ observed) outranks `reported` (the agent says so) outranks `heuristic` outranks
 `rev-` pass to raise it to `verified`.
 
 `cause` is typed so the retry decision reads a field instead of prose.
+
+`artifacts` is for documents, where `files_changed` is for edits: the absolute
+path of anything a workflow the agent invoked wrote in that workflow's own
+place. It is a **receipt, not a copy** — the orchestrator is handed a path and
+does not open it, and the path is never moved into the coordination store.
 
 ## Liveness
 

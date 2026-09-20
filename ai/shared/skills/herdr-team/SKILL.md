@@ -3,7 +3,7 @@ name: herdr-team
 description: >-
   Protocol for running coding agents in separate herdr panes, one git worktree
   each, coordinated through files on disk: one orchestrator the user talks to,
-  a singular spec agent, N executors in worktrees, and ephemeral reviewers.
+  N executors in worktrees, and ephemeral spec, research and review panes.
   Covers work identity (Run/Task/Dispatch), the completion contract, liveness,
   settlement, worktree lifecycle, memory tiers and per-stage model tiering.
   Use when the work needs real process isolation — spawning or tearing down an
@@ -36,19 +36,35 @@ long life, or visibility. Everything else is an in-process subagent.
 | Role | Pane | Provider | Location |
 | --- | --- | --- | --- |
 | `orchestrator` | standing | `cc` | main checkout |
-| `spec` | standing | `cc` | main checkout |
+| `spec-<round>` | ephemeral | `cc` | main checkout |
+| `res-<topic>` | ephemeral | `omp` | main checkout |
 | `plan-<task>` | ephemeral | `cc` | main checkout |
-| `exec-N` | 1–3 | `ccd` | one worktree each |
+| `exec-<run-suffix>-N` | 2 live, 3 by config | `ccd` | one worktree each |
 | `rev-<task>` | ephemeral | `cc` | the executor's worktree |
 
 critic, architect and verifier are in-process subagents, never panes. For
 fan-out inside one pane, use OMC `/team`; do not reimplement it.
 
-**A suffix means there can be more than one of me.** `orchestrator` and `spec`
-are bare because they are singular — if one is busy, queue; never spawn a
-second. Pool roles match by prefix and may spawn up to the cap of **2**
-concurrent executors (3 only when all three are genuinely independent). The
-cap exists because auth is contended: one DeepSeek key, one Pro login.
+**A suffix means there can be more than one of me.** `orchestrator` is bare
+because it is singular — one pane holds the user, and it is the only standing
+role. There is no standing `spec`: a spec or research round is spawned for that
+round, writes its artifact, and settles. A long-lived planning pane's only asset
+is accumulated context, which rule 5 already says to distrust.
+
+Pool roles match by prefix and may spawn up to the cap of **2** concurrent
+executors (`HERDR_TEAM_EXEC_CAP=3`, only when all three are genuinely
+independent). **The cap is the machine's, not the Run's.** `spawn` counts every
+live `exec-` pane under *every* Run and refuses past the cap, naming the ones
+already live, because what is contended is auth — one DeepSeek key, one Pro
+login — and two orchestrator tabs share it. A per-Run count would let each tab
+start two and call it discipline. Only `exec-` is capped: `spec-`, `res-` and
+`rev-` panes are never blocked by a busy executor pool.
+
+Executors are named `exec-<run-suffix>-N`, the suffix being the `hhmmss` of the
+Run id. It is a readability convention, not an enforced one — `status` prints
+that suffix as a `run` column, so a table spanning three orchestrators reads as
+three groups rather than a flat row of `exec-1`, and a hand-named pane still
+works with a dash there.
 
 ## The five rules that matter
 
@@ -80,10 +96,10 @@ cap exists because auth is contended: one DeepSeek key, one Pro login.
 
 ## Cost
 
-Pro (`cc`) for plan, spec, research, review and merge. DeepSeek (`ccd`) for
-implementation, tests, lint and CI fixes. The orchestrator routes; it does not
-judge, so it is never the most expensive thing running. Details in
-`references/cost.md`.
+Pro (`cc`) for plan, spec, review and merge; `omp` for research, which is a
+capability axis rather than a price one. DeepSeek (`ccd`) for implementation,
+tests, lint and CI fixes. The orchestrator routes; it does not judge, so it is
+never the most expensive thing running. Details in `references/cost.md`.
 
 ## Tooling
 
@@ -117,8 +133,15 @@ Three things the table does not say for you:
   tears down cleanly. When there is real work the order is `settle <name>
   retain`, push, then `settle <name> release`; settlement is still immediate and
   exactly once, and the retain is the recorded decision the release licenses.
-- **The Run id lives in a file**, `.omc/state/team-run`, not in the transcript.
-  `team.sh run new` mints one and every later `dispatch` reads it. Start a Run
+- **The Run id lives in a file**, `.herdr/state/run-<key>`, not in the
+  transcript, and **one orchestrator pane is one Run**. The key is the first
+  non-empty of `HERDR_TEAM_RUN_KEY`, `HERDR_PANE_ID` or
+  `CLAUDE_CODE_SESSION_ID`, falling back to `default`, so a second tab driving
+  a second plan mints its own Run, writes into its own handoff directory, and
+  gets its own `D-01` instead of colliding with the first. `run new --plan
+  <plan.md>` also links the plan's absolute path to the Run, so `run resolve
+  <plan.md>` recovers the id after the pointer file is gone — the plan path is
+  the one identifier that survives compaction and pane death. Start a Run
   before dispatching; a compaction or a dead pane then costs nothing.
 
 **`collect --plan <plan.md>` is how the orchestrator picks its next move.** It
@@ -134,7 +157,10 @@ decides: nothing it does writes state or blocks a dispatch.
 and it needs no one watching a pane.** `team.sh wait` blocks until one
 outstanding Dispatch under the Run reaches a terminal agent state, prints which
 agent and Task settled, and reports nothing about the outcome — the table is
-what reports that. Then `collect --plan` says what the next move is. The exit
+what reports that. It is scoped to **its own Run**: a Dispatch another tab has
+outstanding is invisible to it and can never end its wait, and with nothing
+outstanding under this Run it returns 3 rather than blocking on someone else's
+work. Then `collect --plan` says what the next move is. The exit
 codes are stated once, in `references/herdr-adapter.md`; the two that shape the
 loop are that a `--timeout` expiry is not the same answer as "nothing to wait
 for", and that an agent which went `blocked` is a different move again — no
