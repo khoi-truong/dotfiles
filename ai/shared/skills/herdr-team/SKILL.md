@@ -47,13 +47,13 @@ because it is singular, and the only standing role. There is no standing
 artifact, and settles. A long-lived planning pane's only asset is accumulated
 context, which rule 5 already says to distrust.
 
-Pool roles match by prefix and may spawn up to the cap of **2** concurrent
-executors (`HERDR_TEAM_EXEC_CAP=3`, only when all three are genuinely
-independent). **The cap is the machine's, not the Run's:** `spawn` counts every
-live `exec-` pane under *every* Run, because what is contended is auth — one
-DeepSeek key, one Pro login — and two orchestrator tabs share it. A per-Run
-count would let each tab start two and call it discipline. Only `exec-` is
-capped.
+Pool roles match by prefix, and two limits bound them. **Per Run: 2
+executors** — the discipline limit, so one tab cannot take the machine, and the
+number a plan's width is read against. **Per provider, across every Run: 4
+panes** — the resource limit, because what is contended is auth: one DeepSeek
+key, one Pro login, and every tab on the machine shares it. One machine-wide
+count of executors did both jobs badly — a `cc` pane refused because two `ccd`
+panes are live is a refusal with no resource behind it.
 
 Executor names carry the Run's `hhmmss` as their suffix — a readability
 convention, not an enforced one, so a status table spanning three orchestrators
@@ -83,6 +83,8 @@ reads as three groups.
 - Never poll. Blocking is `team.sh wait`, not a question asked on a timer; a
   subscription must be opened *before* dispatching, since they do not replay.
 - Never let a plugin start an agent or pick its provider.
+- Never let `loop` settle, retry or answer a dialog. It dispatches and waits;
+  each of those three is a gate it returns at, for a human to take.
 
 ## Cost
 
@@ -94,7 +96,7 @@ Table in `references/cost.md`.
 ## Tooling
 
 `ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `wait`,
-`surface`, `plan`, `settle`, `teardown`; `prefix+alt+t` shows the status table.
+`loop`, `report`, `surface`, `plan`, `settle`, `teardown`; `prefix+alt+t` shows the status table.
 The script owns topology, this skill owns the protocol, and the flags and exit
 codes are stated once, in `references/herdr-adapter.md`.
 
@@ -122,15 +124,19 @@ Two things the verb list does not say:
   the plan path is the one identifier that survives compaction and pane death.
   Start a Run before dispatching, and a dead pane costs nothing.
 
-**The loop is dispatch → `wait` → `collect --plan` → dispatch what is `ready`,
-and it needs no one watching a pane.** `wait` blocks until one outstanding
-Dispatch under the Run settles and reports nothing about the outcome;
-`collect --plan <plan.md>` reports it, one row per task in the plan, with an
-exit code saying what to do without reading the table back. Both are scoped to
-**their own Run**, so another tab's outstanding Dispatch can never end this
-Run's wait. That is the alternative to diffing `collect` against the plan by
-hand every turn. Neither decides anything: nothing they do writes state or
-blocks a dispatch.
+**`team.sh loop --plan <plan.md>` is how a plan is run, and it needs no one
+watching a pane.** It repeats one wave — `collect --plan`, dispatch what is
+`ready`, `wait` — until the plan is complete or a gate returns, and writes the
+Run's `report` on the way out however it ends. Each gate is a decision the loop
+is forbidden to make, so it stops and names it instead.
+
+When a gate returns, the same wave by hand is the fallback: `collect --plan`
+reports one row per task in the plan with an exit code saying what to do next,
+`dispatch` sends it, `wait` blocks until one outstanding Dispatch settles and
+says nothing about the outcome. Every one of these is scoped to **its own
+Run**, so another tab's outstanding Dispatch can never end this Run's wait, and
+none of them decides anything: nothing they do writes state or blocks a
+dispatch.
 
 The plan format is the `dispatchable-plan` skill's, and `team.sh plan lint
 <plan.md>` checks a plan against it before anything is spawned.
