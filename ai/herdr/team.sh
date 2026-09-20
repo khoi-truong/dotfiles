@@ -14,7 +14,7 @@
 # `zsh -ic <wrapper>` instead, and the provider is asserted afterwards.
 #
 #   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
-#   team.sh spawn exec-<run-suffix>-N --branch <b>   # 2 live at once (HERDR_TEAM_EXEC_CAP)
+#   team.sh spawn exec-<run-suffix>-N --branch <b>   # 2 per Run, 4 on one provider
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
 #   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
@@ -41,6 +41,8 @@ require_macos
 # handoffs are not one agent's scratch state. Grown beside it instead.
 #
 #   state/run-<key>       the Run this shell is in, written by `run new`
+#   state/panes/<name>    one pane `spawn` launched: provider, Run, worktree,
+#                         spawn time; deleted on `settle … release` and `teardown`
 #   runs/<run-id>/        the Run: its handoffs, and the plan it was cut from
 #   runs/by-plan/<sha1>   plan path → the Run that plan started
 #
@@ -50,11 +52,32 @@ ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
 
-# How many `exec-` panes may be live at once. An executor is a worktree, a
-# provider key and an agent that runs work, and the ceiling is the machine's
-# rather than a Run's: two orchestrator tabs in one checkout share all three,
-# so a per-Run count would let each tab start two and call it discipline.
+# Two limits, because one number was doing two jobs.
+#
+# `EXEC_CAP` is the discipline limit: how many executors one orchestrator may
+# hold at once. It stops a single tab from taking the whole machine, and it is
+# the number a plan's width is read against. Counted over the panes *this Run*
+# holds — the agents its journal names, plus the panes it spawned and has not
+# dispatched to yet — so one tab cannot hand out a third executor and another
+# tab's executors are not its business.
 EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
+
+# `PROVIDER_CAP` is the machine ceiling: how many panes may be live on one
+# provider across every Run. The resource is the credential, not the executor —
+# "one DeepSeek key, one Pro login" describes providers — so a `cc` pane may
+# spawn while two `ccd` panes are live, where the single count refused it with
+# no resource behind the refusal. Counted from the pane records under
+# `state/panes/`, because a pane's provider is not readable off its screen
+# (herdr-adapter.md: "reading a pane is not passive") and because
+# `herdr agent list` is session-global: five named sessions would each spawn to
+# the ceiling against the one key the ceiling exists to protect.
+#
+# A pane with no record — hand-started, or spawned before this file kept
+# records — counts as `unknown`, and the unknown count is added to every
+# provider's load rather than ignored: what such a pane holds is exactly what
+# is not known, so the error goes the way of a refusal that could have been
+# allowed, never of a key that runs out.
+PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-4}"
 
 # protocol.md states the cap on a handoff — "over 150 lines is a defect" — and
 # nothing has ever checked it. `report` counts them. A count rather than a
@@ -116,11 +139,11 @@ agent_field() {
 }
 
 # exec_live — the executors live right now, one name per line. Every Run's, not
-# this one's: `EXEC_CAP` is a property of the machine, so a count scoped to the
-# Run in this tab would hand out a third executor behind another tab's back.
-# A name this repo never minted is still counted, because a pane still running
-# work costs what it costs however it was named; the cap is on panes, not on
-# the spelling. Empty output when there are none, so a caller can loop over it.
+# this one's: it is the pool a Dispatch can be seated on, and `exec_held` is
+# what narrows it to the panes one Run is answerable for. A name this repo
+# never minted is still counted, because a pane still running work costs what
+# it costs however it was named; the count is on panes, not on the spelling.
+# Empty output when there are none, so a caller can loop over it.
 #
 # `or ''` because herdr reports a pane whose title was cleared with a null name,
 # which would otherwise be an AttributeError rather than the not-an-executor it
@@ -132,6 +155,129 @@ exec_live() {
     jget "','.join(a['name'] for a in d['result']['agents'] if (a.get('name') or '').startswith('exec-'))")"
   [ -n "$names" ] || return 0
   printf '%s\n' "$names" | tr ',' '\n'
+}
+
+# panes_live — every named pane, one per line. The provider ceiling counts
+# credentials rather than executors, and a `rev-` or `spec-` pane holds one
+# too, so it reads the whole pool where `exec_live` reads a subset. A pane
+# herdr is showing with no name at all is not here: nothing can address it, so
+# there is no key to look a record up under.
+panes_live() {
+  local names
+  names="$(herdr agent list 2>/dev/null |
+    jget "','.join((a.get('name') or '') for a in d['result']['agents'])")"
+  [ -n "$names" ] || return 0
+  printf '%s\n' "$names" | tr ',' '\n' | grep .
+}
+
+# count_lines — how many non-empty lines arrived on stdin. `wc -l` and
+# `grep -c` both answer zero with a non-zero status, which under `set -e` is a
+# way to lose a script to an empty pool.
+count_lines() { awk 'NF{n++} END{print n+0}'; }
+
+# --- the pane records ------------------------------------------------------
+# One file per pane `spawn` launched, keyed by the name herdr was given, and
+# the only durable answer to "which provider is that pane on": the journal has
+# no provider in it, an agent name has none either, and reading a pane is not
+# passive. `spawn` writes one and `teardown` removes it — the same script owns
+# both ends of a pane's life, so a record exists while the pane does.
+#
+# Five fields, tab-separated, one line: name, provider, Run, worktree, spawn
+# time. A Run-less shell writes `-` for the third, because an empty field would
+# read as a malformed record rather than as "no Run".
+
+panes_dir() { printf '%s\n' "${ROOT}/state/panes"; }
+
+pane_record() { printf '%s\n' "$(panes_dir)/${1}"; }
+
+# pane_record_field <name> <name|provider|run|worktree|spawned> — that field,
+# or empty for a pane with no record. Empty and successful rather than a
+# status: callers test the value, and a reader left to handle two spellings of
+# "no record" would eventually handle one of them wrong.
+pane_record_field() {
+  local f f1 f2 f3 f4 f5
+  f="$(pane_record "$1")"
+  [ -f "$f" ] || return 0
+  IFS=$'\t' read -r f1 f2 f3 f4 f5 <"$f" || true
+  case "${2:-}" in
+    name) printf '%s' "$f1" ;;
+    provider) printf '%s' "$f2" ;;
+    run) printf '%s' "$f3" ;;
+    worktree) printf '%s' "$f4" ;;
+    spawned) printf '%s' "$f5" ;;
+  esac
+}
+
+# reap_pane_records — forget the records whose pane is gone. A pane that exits
+# leaves its file behind, and counting a stale file would refuse a spawn over a
+# credential nothing is holding. The `stat` on a stale record is the cost of
+# counting from the filesystem; this is the remedy, and it runs at spawn, which
+# is the only place the count is a limit.
+reap_pane_records() {
+  local dir f name live
+  dir="$(panes_dir)"
+  [ -d "$dir" ] || return 0
+  live="$(panes_live)"
+  for f in "${dir}"/*; do
+    [ -f "$f" ] || continue
+    name="${f##*/}"
+    printf '%s\n' "$live" | grep -qxF "$name" || rm -f "$f"
+  done
+  return 0
+}
+
+# provider_load_for <provider> — what that provider's ceiling would be measured
+# against: `<count>|<recorded panes>|<unrecorded panes>`, names
+# space-separated. The unrecorded panes are in the count as well as in their own
+# list, because a pane whose provider is unknown may be holding the credential
+# being asked about and there is no way to show otherwise.
+provider_load_for() {
+  local want="$1" p name n=0 rec="" unk=""
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    p="$(pane_record_field "$name" provider)"
+    [ -n "$p" ] || p=unknown
+    if [ "$p" = "$want" ]; then
+      n=$((n + 1))
+      rec="${rec:+${rec} }${name}"
+    elif [ "$p" = unknown ]; then
+      n=$((n + 1))
+      unk="${unk:+${unk} }${name}"
+    fi
+  done <<<"$(panes_live)"
+  # `|` rather than a tab: a tab is IFS whitespace, so `read` collapses a run of
+  # them and an empty list in the middle field would slide the next one over —
+  # which is the one shape this line has when every pane is unrecorded. A `|`
+  # cannot appear in a pane name, so the three fields stay three.
+  printf '%s|%s|%s\n' "$n" "$rec" "$unk"
+}
+
+# exec_held <run> — the executors that Run is holding, one name per line.
+#
+# Two sources, because a Run can hold a pane before it has dispatched to it: the
+# journal names the agents its Dispatches went to, and the pane record names the
+# ones it spawned. The journal alone would let two `spawn`s in a row walk past
+# the cap; records alone would miss the panes that predate them. Liveness is
+# asked of herdr last, because a pane that has exited is held by nobody and the
+# Run should not be refused a replacement for one it lost.
+#
+# A pane another Run spawned and this one then dispatched to counts for both.
+# That is conservative in the direction that matters and it matches the remedy:
+# anybody can settle it.
+exec_held() {
+  local run="$1" f name mine="" journal=""
+  [ -n "$run" ] || return 0
+  journal="$(handoffs_dir "$run")/.dispatched"
+  if [ -f "$journal" ]; then
+    mine="$(awk -F'\t' -v r="$run" '$1==r && $4 ~ /^exec-/ {print $4}' "$journal" | sort -u)"
+  fi
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if [ "$(pane_record_field "$name" run)" = "$run" ] ||
+      printf '%s\n' "$mine" | grep -qxF "$name"; then
+      printf '%s\n' "$name"
+    fi
+  done <<<"$(exec_live)"
 }
 
 # provider_key <command> — what the login shell says about the key that
@@ -232,22 +378,36 @@ cmd_spawn() {
     return 0
   fi
 
-  # The executor cap, and the order is the point: the early return above means
-  # this counts *other* live executors, so re-spawning one of a full pool is
-  # still the idempotent no-op it was. Only `exec-` names are capped — a busy
-  # executor pool must never block a `spec-`, `res-` or `rev-` pane, because
-  # those are how a blocked executor gets unblocked. The names go in the
-  # refusal: the caller's next move is to settle one of them, and being told
-  # which is the difference between that and reading `agent list` by hand.
+  local run="" load="" rec="" unk="" holds=""
+  run="$(current_run)" || run=""
+
+  # The provider ceiling first, over the whole pool rather than the executors:
+  # the thing being protected is a credential, and a pane holding one is a pane
+  # holding one whatever role its name says. The order after the early return
+  # above is the point — this counts *other* panes — and it is before the
+  # worktree, so a spawn refused for a limit it was going to hit anyway leaves
+  # nothing behind to undo.
+  reap_pane_records
+  IFS='|' read -r load rec unk <<<"$(provider_load_for "$provider")"
+  if [ "$load" -ge "$PROVIDER_CAP" ]; then
+    holds="${rec:-none}"
+    [ -z "$unk" ] || holds="${holds} and ${unk} with no provider record"
+    die "spawn: ${load} panes count against ${provider}'s ceiling (${holds}) — the ceiling is ${PROVIDER_CAP} panes on one provider across every Run (HERDR_TEAM_PROVIDER_CAP); settle one, or raise it if that credential can carry another."
+  fi
+
+  # Then the per-Run cap, and only for executors: a `spec-`, `res-` or `rev-`
+  # pane is how a blocked executor gets unblocked, so a busy executor pool must
+  # never be what stops one. The panes named are the ones this Run holds, which
+  # is the difference between a next move and a pane belonging to somebody else
+  # that the caller has no standing to settle.
   if printf '%s' "$name" | grep -q '^exec-'; then
-    local live="" count=0 executor=""
-    while IFS= read -r executor; do
-      [ -n "$executor" ] || continue
-      live="${live:+${live} }${executor}"
-      count=$((count + 1))
-    done <<<"$(exec_live)"
-    [ "$count" -lt "$EXEC_CAP" ] ||
-      die "spawn: ${count} executors already live (${live}) — the cap is ${EXEC_CAP} across every Run; settle one, or raise HERDR_TEAM_EXEC_CAP if this machine can carry another worktree."
+    local held="" nheld=0
+    # Joined here rather than left one per line: the refusal is one sentence,
+    # and a name list that arrives as newlines would break it in two.
+    held="$(exec_held "$run" | awk 'NF{printf "%s%s", (n++ ? " " : ""), $0}')"
+    nheld="$(exec_held "$run" | count_lines)"
+    [ "$nheld" -lt "$EXEC_CAP" ] ||
+      die "spawn: this Run already holds ${nheld} executors (${held}) — the cap is ${EXEC_CAP} executors per Run (HERDR_TEAM_EXEC_CAP); settle one, or raise it if this Run can carry another worktree."
   fi
 
   # The provider check, before anything exists to undo. A `ccd` pane launched
@@ -296,7 +456,7 @@ cmd_spawn() {
   # created here: a Run's own handoff directory belongs to the Run, and this
   # pane does not have one yet — `run new` creates it, and `dispatch` creates
   # it again for a pane spawned before its Run was.
-  mkdir -p "${ROOT}"
+  mkdir -p "${ROOT}" "$(panes_dir)"
 
   # `worktree open` rather than `workspace create --cwd`: the same directory
   # either way, but this one carries the checkout's provenance, so herdr groups
@@ -372,6 +532,15 @@ cmd_spawn() {
 
   herdr agent rename "$pane" "$name" >/dev/null
 
+  # The record, written last: everything above can fail and be rolled back, and
+  # a file claiming a pane nobody was ever given a name for would be a record of
+  # a pane no Dispatch can reach. The provider is written here because this is
+  # the only place that knows which one it launched — the ceiling counts these
+  # files, `status` reads one for its provider column, and `report` reads one
+  # for its provider field.
+  printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$(pane_record "$name")"
+
   ok "${name} → ${pane} (${provider}) in ${dir}"
 }
 
@@ -385,9 +554,28 @@ cmd_status() {
   # are one Run's, because a handoff is what one Run's Dispatch wrote.
   run="$(current_run)" || run=""
   if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
-  python3 - "$handoffs" "$run" "$agents_json" <<'PY'
+  python3 - "$handoffs" "$run" "$agents_json" "$(panes_dir)" <<'PY'
 import glob, json, os, re, sys
-handoffs, run = sys.argv[1], sys.argv[2]
+handoffs, run, panes = sys.argv[1], sys.argv[2], sys.argv[4]
+
+
+def provider_of(name):
+    """The provider `spawn` recorded for that pane, or `unknown`.
+
+    Recorded rather than inferred: a provider is not in the agent's name (an
+    `exec-` name is a Run and an index) and not readable off its screen, and a
+    table that guessed would be most wrong about exactly the panes a reader is
+    about to count. A pane with no record — hand-started, or spawning while
+    this file is being read — is `unknown`, which is the same bucket the
+    provider ceiling counts it in.
+    """
+    try:
+        with open(os.path.join(panes, name), encoding="utf-8") as fh:
+            return fh.readline().split("\t")[1] or "unknown"
+    except (OSError, IndexError):
+        return "unknown"
+
+
 d = json.loads(sys.argv[3])
 agents = d["result"]["agents"]
 if not agents:
@@ -403,9 +591,9 @@ else:
         # way — another role, or the older hand-typed `exec-1` — has no Run in
         # its name, and a guessed one would be worse than the dash.
         m = re.match(r"^exec-(\d{6})-", name)
-        print("%-*s  %-6s  %-8s  %-8s  %s" % (
-            w, name, m.group(1) if m else "-", a["pane_id"],
-            a.get("agent_status", "?"), a.get("cwd", "")))
+        print("%-*s  %-6s  %-8s  %-8s  %-8s  %s" % (
+            w, name, m.group(1) if m else "-", provider_of(name),
+            a["pane_id"], a.get("agent_status", "?"), a.get("cwd", "")))
 if not run:
     print("\nno Run started — team.sh run new")
 else:
@@ -918,12 +1106,29 @@ cmd_report() {
     plan_parser_py
     handoff_py
     cat <<'PY'
-import glob, json, sys
+import glob, json, os, sys
 
 root, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 write = sys.argv[4] == "1"
 handoff_max = int(sys.argv[5])
+panes = sys.argv[6]
 run_dir = os.path.join(root, "runs", run)
+
+
+def recorded_provider(name):
+    """The provider `spawn` wrote down for that pane, or empty.
+
+    Empty rather than "unknown" here, because the caller substitutes: this is
+    one source among two, and the other is the plan's own row.
+    """
+    if not name:
+        return ""
+    try:
+        with open(os.path.join(panes, name), encoding="utf-8") as fh:
+            fields = fh.readline().split("\t")
+            return fields[1] if len(fields) > 1 else ""
+    except OSError:
+        return ""
 
 # --- the plan, when this Run has one ---------------------------------------
 # The path `run new --plan` wrote down, not the plan this shell happens to be
@@ -954,11 +1159,16 @@ if plan:
 # Dispatch counts come off the journal, which is the only thing that tells one
 # attempt from two; outcomes come from the highest-id handoff, the same fold
 # `collect --plan` reads a Task through.
-sends, sent_max = {}, {}
+sends, sent_max, sent_agent = {}, {}, {}
 for task, dispatch, agent in journal_lines(handoffs, run):
     sends[task] = sends.get(task, 0) + 1
     if dispatch > sent_max.get(task, ""):
         sent_max[task] = dispatch
+        # The pane the winning Dispatch went to, which is the pane whose
+        # record the provider is read off below. The losing attempt's pane is
+        # not this Task's answer, and a retry that moved to another provider
+        # should report the one that finished the work.
+        sent_agent[task] = agent or ""
 
 by_task, lengths, newest, over_long = {}, {}, 0, []
 for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
@@ -1020,13 +1230,15 @@ for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
         outcome, evidence, lines, verify = "running", "-", "-", "-"
     else:
         winner, outcome, evidence, lines, verify = "-", "-", "-", "-", "-"
-    # The provider is what the plan's row asked for, and it is asked for rather
-    # than inferred: the journal cannot answer it — an agent name is
-    # `exec-<run>-N`, a Run and an index with no provider in it — and reading
-    # the pane is not passive (herdr-adapter.md). A declaration is the honest
-    # source until spawn records what it actually launched (T-07), at which
-    # point this is the field to rewire.
-    provider = row.get("provider") or "-"
+    # The provider `spawn` recorded for the pane the winning Dispatch went to,
+    # and the plan's own row only when there is no record — a pane from before
+    # records existed, or one nobody here started. It cannot be inferred: the
+    # journal has no provider in it, an agent name is `exec-<run>-N`, and
+    # reading the pane is not passive (herdr-adapter.md). The two sources
+    # disagreeing is itself worth seeing: the record is what was launched, the
+    # row is what was asked for, and a Run that quietly ran on the wrong
+    # credential is what a report is for.
+    provider = recorded_provider(sent_agent.get(tid, "")) or row.get("provider") or "-"
     if provider != "-":
         providers.add(provider)
     if verify == "ok":
@@ -1155,7 +1367,7 @@ else:
         fh.write(json.dumps(metrics, sort_keys=True) + "\n")
     print("metrics.jsonl: appended %s" % run)
 PY
-  } | python3 - "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX"
+  } | python3 - "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX" "$(panes_dir)"
 }
 
 # --- wait ------------------------------------------------------------------
@@ -1566,12 +1778,11 @@ loop_wave() {
   # rank — one pane takes one Dispatch — so the ranking's outcome is what is
   # implemented, not its tie-breaks.
   local -a free_exec=() free_rev=()
-  local live_exec=0 names_all="" live_all="" pname pstate
+  local names_all="" live_all="" pname pstate
   while IFS=$'\t' read -r pname pstate; do
     [ -n "$pname" ] || continue
     case "$pname" in
       exec-*)
-        live_exec=$((live_exec + 1))
         case "$pstate" in ready | idle | done) free_exec+=("$pname") ;; esac
         ;;
       rev-*)
@@ -1611,6 +1822,15 @@ loop_wave() {
   if [ "${#waiting[@]}" -gt 0 ] && [ "$spawn" -eq 1 ]; then
     local -a still=()
     local i name branch src st spawned=""
+    # Counted the way `spawn` counts it, and counted once: the panes held are
+    # the ones this Run can still settle, so a wave cannot seat a third
+    # executor on a cap of two and another tab's executors are not in the way of
+    # this one's. `spawned` below is the panes this wave drew, which are not in
+    # the count yet because nothing has dispatched to them.
+    local held=""
+    held="$(exec_held "$run")"
+    local live_exec
+    live_exec="$(printf '%s\n' "$held" | count_lines)"
     for i in "${!waiting[@]}"; do
       IFS=$'\t' read -r lane tid provider <<<"${waiting[$i]}"
       name=""
@@ -1668,11 +1888,13 @@ loop_wave() {
   if [ -n "$ready_list" ] && [ "${#seats[@]}" -eq 0 ]; then
     printf '%s\n' "$table"
     if [ "$spawn" -eq 1 ]; then
-      printf 'loop: %s ready and no pane free for them — %s live (cap %s); settle one, or raise HERDR_TEAM_EXEC_CAP\n' \
-        "$ready_list" "${live_all:-none}" "$EXEC_CAP"
+      printf 'loop: %s ready and no pane free for them — this Run holds %s (cap %s executors per Run, HERDR_TEAM_EXEC_CAP); settle one, or raise the cap\n' \
+        "$ready_list" \
+        "$(printf '%s' "${held:-none}" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/ $//')" \
+        "$EXEC_CAP"
     else
-      printf 'loop: %s ready and no pane free for them — %s live (cap %s); --spawn <branch-prefix>, or settle one\n' \
-        "$ready_list" "${live_all:-none}" "$EXEC_CAP"
+      printf 'loop: %s ready and no pane free for them — %s live; --spawn <branch-prefix>, or settle one\n' \
+        "$ready_list" "${live_all:-none}"
     fi
     loop_log "$log" "wave ${wave}: ${ready_list} ready and no pane free — exit 6"
     return 6
@@ -2718,6 +2940,11 @@ cmd_teardown() {
   fi
 
   herdr workspace close "$ws" >/dev/null
+  # The record goes with the pane, and here rather than at the top: everything
+  # above can refuse, and a refusal leaves a pane that is still live and still
+  # holding its provider. `settle … release` reaches this same line, so the two
+  # ways a pane ends both forget it.
+  rm -f "$(pane_record "$name")"
   if [ -n "$cwd" ] && [ "$cwd" != "${DOTFILES}" ]; then
     if [ "$force" -eq 1 ]; then
       git -C "${DOTFILES}" worktree remove --force "$cwd" 2>/dev/null ||

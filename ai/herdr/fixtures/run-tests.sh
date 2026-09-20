@@ -166,8 +166,20 @@ long_handoff() {
 # case is not about, which is the one way a hand-built fixture can change what a
 # later case is looking at.
 reset() {
-  rm -rf "${HERDR_TEAM_ROOT}/runs"
+  rm -rf "${HERDR_TEAM_ROOT}/runs" "${HERDR_TEAM_ROOT}/state/panes"
   use_run "${RUN}"
+}
+
+# record <name> <provider> [run] [worktree] — one pane record, the shape `spawn`
+# writes under state/panes/. A case places the records it wants counted rather
+# than spawning the panes they describe: the ceiling is about how many panes
+# hold one credential, and a case that had to spawn four real panes to stage
+# that would be testing the spawn's worktrees instead.
+record() {
+  local dir="${HERDR_TEAM_ROOT}/state/panes"
+  mkdir -p "$dir"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "${3:--}" "${4:-${TMP}/wt-${1}}" \
+    "2026-01-01T00:00:00Z" >"${dir}/${1}"
 }
 
 # dispatch <args...> — always --dry-run, so no agent is required. Prints the
@@ -1671,14 +1683,17 @@ HERDR_TEAM_RUN_KEY=tab-b wait_on idle 0 '^exec-1 T-01 settled$' \
   "95b and the other key's wait watches its own Dispatch"
 
 echo
-echo "the executor cap, and a pane that outlives its Run"
+echo "the two caps: one per Run, one per provider"
 
-# 96. The cap is global — one DeepSeek key, one Pro login, one machine — so a
-#     third executor is refused whichever Run asks, and the refusal names the
-#     panes to settle. The stub is the whole environment: the refusal is reached
-#     before a worktree or a pane exists, so this case needs no wt_add, and the
-#     `worktree open` answer below is empty on purpose — a regression that got
-#     this far would be rolled back rather than left in the developer's repo.
+# 96. The per-Run cap, and the Run is the unit it counts. Two executors that
+#     this Run dispatched are two worktrees it is carrying, so a third is
+#     refused and the refusal names the panes to settle. Counted over the
+#     journal — the record of what this Run sent out — so a pane belonging to
+#     another tab is not this Run's to settle and not this Run's to be stopped
+#     by. The stub is the whole environment: the refusal is reached before a
+#     worktree or a pane exists, so the `worktree open` answer below is empty on
+#     purpose — a regression that got this far would be rolled back rather than
+#     left in the developer's repo.
 mkdir -p "${TMP}/execap"
 cat >"${TMP}/execap/herdr" <<SH
 #!/usr/bin/env bash
@@ -1695,14 +1710,17 @@ esac
 SH
 chmod +x "${TMP}/execap/herdr"
 
+use_run "${RUN}"
+sent "${RUN}" T-01 D-01 exec-1
+sent "${RUN}" T-02 D-02 exec-2
 HERDR_TEAM_EXEC_CAP=2 spawn_on "${TMP}/execap" 1 \
-  "96 a third executor is refused while two are live" \
+  "96 a third executor is refused while this Run holds two" \
   exec-3 --branch fixture-cap --provider ccd
-if grep -q 'executors already live (exec-1 exec-2)' "${TMP}/err" &&
-  grep -q 'cap is 2' "${TMP}/err"; then
-  ok "96b and the refusal names the live executors, and the cap"
+if grep -q 'this Run already holds 2 executors (exec-1 exec-2)' "${TMP}/err" &&
+  grep -q 'cap is 2 executors per Run' "${TMP}/err"; then
+  ok "96b and the refusal names the Run's own executors, and the cap"
 else
-  no "96b and the refusal names the live executors, and the cap" \
+  no "96b and the refusal names the Run's own executors, and the cap" \
     "$(head -3 "${TMP}/err" | tr '\n' '|')"
 fi
 if grep -qE 'worktree open|pane run|agent rename' "${TMP}/herdr-called" 2>/dev/null; then
@@ -2120,8 +2138,8 @@ case "\$1 \$2" in
     while IFS=\$'\t' read -r n s p; do
       [ -n "\$n" ] || continue
       if [ "\$n" = "-" ]; then nj=null; else nj="\"\$n\""; fi
-      printf '%s{"name":%s,"pane_id":"%s","agent_status":"%s"}' \
-        "\$sep" "\$nj" "\$p" "\$(pane_state "\$s")"
+      printf '%s{"name":%s,"pane_id":"%s","agent_status":"%s","workspace_id":"wL:w%s"}' \
+        "\$sep" "\$nj" "\$p" "\$(pane_state "\$s")" "\${p#wL:p}"
       sep=","
     done <"${TMP}/loop-panes"
     printf ']}}\n'
@@ -2136,7 +2154,7 @@ case "\$1 \$2" in
     printf '{"result":{"workspace":{"workspace_id":"wL:w%s","active_tab_id":"wL:t%s"},"root_pane":{"pane_id":"wL:p%s"},"already_open":false}}\n' \
       "\$seq" "\$seq" "\$seq"
     ;;
-  "tab rename" | "pane run" | "pane send-keys") ;;
+  "tab rename" | "pane run" | "pane send-keys" | "pane report-metadata" | "workspace close") ;;
   "agent rename")
     # Naming a pane herdr already had: unnamed and working becomes named and
     # idle, which is the state \`spawn\` polls for and the state the loop seats
@@ -2416,16 +2434,18 @@ called 1 '^agent wait exec-0001-1 ' "114d the running Task's own agent was waite
 # 115. A ready row with no pane to put it on. Two executors are up and both are
 #      working, so nothing can move this wave — and the decision the loop hands
 #      back is the one it must not make for itself: spawn a pane, or settle one.
-#      The refusal names the rows, the live panes and the cap, because "no pane
-#      free" without them is a message nobody can act on.
+#      The refusal names the rows and the live panes, because "no pane free"
+#      without them is a message nobody can act on. It names no cap: the cap is
+#      how many worktrees one Run may carry, not how many panes may be live, and
+#      a number here would be a number the reader cannot act on.
 loop_fresh "exec-0001-1 working" "exec-0001-2 working"
 loop_on 6 'no pane free for them' "115 a ready row with no free pane stops at 6" \
   --plan "${FIXTURES}/plan-wide.md"
-if grep -qE '^loop: T-01 T-02 T-03 T-04 T-05 ready and no pane free for them — exec-0001-1 exec-0001-2 live \(cap 2\); --spawn <branch-prefix>, or settle one$' \
+if grep -qE '^loop: T-01 T-02 T-03 T-04 T-05 ready and no pane free for them — exec-0001-1 exec-0001-2 live; --spawn <branch-prefix>, or settle one$' \
   "${TMP}/out"; then
-  ok "115b the refusal names the rows, the live panes and the cap"
+  ok "115b the refusal names the rows and the live panes"
 else
-  no "115b the refusal names the rows, the live panes and the cap" \
+  no "115b the refusal names the rows and the live panes" \
     "$(grep -E '^loop: ' "${TMP}/out" | tr '\n' '|')"
 fi
 called 0 '^agent prompt' "115c nothing was dispatched into a pool with no room"
@@ -2618,6 +2638,195 @@ if [ ! -f "${TMP}/loop-called" ]; then
 else
   no "123d no precondition was answered by calling herdr first" \
     "$(tr '\n' '|' <"${TMP}/loop-called")"
+fi
+
+echo
+echo "the two caps: one Run's executors, one provider's panes"
+
+# loop_cmd <want-exit> <label> <args...> — another team.sh verb against the loop
+# stubs, so a case about the record a pane leaves behind drives the verbs that
+# write it and remove it against the same panes the loop is looking at.
+loop_cmd() {
+  local want="$1" label="$2" code=0
+  shift 2
+  env PATH="${TMP}/loop:${PATH}" "${TEAM}" "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  else
+    ok "$label"
+  fi
+}
+
+# pane_field <name> <field> — one field of that pane's record, or nothing when
+# there is no record. Read here rather than through team.sh so a case asserts
+# the file `spawn` wrote rather than what the verb that wrote it can say about
+# it.
+pane_field() {
+  local f="${HERDR_TEAM_ROOT}/state/panes/${1}" i
+  case "${2:-}" in
+    provider) i=2 ;;
+    run) i=3 ;;
+    worktree) i=4 ;;
+    spawned) i=5 ;;
+    *) i=1 ;;
+  esac
+  [ -f "$f" ] || return 0
+  awk -F'\t' -v n="$i" 'NR==1{print $n}' "$f"
+}
+
+# 124. The per-Run cap counts panes this Run is answerable for, and a spawn makes
+#      one before any Dispatch does: a pane this Run spawned and has not sent
+#      work to is still a worktree it is carrying. That is why the count reads
+#      two records and not one — the pane exists before the Dispatch that gives
+#      it work, so a journal alone would miss the window between them.
+loop_fresh "exec-0001-1 working" "exec-0001-2 working"
+record exec-0001-1 ccd "${RUN}"
+sent "${RUN}" T-01 D-01 exec-0001-2
+spawn_on "${TMP}/loop" 1 "124 a pane this Run spawned but has not dispatched still counts" \
+  exec-0001-3 --branch feat/cap-3 --provider ccd
+if grep -q 'this Run already holds 2 executors (exec-0001-1 exec-0001-2)' "${TMP}/err"; then
+  ok "124b and the refusal names both: the spawned pane and the dispatched one"
+else
+  no "124b and the refusal names both: the spawned pane and the dispatched one" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+called 0 '^worktree open' "124c nothing was created for the refused spawn"
+
+# 124d. The cap is on executors. A `rev-` pane is how a blocked executor gets
+#       unblocked, so a full pool of executors must not be what stops one — and
+#       it does not, with the Run holding its two while this one is drawn.
+spawn_on "${TMP}/loop" 0 "124d a rev- pane is drawn while the Run's cap is full" \
+  rev-t-09 --branch feat/cap-rev --provider cc
+called 1 '^worktree open' "124e and it is the spawn that drew it"
+
+# 125. Criterion 10, and the difference between the two caps in one case. Run A
+#      holds two `ccd` executors; the shell is then in Run B, which holds none,
+#      and a `cc` executor is drawn there with no override — a different
+#      provider, so nothing of Run A's is in its way, and a different Run, so
+#      neither of Run A's worktrees is either. Under the machine-wide cap T-07
+#      replaced, the second executor in the pool was the thing that refused this.
+loop_fresh "exec-a1 working" "exec-a2 working"
+record exec-a1 ccd "${RA}"
+record exec-a2 ccd "${RA}"
+use_run "${RB}" tab-a
+spawn_on "${TMP}/loop" 0 "125 a cc executor spawns under Run B while Run A holds two ccd executors" \
+  exec-b1 --branch feat/cap-b --provider cc
+called 1 '^worktree open' "125b and Run A's two executors did not refuse it"
+if [ "$(pane_field exec-b1 provider)" = cc ] && [ "$(pane_field exec-b1 run)" = "${RB}" ]; then
+  ok "125c the pane was recorded with its provider and the Run that drew it"
+else
+  no "125c the pane was recorded with its provider and the Run that drew it" \
+    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null | tr '\t' ':')"
+fi
+
+# 126. The record's other end. It is written where the pane is made, because the
+#      two caps count panes rather than worktrees and a pane that has not been
+#      dispatched to yet is exactly the one a count has to get right; and it goes
+#      where the pane stops holding its provider — `settle … release` and
+#      `teardown` being the same line, so the two ways a pane ends both forget
+#      it. What must not happen is a released pane going on counting, which is
+#      how a pool refuses a spawn it has room for.
+if [ "$(pane_field exec-b1 worktree)" = "${TMP}/loop-wt/feat/cap-b" ] &&
+  [ -n "$(pane_field exec-b1 spawned)" ]; then
+  ok "126 the record carries the worktree the pane was opened on, and a stamp"
+else
+  no "126 the record carries the worktree the pane was opened on, and a stamp" \
+    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null | tr '\t' ':')"
+fi
+loop_cmd 0 "126b settle retain keeps the record" settle exec-b1 retain
+if [ -f "${HERDR_TEAM_ROOT}/state/panes/exec-b1" ]; then
+  ok "126c a retained pane still holds its provider"
+else
+  no "126c a retained pane still holds its provider" "the record is gone"
+fi
+: >"${TMP}/loop-called"
+loop_cmd 0 "126d settle release drops it" settle exec-b1 release
+if [ ! -f "${HERDR_TEAM_ROOT}/state/panes/exec-b1" ] &&
+  [ -f "${HERDR_TEAM_ROOT}/state/panes/exec-a1" ]; then
+  ok "126e and drops nothing else: the other pane is still counted"
+else
+  no "126e and drops nothing else: the other pane is still counted" \
+    "records left: $(find "${HERDR_TEAM_ROOT}/state/panes" -type f 2>/dev/null | sed 's|.*/||' | tr '\n' ' ')"
+fi
+called 1 'workspace close' "126f releasing is the workspace close teardown is"
+
+# 127. The provider ceiling, which is not the Run's cap: one DeepSeek key, one
+#      Pro login, one machine. Four panes on one provider across three Runs, and
+#      the fifth is refused by whichever Run asked — because the fourth Run holds
+#      none of them, so a per-Run count would have let it through.
+loop_fresh "exec-a1 working" "exec-a2 working" "exec-a3 working" "exec-b1 working"
+record exec-a1 ccd "${RA}"
+record exec-a2 ccd "${RA}"
+record exec-a3 ccd "${RB}"
+record exec-b1 ccd "${RPT}"
+use_run "${RPT_NOPLAN}" tab-a
+spawn_on "${TMP}/loop" 1 "127 a fifth pane on one provider is refused across Runs" \
+  exec-c1 --branch feat/cap-c --provider ccd
+if grep -q "4 panes count against ccd's ceiling (exec-a1 exec-a2 exec-a3 exec-b1)" "${TMP}/err" &&
+  grep -q 'ceiling is 4 panes on one provider across every Run' "${TMP}/err"; then
+  ok "127b and the refusal names the panes and the ceiling"
+else
+  no "127b and the refusal names the panes and the ceiling" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -q 'executors per Run' "${TMP}/err"; then
+  no "127c and it is the ceiling's refusal, not the Run's cap" "$(grep 'per Run' "${TMP}/err")"
+else
+  ok "127c and it is the ceiling's refusal, not the Run's cap"
+fi
+called 0 '^worktree open' "127d nothing was created for it"
+# 127e. The ceiling counts panes, not executors: a `rev-` pane holds the same
+#       credential, so the same four panes refuse it. The Run's cap would not
+#       have — that is the difference between the two, in one refusal.
+spawn_on "${TMP}/loop" 1 "127e a rev- pane is refused by the same ceiling" \
+  rev-t-09 --branch feat/cap-d --provider ccd
+if grep -q "ceiling is 4 panes" "${TMP}/err"; then
+  ok "127f for the same reason, and the refusal says so"
+else
+  no "127f for the same reason, and the refusal says so" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 128. A pane with no record is `unknown`, and unknown is counted. It is the
+#      direction the ceiling has to fail in: a pane spawning while its record is
+#      being written, or one hand-started, is still a pane holding a credential,
+#      so the count is over panes seen rather than records read, and a missing
+#      record cannot be what makes room for a fifth.
+loop_fresh "exec-a1 working" "exec-a2 working" "exec-a3 working" "exec-b1 working"
+use_run "${RPT}" tab-a
+spawn_on "${TMP}/loop" 1 "128 four unrecorded panes still refuse the fifth" \
+  exec-c1 --branch feat/cap-e --provider ccd
+if grep -q "4 panes count against ccd's ceiling (none and exec-a1 exec-a2 exec-a3 exec-b1 with no provider record)" \
+  "${TMP}/err"; then
+  ok "128b and the refusal says they have no provider record"
+else
+  no "128b and the refusal says they have no provider record" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 128c. The same bucket is what `status` shows, because a reader counting a
+#       provider's panes by hand is the person the ceiling exists for. Recorded
+#       providers are named; a pane with no record, or a record this file cannot
+#       read, is `unknown` rather than absent.
+loop_fresh "exec-161936-1 idle" "exec-161936-2 idle" "rev-t-09 idle"
+record exec-161936-1 ccd "${RUN}"
+record exec-161936-2 omp "${RUN}"
+loop_cmd 0 "128d status prints a provider for every pane" status
+if grep -qE '^exec-161936-1 +161936 +ccd' "${TMP}/out" &&
+  grep -qE '^exec-161936-2 +161936 +omp' "${TMP}/out" &&
+  grep -qE '^rev-t-09 +- +unknown' "${TMP}/out"; then
+  ok "128e a record is named, and no record is unknown"
+else
+  no "128e a record is named, and no record is unknown" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+printf 'not a record\n' >"${HERDR_TEAM_ROOT}/state/panes/exec-161936-1"
+loop_cmd 0 "128f status survives a record it cannot read" status
+if grep -qE '^exec-161936-1 +161936 +unknown' "${TMP}/out"; then
+  ok "128g and calls that pane unknown rather than crashing on it"
+else
+  no "128g and calls that pane unknown rather than crashing on it" \
+    "$(tr '\n' '|' <"${TMP}/out")"
 fi
 
 echo
