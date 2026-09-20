@@ -105,15 +105,18 @@ function cc-providers {
 # the prompt is indistinguishable from a hung spawn and the whole unattended
 # workflow stops there. omp never had the problem — it keeps its copy of this
 # key in ~/.omp/agent/agent.db, which is also why `omp` panes start and `ccd`
-# panes did not.
+# panes did not; ai/omp/models.yml now reads its key from the environment for
+# the same reason.
 #
-# DEEPSEEK_API_KEY is the 1Password field label: ai/setup.sh dumps that item
-# to ai/env.local.zsh as one export per field, under the label verbatim. The
-# item is where the name is decided. 1Password stays the place the key is
-# *kept*; this is only about how it is *read* at launch.
+# CLAUDE_CODE_DEEPSEEK_API_KEY is the 1Password field label: ai/setup.sh dumps
+# that item to ai/env.local.zsh as one export per field, under the label
+# verbatim, so the item is where the name is decided. omp holds a separate
+# DeepSeek key under PI_CODING_AGENT_DEEPSEEK_API_KEY (ai/omp/models.yml) —
+# one key per consumer, so either can be rotated alone. 1Password stays the
+# place the keys are *kept*; this is only about how they are *read* at launch.
 cc_provider deepseek \
   url=https://api.deepseek.com/anthropic \
-  key=env:DEEPSEEK_API_KEY \
+  key=env:CLAUDE_CODE_DEEPSEEK_API_KEY \
   model=deepseek-flash \
   label=DS \
   short=ccd
