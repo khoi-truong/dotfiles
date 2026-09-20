@@ -424,22 +424,113 @@ PY
 # the dispatch gate must agree about what a handoff says.
 handoff_py() {
   cat <<'PY'
+import json
 import os
+import re
+
+# A block-list item: `- value` at any indentation, including none, because a
+# YAML sequence may sit under its key or level with it and the file reaches
+# this parser through an agent that is not obliged to pick one.
+_BLOCK_ITEM = re.compile(r"^\s*-\s+(.*)$")
+
+
+def _unquote(item):
+    """One layer of YAML quoting off a list item, and nothing else.
+
+    An item is a path or a JSON object, and both read the same bare or wrapped
+    in one matching pair of quotes; which the agent chose says nothing about
+    what it meant.
+    """
+    for q in ('"', "'"):
+        if len(item) >= 2 and item.startswith(q) and item.endswith(q):
+            return item[1:-1].strip()
+    return item
 
 
 def handoff_meta(path):
-    """One handoff's frontmatter, or None when it has none."""
+    """One handoff's frontmatter, or None when it has none.
+
+    A key whose value is empty on its own line and whose following lines are
+    `- ` items is stored as the inline list the rest of this module already
+    reads — `[a, b]` — so a handoff written either way answers identically.
+    A block list is what an agent writes once a value stops fitting on one
+    line, and every reader here takes the inline shape: the parser absorbs
+    the difference so that no reader has to know there were two.
+    """
     lines = open(path, encoding="utf-8").read().splitlines()
     if not lines or lines[0].strip() != "---":
         return None
     meta = {}
+    key, items = None, []
     for line in lines[1:]:
         if line.strip() == "---":
             break
+        if key is not None:
+            m = _BLOCK_ITEM.match(line)
+            if m:
+                items.append(_unquote(m.group(1).strip()))
+                continue
+            # Any other line ends the list. Flushed here, before the key below
+            # is read, so a list and the key after it cannot merge.
+            meta[key] = "[%s]" % ", ".join(items) if items else ""
+            key = None
         if ":" in line:
             k, v = line.split(":", 1)
-            meta[k.strip()] = v.strip()
+            k, v = k.strip(), v.strip()
+            if v:
+                meta[k] = v
+            else:
+                # An empty value, which is either an absent field or the head
+                # of a block list. Absent is what it stays unless items follow.
+                key, items = k, []
+    if key is not None:
+        meta[key] = "[%s]" % ", ".join(items) if items else ""
     return meta
+
+
+def unproven(meta, verify):
+    """The cause to report instead of `done`, or None when the handoff proves it.
+
+    A handoff's `commands:` is one JSON object per command the agent ran — the
+    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
+    be one of those commands at exit 0, or the handoff is claiming a check
+    nobody can see; `settled_state` says so rather than showing `done`.
+
+    Here rather than next to its callers because there are two of them now —
+    the table's `settled_state` and `plan_body`'s dispatch gate — and one
+    handoff read by two readers is the failure this module exists to make
+    impossible. One predicate, asked twice, is one verdict.
+
+    Substring, not equality: the verify reaches the handoff through an agent,
+    so a `cd` or a quote around it is still the same command. Loose on purpose —
+    a false positive here must not be able to wedge a Run (see the header) — and
+    the exit code is required alongside the command, never instead of it.
+
+    An empty `verify` is the planner saying no command settles this Task. There
+    is nothing to check, so `done` stands.
+    """
+    if not verify:
+        return None
+    raw = meta.get("commands")
+    if raw is None or not raw.strip():
+        # No commands recorded: absent, or present with nothing after the colon.
+        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
+        # rather than UNPARSED — and absence is never evidence.
+        return "UNVERIFIED"
+    try:
+        entries = json.loads(raw)
+    except ValueError:
+        # A handoff written before this contract existed. A human has to be
+        # able to tell a shape they cannot read from a claim that does not hold.
+        return "UNPARSED"
+    if not isinstance(entries, list):
+        return "UNVERIFIED"
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
+            return None
+    return "UNVERIFIED"
 
 
 def artifacts(meta):
@@ -619,8 +710,9 @@ PY
 # handoff does not name the row's own `verify` at exit 0 in its `commands:`
 # reads `review` with UNVERIFIED (or UNPARSED, for a shape nobody can read) in
 # the cause column instead, so the orchestrator sends a reviewer rather than
-# building on it. That changes what this shows and never blocks a dispatch: a
-# false positive from a substring match must not be able to wedge a Run.
+# building on it. The dispatch gate asks `unproven()` the same question of the
+# same handoff, so the two cannot disagree — `--force`, which is human-gated,
+# is how a Task the table will not call done is dispatched anyway.
 #
 # A `done` Task's cause column also names its agent `releasable` when that agent
 # has no other outstanding Dispatch under the Run — the pane is finished and
@@ -638,7 +730,7 @@ cmd_collect_plan() {
     plan_parser_py
     handoff_py
     cat <<'PY'
-import glob, json, sys
+import glob, sys
 
 plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 plan = os.path.abspath(plan)
@@ -666,46 +758,6 @@ for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
     seen.setdefault(meta["task"], {})[meta["dispatch"]] = meta
 
 sent = dispatched(handoffs, run)
-
-
-def unproven(meta, verify):
-    """The cause to report instead of `done`, or None when the handoff proves it.
-
-    A handoff's `commands:` is one JSON object per command the agent ran — the
-    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
-    be one of those commands at exit 0, or the handoff is claiming a check
-    nobody can see; `settled_state` says so rather than showing `done`.
-
-    Substring, not equality: the verify reaches the handoff through an agent,
-    so a `cd` or a quote around it is still the same command. Loose on purpose —
-    a false positive here must not be able to wedge a Run (see the header) — and
-    the exit code is required alongside the command, never instead of it.
-
-    An empty `verify` is the planner saying no command settles this Task. There
-    is nothing to check, so `done` stands.
-    """
-    if not verify:
-        return None
-    raw = meta.get("commands")
-    if raw is None or not raw.strip():
-        # No commands recorded: absent, or present with nothing after the colon.
-        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
-        # rather than UNPARSED — and absence is never evidence.
-        return "UNVERIFIED"
-    try:
-        entries = json.loads(raw)
-    except ValueError:
-        # A handoff written before this contract existed. A human has to be
-        # able to tell a shape they cannot read from a claim that does not hold.
-        return "UNPARSED"
-    if not isinstance(entries, list):
-        return "UNVERIFIED"
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
-            return None
-    return "UNVERIFIED"
 
 
 def settled_state(row):
@@ -1469,8 +1521,18 @@ for path in glob.glob(os.path.join(handoffs, "*.md")):
     if meta is None or meta.get("run") != run:
         continue
     # 'succeeded' at 'reported' is a claim, not a result: it does not settle.
-    if meta.get("outcome") == "succeeded" and meta.get("evidence") == "verified":
-        settled.add(meta.get("task"))
+    if meta.get("outcome") != "succeeded" or meta.get("evidence") != "verified":
+        continue
+    # The blocker's own `verify`, out of its row: the gate and `collect --plan`
+    # ask `unproven()` the same question about the same handoff on purpose, so
+    # the two cannot reach opposite verdicts about one file. 'verified' is the
+    # agent's word for a check; this is the check itself, and a Task whose
+    # commands do not carry it is not settled here either. Stricter than this
+    # gate used to be, deliberately: `--force` is the way past it.
+    blocker = by_id.get(meta.get("task"))
+    if unproven(meta, (blocker or {}).get("verify") or ""):
+        continue
+    settled.add(meta.get("task"))
 
 unmet = [b for b in row.get("blocks", []) if b not in settled]
 if unmet:

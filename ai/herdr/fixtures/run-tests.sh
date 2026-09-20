@@ -863,6 +863,64 @@ else
 fi
 
 echo
+echo "one handoff, one verdict"
+
+# 53b-53g. The block-list shape, and the verdict both readers have to reach.
+# `commands:` and `artifacts:` empty on their own line, one `- ` item per value:
+# what an agent writes once a value stops fitting on one line. The parser
+# normalises it into the inline form every reader below already takes, so the
+# two spellings are one handoff — and the gate and `collect --plan`, which read
+# one file, cannot answer differently about it.
+INLINE_CMDS='[{"cmd": "shellcheck -x ai/setup.sh", "exit": 0}, {"cmd": "git status --short", "exit": 0}]'
+BLOCK_CMDS=$'\n  - {"cmd": "shellcheck -x ai/setup.sh", "exit": 0}\n  - {"cmd": "git status --short", "exit": 0}'
+BLOCK_ARTS=$'\n  - /abs/path.md'
+
+# 53b. The block list proves the row's verify, and its receipt prints.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$BLOCK_CMDS" "$BLOCK_ARTS"
+expect_collect 0 '^T-01 +done +D-01 .*artifacts: /abs/path\.md' \
+  "53b a block-list commands: proves the verify to collect --plan" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 53c. And the same handoff releases the dependent, through the gate.
+expect_exit 0 "53c and the same handoff releases the dependent in dispatch" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
+
+# 53d. Same two commands, written inline, read the same — the normalisation
+#      joins the items in order, so a second item is a second entry and not a
+#      lost one.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$INLINE_CMDS"
+expect_collect 0 '^T-01 +done +D-01' "53d and the inline spelling of the same list agrees" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 53e. Leniency, because the line arrives through an agent: a deeper indent and
+#      a quoted item are the same list. A parser holding to the template's exact
+#      shape would read this as UNVERIFIED and hold a Task that did its check.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 \
+  "$(printf '\n    -  %s' "'{\"cmd\": \"shellcheck -x ai/setup.sh\", \"exit\": 0}'")"
+expect_collect 0 '^T-01 +done +D-01' "53e an indented, quoted block list reads the same" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 53f. The defect this section exists for: a handoff whose commands do not carry
+#      the row's verify. The table has always called that `review`; the gate asked
+#      only for `succeeded`/`verified` and released the dependent on the agent's
+#      word — two readers, one file, opposite verdicts.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$OTHER_CMD"
+expect_collect 0 '^T-01 +review +D-01 +UNVERIFIED' \
+  "53f an unproven handoff reads review in collect --plan" \
+  --plan "${FIXTURES}/plan-ok.md"
+expect_exit 3 "53g and the gate refuses the dependent too" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
+
+# 53h. The escape hatch survives the stricter gate: --force is still the
+#      human-gated way past a blocker the table will not call done.
+expect_exit 0 "53h --force still dispatches over an unproven blocker" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md" --force
+
+echo
 echo "teardown"
 
 # The guard is a `git` question, so it is asked of real git state: a throwaway
