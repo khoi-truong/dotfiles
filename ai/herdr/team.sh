@@ -20,7 +20,9 @@
 #   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
+#   team.sh report [<run-id>] [--plan <plan.md>] [--no-write]
 #   team.sh wait [<run-id>] [--plan <plan.md>] [--timeout <ms>]
+#   team.sh loop --plan <plan.md> [--max-waves <n>] [--timeout <ms>] [--spawn <branch-prefix>]
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
 #   team.sh settle <name> <reuse|retain|release> [--clear]
@@ -53,6 +55,12 @@ DETECT_TIMEOUT=60
 # rather than a Run's: two orchestrator tabs in one checkout share all three,
 # so a per-Run count would let each tab start two and call it discipline.
 EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
+
+# protocol.md states the cap on a handoff — "over 150 lines is a defect" — and
+# nothing has ever checked it. `report` counts them. A count rather than a
+# refusal, because by the time anyone could object the handoff is already
+# written and is the only record of what the agent did.
+HANDOFF_MAX=150
 
 command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
 command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
@@ -417,7 +425,7 @@ PY
 # the dispatch gate must agree about what a handoff says.
 handoff_py() {
   cat <<'PY'
-import os
+import json, os
 
 
 def handoff_meta(path):
@@ -472,6 +480,34 @@ def journal_row(line):
     return None
 
 
+def journal_lines(handoffs, run):
+    """Every readable journal line under `run`, as (task, dispatch, agent).
+
+    In file order, retries included: `dispatched` folds these down to the
+    highest Dispatch id per Task, and `report` counts them, so a Run's Dispatch
+    count and its winning Dispatch come off one list rather than off two
+    readers that could disagree about the file.
+
+    No directory at all is no journal, and never the one in the caller's
+    working directory: `surface` asks this with no Run and must not read a
+    `.dispatched` it happens to be standing next to.
+    """
+    rows = []
+    if not handoffs:
+        return rows
+    try:
+        text = open(os.path.join(handoffs, ".dispatched"), encoding="utf-8").read()
+    except OSError:
+        return rows
+    for line in text.splitlines():
+        if not line.strip() or line.split("\t")[0] != run:
+            continue
+        row = journal_row(line)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
 def dispatched(handoffs, run):
     """The highest Dispatch id sent per Task under `run`, with its agent.
 
@@ -479,23 +515,7 @@ def dispatched(handoffs, run):
     agent. Nothing else on disk distinguishes that from never dispatched.
     """
     sent = {}
-    # No directory at all is no journal, and never the one in the caller's
-    # working directory: `surface` asks this with no Run and must not read a
-    # `.dispatched` it happens to be standing next to.
-    if not handoffs:
-        return sent
-    path = os.path.join(handoffs, ".dispatched")
-    try:
-        text = open(path, encoding="utf-8").read()
-    except OSError:
-        return sent
-    for line in text.splitlines():
-        if not line.strip() or line.split("\t")[0] != run:
-            continue
-        row = journal_row(line)
-        if row is None:
-            continue
-        task, dispatch, agent = row
+    for task, dispatch, agent in journal_lines(handoffs, run):
         if dispatch > sent.get(task, {}).get("dispatch", ""):
             sent[task] = {"dispatch": dispatch, "agent": agent}
     return sent
@@ -518,6 +538,51 @@ def journal_malformed(handoffs, run):
         if line.strip() and line.split("\t")[0] == run and journal_row(line) is None:
             bad.append((n, line))
     return bad
+
+
+def unproven(meta, verify):
+    """The cause to report instead of `done`, or None when the handoff proves it.
+
+    A handoff's `commands:` is one JSON object per command the agent ran — the
+    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
+    be one of those commands at exit 0, or the handoff is claiming a check
+    nobody can see; `settled_state` says so rather than showing `done`.
+
+    Substring, not equality: the verify reaches the handoff through an agent,
+    so a `cd` or a quote around it is still the same command. Loose on purpose —
+    a false positive here must not be able to wedge a Run (see the header) — and
+    the exit code is required alongside the command, never instead of it.
+
+    An empty `verify` is the planner saying no command settles this Task. There
+    is nothing to check, so `done` stands.
+
+    Lives here rather than beside `settled_state`, its first caller, because
+    `report` proves the same claim for its own table: two copies of this rule
+    would eventually show one Run as `done` in one table and `UNVERIFIED` in
+    the other, which is the failure handoff_py exists to make impossible.
+    """
+    if not verify:
+        return None
+    raw = meta.get("commands")
+    if raw is None or not raw.strip():
+        # No commands recorded: absent, or present with nothing after the colon.
+        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
+        # rather than UNPARSED — and absence is never evidence.
+        return "UNVERIFIED"
+    try:
+        entries = json.loads(raw)
+    except ValueError:
+        # A handoff written before this contract existed. A human has to be
+        # able to tell a shape they cannot read from a claim that does not hold.
+        return "UNPARSED"
+    if not isinstance(entries, list):
+        return "UNVERIFIED"
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
+            return None
+    return "UNVERIFIED"
 PY
 }
 
@@ -661,46 +726,6 @@ for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
 sent = dispatched(handoffs, run)
 
 
-def unproven(meta, verify):
-    """The cause to report instead of `done`, or None when the handoff proves it.
-
-    A handoff's `commands:` is one JSON object per command the agent ran — the
-    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
-    be one of those commands at exit 0, or the handoff is claiming a check
-    nobody can see; `settled_state` says so rather than showing `done`.
-
-    Substring, not equality: the verify reaches the handoff through an agent,
-    so a `cd` or a quote around it is still the same command. Loose on purpose —
-    a false positive here must not be able to wedge a Run (see the header) — and
-    the exit code is required alongside the command, never instead of it.
-
-    An empty `verify` is the planner saying no command settles this Task. There
-    is nothing to check, so `done` stands.
-    """
-    if not verify:
-        return None
-    raw = meta.get("commands")
-    if raw is None or not raw.strip():
-        # No commands recorded: absent, or present with nothing after the colon.
-        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
-        # rather than UNPARSED — and absence is never evidence.
-        return "UNVERIFIED"
-    try:
-        entries = json.loads(raw)
-    except ValueError:
-        # A handoff written before this contract existed. A human has to be
-        # able to tell a shape they cannot read from a claim that does not hold.
-        return "UNPARSED"
-    if not isinstance(entries, list):
-        return "UNVERIFIED"
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
-            return None
-    return "UNVERIFIED"
-
-
 def settled_state(row):
     """State from this Task's own handoffs, or None when it has none.
 
@@ -831,6 +856,306 @@ if any(s == "failed" for _, s, _, _, _ in out):
 sys.exit(3)
 PY
   } | python3 - "$1" "$2" "$(handoffs_dir "$2")"
+}
+
+# --- report ----------------------------------------------------------------
+# The one verb in this file that writes, and the reason it does: a table
+# printed into a pane dies with the pane, which is exactly the data a "better
+# day by day" loop needs and never has.
+#
+# It reads a Run back off what the Run already left — the `.dispatched` journal
+# and the handoff frontmatter — and puts the answer in three places of
+# increasing durability: stdout for whoever is reading now, `report.json` for
+# the session that wants this Run without re-deriving it from handoffs, and one
+# line in `metrics.jsonl` for the series the executor cap and `plan lint`'s
+# granularity thresholds are supposed to be argued from rather than guessed at.
+#
+#   team.sh report [<run-id>] [--plan <plan.md>] [--no-write]
+#
+#   0  a report was produced, whether or not anything was written
+#   1  no Run, or a Run id with nothing under the state root
+#
+# Writing is the exception to `collect`'s reporting-only discipline, and it is
+# safe for one reason: nothing reads these files back to make a decision. They
+# are evidence *about* the Run, not state the Run is driven from — no verb
+# opens them, none branches on them — so a wrong number in one is a wrong
+# report rather than a wrong Dispatch. A file the loop read would be a file the
+# loop could be wrong about.
+#
+# `--no-write` is for reading a Run someone else owns: the table still prints
+# and neither file is touched, which is the difference between looking at
+# another tab's Run and joining its series.
+cmd_report() {
+  local run="" plan="" write=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --plan)
+        [ $# -ge 2 ] || die "report: --plan needs a plan file"
+        plan="$2"
+        shift 2
+        ;;
+      --no-write)
+        write=0
+        shift
+        ;;
+      --) shift; break ;;
+      -*) die "report: unknown option $1" ;;
+      *) run="$1"; shift ;;
+    esac
+  done
+
+  # The same rule `collect --plan` and `wait` resolve a Run by, so the three
+  # verbs answer "which Run" identically.
+  [ -n "$run" ] || run="$(resolve_run "$plan")" || run=""
+  [ -n "$run" ] || die "report: no Run started — team.sh run new"
+  # A Run id with nothing under it is not a Run with no rows, it is a question
+  # about a Run that does not exist — a typo, most of the time — and an empty
+  # table at exit 0 would answer it as though it were real.
+  [ -d "${ROOT}/runs/${run}" ] ||
+    die "report: no Run ${run} under ${ROOT}/runs — team.sh run list"
+
+  {
+    plan_parser_py
+    handoff_py
+    cat <<'PY'
+import glob, json, sys
+
+root, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
+write = sys.argv[4] == "1"
+handoff_max = int(sys.argv[5])
+run_dir = os.path.join(root, "runs", run)
+
+# --- the plan, when this Run has one ---------------------------------------
+# The path `run new --plan` wrote down, not the plan this shell happens to be
+# standing next to: a report is about that Run, and a Run knows its own plan
+# even from a tab that has never seen the file.
+plan = None
+try:
+    plan = open(os.path.join(run_dir, "plan"), encoding="utf-8").read().strip() or None
+except OSError:
+    plan = None
+
+row_by_id, shape = {}, None
+if plan:
+    parsed = plan_rows(plan)
+    if parsed["findings"]:
+        # Not a failure: the Run happened, and its handoffs are worth reading
+        # either way. But a plan is why the Run exists, so a reader is told
+        # what is wrong with it rather than left with a Run that measures out
+        # to nothing. This is also the switch metrics keys off below, which is
+        # why it is said out loud here rather than only felt there.
+        sys.stderr.write("report: %s does not resolve: %s\n"
+                         % (plan, parsed["findings"][0]))
+    else:
+        row_by_id = {r["task"]: r for r in parsed["rows"]}
+        shape = parsed["shape"]
+
+# --- what the Run left behind ----------------------------------------------
+# Dispatch counts come off the journal, which is the only thing that tells one
+# attempt from two; outcomes come from the highest-id handoff, the same fold
+# `collect --plan` reads a Task through.
+sends, sent_max = {}, {}
+for task, dispatch, agent in journal_lines(handoffs, run):
+    sends[task] = sends.get(task, 0) + 1
+    if dispatch > sent_max.get(task, ""):
+        sent_max[task] = dispatch
+
+by_task, lengths, newest, over_long = {}, {}, 0, []
+for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
+    meta = handoff_meta(path)
+    if meta is None or meta.get("run") != run:
+        continue
+    tid, did = meta.get("task"), meta.get("dispatch")
+    if not tid or not did:
+        continue
+    by_task.setdefault(tid, {})[did] = meta
+    # Every handoff the Run wrote, not only the winning ones: a 200-line
+    # handoff was 200 lines somebody read, and the retry that replaced it did
+    # not make it shorter. This is also the only place the cap protocol.md
+    # states is ever looked at, and it is a count here rather than a refusal —
+    # by the time anyone could object, the file is written and is the only
+    # record of what the agent did.
+    n = len(open(path, encoding="utf-8").read().splitlines())
+    lengths[(tid, did)] = n
+    newest = max(newest, os.path.getmtime(path))
+    if n > handoff_max:
+        over_long.append("%s/%s" % (tid, did))
+
+# Rows are the Run's Tasks, not the plan's: a Task the plan never got to has no
+# handoff and is exactly what a reader wants to see, and a Dispatch the plan has
+# no row for is an anomaly a plan-only table would hide.
+#
+# The columns, in the order they print. One spelling of them, so the table, the
+# JSON beside it and the totals below cannot come to disagree about which field
+# is which — which is the one thing about a report anybody can check.
+head = ("task", "dispatch", "outcome", "evidence", "provider", "sends", "lines",
+        "verify")
+table, dispatches, retried, proven = [], 0, 0, 0
+providers = set()
+for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
+    row = row_by_id.get(tid) or {}
+    hs = by_task.get(tid, {})
+    # The journal is the record of Dispatches; a handoff with no line under it
+    # arrived some other way (moved by hand, or written before the journal
+    # existed), and counting the files is the closest honest answer for it.
+    count = sends.get(tid, 0) or len(hs)
+    if hs:
+        # The highest Dispatch id wins, the same fold `collect --plan` makes: a
+        # Task that failed at D-01 and succeeded at D-02 is done, not failed.
+        winner = max(hs)
+        meta = hs[winner]
+        outcome = meta.get("outcome") or "-"
+        evidence = meta.get("evidence") or "-"
+        lines = str(lengths.get((tid, winner), 0))
+        # Proved through the same function `collect --plan` reads `done`
+        # through: two tables disagreeing about one handoff would be worse than
+        # either alone.
+        why = unproven(meta, row.get("verify") or "")
+        verify = why or ("ok" if row.get("verify") else "-")
+    elif count:
+        # Journalled and unanswered: the Dispatch is still out, or the Run was
+        # abandoned with it out. Either way there is no outcome yet, and
+        # `running` is the word `collect --plan` already uses for exactly this.
+        winner = sent_max.get(tid, "-")
+        outcome, evidence, lines, verify = "running", "-", "-", "-"
+    else:
+        winner, outcome, evidence, lines, verify = "-", "-", "-", "-", "-"
+    # The provider is what the plan's row asked for, and it is asked for rather
+    # than inferred: the journal cannot answer it — an agent name is
+    # `exec-<run>-N`, a Run and an index with no provider in it — and reading
+    # the pane is not passive (herdr-adapter.md). A declaration is the honest
+    # source until spawn records what it actually launched (T-07), at which
+    # point this is the field to rewire.
+    provider = row.get("provider") or "-"
+    if provider != "-":
+        providers.add(provider)
+    if verify == "ok":
+        proven += 1
+    dispatches += count
+    if count > 1:
+        retried += 1
+    table.append({"task": tid, "dispatch": winner, "outcome": outcome,
+                  "evidence": evidence, "provider": provider,
+                  "sends": str(count), "lines": lines, "verify": verify})
+
+total = len(table)
+# Rated over the Tasks whose plan row states a `verify`, not over every row: a
+# planner that answered "no command settles this" is not a pass and not a fail,
+# and folding it into the denominator would quietly move the number this series
+# exists to make comparable.
+rated = [t for t in row_by_id if (row_by_id[t].get("verify") or "").strip()]
+retry_rate = round(retried / total, 3) if total else None
+verify_rate = round(proven / len(rated), 3) if rated else None
+
+# Wall time, and the only reason it is a number at all: the journal records no
+# timestamps, so this is the newest handoff's mtime against the Run directory's
+# own. Both are approximations of a span — the directory's mtime is the Run's
+# start only until the first `report` writes `report.json` into it, and the
+# floor moves then. Every place it is printed says so, and metrics keeps the
+# first value it saw for the Run rather than a later, shorter one.
+wall = int(max(0, newest - os.path.getmtime(run_dir))) if newest else 0
+
+def plural(n, one, many=None):
+    return "%d %s" % (n, one if n == 1 else (many or one + "s"))
+
+def pct(v):
+    return "-" if v is None else "%.0f%%" % (v * 100)
+
+width = [len(c) for c in head]
+for r in table:
+    width = [max(w, len(r[c])) for w, c in zip(width, head)]
+
+def row_line(cells):
+    return "  ".join(c.ljust(w) for c, w in zip(cells, width)).rstrip()
+
+print("%s  plan %s" % (run, plan or "(none)"))
+if newest:
+    print("wall ~%ds (approximate: newest handoff mtime against the Run directory's)"
+          % wall)
+else:
+    print("wall: unknown — no handoff has landed to measure against")
+print()
+print(row_line(head))
+print("  ".join("-" * w for w in width))
+for r in table:
+    print(row_line([r[c] for c in head]))
+print()
+footer = [plural(total, "task"), plural(dispatches, "dispatch", "dispatches"),
+          "retry rate %s" % pct(retry_rate), "verify pass rate %s" % pct(verify_rate)]
+over = "%s over %d lines" % (plural(len(over_long), "handoff"), handoff_max)
+if over_long:
+    over += " (%s)" % " ".join(sorted(over_long))
+footer.append(over)
+print("  ".join(footer))
+
+payload = {
+    "run": run,
+    "plan": plan,
+    "shape": shape,
+    "wall_seconds": wall,
+    "wall_approximate": True,
+    "tasks": [{"task": r["task"], "dispatch": r["dispatch"],
+               "outcome": r["outcome"], "evidence": r["evidence"],
+               "provider": r["provider"], "dispatches": int(r["sends"]),
+               "handoff_lines": None if r["lines"] == "-" else int(r["lines"]),
+               "verify": r["verify"]} for r in table],
+    "totals": {"tasks": total, "dispatches": dispatches, "retried_tasks": retried,
+               "retry_rate": retry_rate, "verify_rated": len(rated),
+               "verify_proven": proven, "verify_pass_rate": verify_rate,
+               "over_long_handoffs": len(over_long)},
+}
+metrics = {"run": run, "plan": plan, "tasks": total, "dispatches": dispatches,
+           "retry_rate": retry_rate, "verify_pass_rate": verify_rate,
+           "wall_seconds": wall, "providers": sorted(providers),
+           "plan_depth": (shape or {}).get("depth"),
+           "plan_width": (shape or {}).get("width"),
+           "over_long_handoffs": len(over_long)}
+
+if not write:
+    print("--no-write: report.json and metrics.jsonl untouched")
+    sys.exit(0)
+
+os.makedirs(run_dir, exist_ok=True)
+report_path = os.path.join(run_dir, "report.json")
+with open(report_path, "w", encoding="utf-8") as fh:
+    fh.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+print("report.json: %s" % report_path)
+
+# One Run, one line, appended and never rewritten or pruned by any verb here —
+# the point of a series is that the earlier numbers are still there. Read back
+# first so a second `report` on the same Run does not add a second row: the
+# first is the snapshot of the Run as it stood, and a series that gained a line
+# every time somebody looked at it would measure looking, not working.
+metrics_path = os.path.join(root, "metrics.jsonl")
+recorded = set()
+try:
+    with open(metrics_path, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                recorded.add(json.loads(line)["run"])
+            except (ValueError, KeyError, TypeError):
+                # A line this code cannot read costs its own row, not the
+                # series: the append below still happens.
+                continue
+except OSError:
+    pass
+
+if run in recorded:
+    print("metrics.jsonl: %s already recorded — not appended" % run)
+elif not shape:
+    # A Run whose plan does not resolve is a Run whose numbers are not
+    # comparable with the rest of the series (no depth, no width), and a smoke
+    # test against a fixture is exactly this shape. Nothing was measured, so
+    # nothing is recorded.
+    print("metrics.jsonl: no plan resolves for %s — not appended" % run)
+else:
+    # One write of one line to a file opened `a`: the same guarantee a single
+    # `printf >>` gives, without a second process holding the descriptor.
+    with open(metrics_path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(metrics, sort_keys=True) + "\n")
+    print("metrics.jsonl: appended %s" % run)
+PY
+  } | python3 - "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX"
 }
 
 # --- wait ------------------------------------------------------------------
@@ -1030,6 +1355,486 @@ PY
 
   printf '%s %s settled\n' "${w_agent[$winner]}" "${w_task[$winner]}"
   return 0
+}
+
+# --- loop ------------------------------------------------------------------
+# The core change: one invocation drives dispatch → wait → collect --plan →
+# dispatch until it hits a gate, replacing one orchestrator turn per settle with
+# one per Run. Every step it takes is a verb that already exists, called as a
+# function rather than re-implemented: the state machine stays in
+# `cmd_collect_plan`, the `blocks` predicate and the never-reuse-a-Dispatch-id
+# rule stay in `cmd_dispatch --from-plan`, and blocking stays in `cmd_wait`.
+# What is new is only the gate table — the points where a script must stop and
+# a human must look.
+#
+#   0  the Run is complete — nothing ready and nothing running
+#   1  a precondition failed, or the plan or the journal is malformed
+#   2  a Task failed — retry is human-gated
+#   3  nothing the loop can dispatch and nothing running: done or wedged
+#   4  --timeout expired, or --max-waves reached
+#   5  an agent went blocked on a question — `surface` it, never answer it
+#   6  a Task is ready and no pane is free — spawn one, or settle one
+#
+# The three prohibitions, stated here because this is the file where they would
+# be broken: `loop` never calls `settle`, never calls `teardown`, and never
+# issues a Dispatch at a Task that has already failed. Settlement has three
+# answers and picking one silently is how a worktree someone wanted gets
+# destroyed; retry is human-gated, because a script that retried a failure
+# would re-run a verify that already said no, forever.
+#
+# A gate table is control flow, and control flow is where a missing case hides
+# a defect, so every path below writes its reason to the trace: the gate the
+# loop returned on is the last line of `loop.log`, and a Run that ran
+# unattended in a pane nobody looked at is exactly the Run that needs one.
+
+# loop_log <file> <line> — one timestamped line, appended. One `printf` per
+# line, the same shape `metrics.jsonl` uses: the file is only ever added to,
+# and a reader that arrives mid-write sees a whole line or none of it.
+loop_log() {
+  printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$2" >>"$1"
+}
+
+# loop_panes — the panes a lane may draw on, one per line as name TAB status.
+#
+# `protocol.md`'s ranking is the whole of the scheduling policy: ready (idle)
+# first, busy last, blocked never. A status this code does not recognise sorts
+# with busy rather than with free, because "a status that cannot be classified
+# confidently is not proof of readiness" is the same rule read the other way. A
+# blocked pane is left out entirely — it is holding a question nobody in the Run
+# may answer, and a prompt sent to it would be read by nobody.
+loop_panes() {
+  herdr agent list 2>/dev/null | jget "
+'\n'.join('%s\t%s' % (a['name'], a.get('agent_status') or '-')
+          for a in d['result']['agents']
+          if (a.get('name') or '').startswith(('exec-', 'rev-'))
+          and (a.get('agent_status') or '') != 'blocked')" || return 1
+}
+
+# loop_next_exec <run> <live-names> <spawned-names> — the lowest
+# `exec-<run-suffix>-N` not already accounted for. The suffix is the Run id's
+# last field, the convention `status` reads a Run back out of a pane name with
+# (SKILL.md); a name that is already live — or already minted in this wave — is
+# never handed out twice, because two panes with one name is one name for two
+# worktrees.
+loop_next_exec() {
+  local suffix="${1##*-}" live="$2" spawned="$3" n=1 name
+  while [ "$n" -lt 100 ]; do
+    name="$(printf 'exec-%s-%d' "$suffix" "$n")"
+    if ! grep -qxF "$name" <<<"$live" && ! grep -qxF "$name" <<<"$spawned"; then
+      printf '%s\n' "$name"
+      return 0
+    fi
+    n=$((n + 1))
+  done
+  return 1
+}
+
+# loop_routes <plan> <collect-table> — one line per dispatchable row, tab
+# separated: task, lane, the provider the row declares.
+#
+# The lane is the routing rule this Task states and nothing more. A `cc` row
+# that names Tasks in `blocks` is a *reviewer* row — `dispatchable-plan`: "a
+# review is work, so it gets a row like anything else, with `blocks` naming what
+# it reviews" — so it goes to a `rev-` pane, which is what lets a review overlap
+# execution instead of queueing behind a full executor pool. Everything else
+# goes to an `exec-` pane. That is a statement about which pool the row draws
+# from, not about the prompt it is sent: the body is `--from-plan`'s either way.
+#
+# `ready` only. A row in the `review` state is a Task whose handoff did not
+# prove its own verify, and the next move there is a reviewer the loop cannot
+# write a prompt for — it is not a row to dispatch, it is the orchestrator's
+# judgement. The wave prints that table and stops at 3 rather than sending a
+# second executor at a Task that already claims to be done.
+loop_routes() {
+  {
+    plan_parser_py
+    cat <<'PY'
+import sys
+
+plan, table = sys.argv[1], sys.argv[2]
+
+parsed = plan_rows(plan)
+if parsed["findings"]:
+    for finding in parsed["findings"]:
+        sys.stderr.write("loop: %s\n" % finding)
+    sys.exit(1)
+
+rows = {r["task"]: r for r in parsed["rows"]}
+for line in table.splitlines():
+    parts = line.split()
+    if len(parts) < 2 or parts[1] != "ready":
+        continue
+    row = rows.get(parts[0]) or {}
+    provider = row.get("provider") or ""
+    lane = "rev" if provider == "cc" and (row.get("blocks") or []) else "exec"
+    print("%s\t%s\t%s" % (parts[0], lane, provider))
+PY
+  } | python3 - "$1" "$2"
+}
+
+# loop_gate_text <code> — the last line of the trace, one short phrase per gate.
+# Short because the wave line above it already says which Task, and which agent.
+loop_gate_text() {
+  case "$1" in
+    1) printf 'a precondition failed — a human looks' ;;
+    2) printf 'a Task failed — retry is human-gated' ;;
+    3) printf 'nothing the loop can dispatch and nothing running — done or wedged' ;;
+    4) printf 'a timeout, or the wave limit — the Run is still going' ;;
+    5) printf 'an agent is blocked on a question — team.sh surface <agent>' ;;
+    6) printf 'a Task is ready and no pane is free — spawn one, or settle one' ;;
+    *) printf 'stopped' ;;
+  esac
+}
+
+# loop_wave <run> <plan> <wave> <timeout> <spawn> <branch-prefix> — one wave,
+# and the caller runs it in a subshell. `die` anywhere inside one of the verbs
+# it calls is an `exit 1` that would otherwise take the whole script with it,
+# and this verb has a `report` to write on the way out that must not depend on
+# how the wave ended.
+#
+# Returns 10 for "the Run is complete", which is not the same claim as `wait`'s
+# 0 ("something settled, go round again") and so cannot share its number.
+loop_wave() {
+  local run="$1" plan="$2" wave="$3" timeout="$4" spawn="$5" prefix="$6"
+  local log="${ROOT}/runs/${run}/loop.log"
+
+  # 1. `collect --plan`, in process. Its exit code is the loop's first gate, and
+  #    its table is the only place the wave's routes come from — there is no
+  #    second reading of the same state that could come to disagree with it.
+  local table="" crc=0
+  table="$(cmd_collect_plan "$plan" "$run")" || crc=$?
+  local running=0
+  if grep -qE '^T-[0-9][0-9] +running' <<<"$table"; then running=1; fi
+  case "$crc" in
+    0 | 3) ;;
+    2)
+      printf '%s\n' "$table"
+      loop_log "$log" "wave ${wave}: collect exit 2 — a Task failed, and retry is human-gated"
+      return 2
+      ;;
+    *)
+      printf '%s\n' "$table"
+      loop_log "$log" "wave ${wave}: collect exit ${crc} — the plan or a handoff is malformed"
+      return 1
+      ;;
+  esac
+
+  local routes="" rrc=0
+  routes="$(loop_routes "$plan" "$table")" || rrc=$?
+  if [ "$rrc" -ne 0 ]; then
+    loop_log "$log" "wave ${wave}: the plan could not be read back for routing (exit ${rrc})"
+    return 1
+  fi
+
+  # Nothing ready. What the loop does next is decided by what is out, and this
+  # is the case the whole verb turns on: collect exits 3 both for a finished
+  # plan and for one whose every remaining Task is `running` or `blocked`
+  # behind one, so 3 is not "finished" — reading it that way abandons the
+  # executors that are still working.
+  if [ -z "$routes" ]; then
+    if [ "$running" -eq 1 ]; then
+      loop_log "$log" "wave ${wave}: nothing ready, a Dispatch is still out — waiting"
+    elif [ "$crc" -eq 3 ]; then
+      loop_log "$log" "wave ${wave}: nothing ready and nothing running — the Run is complete"
+      return 10
+    else
+      printf '%s\n' "$table"
+      loop_log "$log" "wave ${wave}: nothing ready — the rows left need a reviewer no plan row names"
+      return 3
+    fi
+  fi
+
+  local panes="" prc=0
+  panes="$(loop_panes)" || prc=$?
+  if [ "$prc" -ne 0 ]; then
+    loop_log "$log" "wave ${wave}: herdr agent list could not be read (exit ${prc})"
+    return 1
+  fi
+
+  # Fill each lane from the live, idle panes of its own prefix. Reuse *within* a
+  # lane is the sanctioned kind — the same files and the same branch, which is
+  # how a chain of Tasks is meant to stack — and it is what makes one pane
+  # enough to drive a whole plan. Reuse across lanes would carry one Task's
+  # worktree into unrelated work, which is deferred, not done here.
+  #
+  # Free is `idle` or `done` — herdr-adapter.md: "`idle` and `done` both mean
+  # ready — `done` is awaiting mark-as-seen" — and anything else sorts as busy,
+  # including a status this code has never seen. Nothing here reads "not
+  # obviously busy" as "ready": `protocol.md`'s ranking is ready first, busy
+  # last, blocked never, and a pane whose state cannot be classified
+  # confidently is not proof of readiness. Among free panes there is nothing to
+  # rank — one pane takes one Dispatch — so the ranking's outcome is what is
+  # implemented, not its tie-breaks.
+  local -a free_exec=() free_rev=()
+  local live_exec=0 names_all="" live_all="" pname pstate
+  while IFS=$'\t' read -r pname pstate; do
+    [ -n "$pname" ] || continue
+    case "$pname" in
+      exec-*)
+        live_exec=$((live_exec + 1))
+        case "$pstate" in ready | idle | done) free_exec+=("$pname") ;; esac
+        ;;
+      rev-*)
+        case "$pstate" in ready | idle | done) free_rev+=("$pname") ;; esac
+        ;;
+    esac
+  done <<<"$panes"
+  names_all="$(printf '%s\n' "$panes" | cut -f1)"
+  live_all="$(printf '%s\n' "$names_all" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/ $//')"
+
+  local -a seats=() waiting=()
+  local ei=0 ri=0 tid lane provider seat
+  while IFS=$'\t' read -r tid lane provider; do
+    [ -n "$tid" ] || continue
+    if [ "$lane" = rev ] && [ "$ri" -lt "${#free_rev[@]}" ]; then
+      seat="$(printf '%s\t%s\t%s\t%s' "${free_rev[$ri]}" "$tid" "$provider" "$lane")"
+      seats+=("$seat")
+      ri=$((ri + 1))
+    elif [ "$lane" = rev ]; then
+      waiting+=("$(printf '%s\t%s\t%s' "$lane" "$tid" "$provider")")
+    elif [ "$ei" -lt "${#free_exec[@]}" ]; then
+      seat="$(printf '%s\t%s\t%s\t%s' "${free_exec[$ei]}" "$tid" "$provider" "$lane")"
+      seats+=("$seat")
+      ei=$((ei + 1))
+    else
+      waiting+=("$(printf '%s\t%s\t%s' "$lane" "$tid" "$provider")")
+    fi
+  done <<<"$routes"
+
+  # 4. A ready row with no free pane in its lane. Spawning creates a worktree,
+  #    so it is opt-in: without `--spawn` the wave stops and hands the decision
+  #    back, which trades the one turn this verb exists to save for not creating
+  #    a worktree unasked. With it, up to the cap and no further. Review rows are
+  #    not counted against that cap — a `rev-` pane is a login, not a worktree,
+  #    and a review that had to wait for a free executor would serialize behind
+  #    the thing it exists to check.
+  if [ "${#waiting[@]}" -gt 0 ] && [ "$spawn" -eq 1 ]; then
+    local -a still=()
+    local i name branch src st spawned=""
+    for i in "${!waiting[@]}"; do
+      IFS=$'\t' read -r lane tid provider <<<"${waiting[$i]}"
+      name=""
+      branch=""
+      if [ "$lane" = rev ]; then
+        name="$(printf 'rev-%s' "$(printf '%s' "$tid" | tr '[:upper:]' '[:lower:]')")"
+        branch="${prefix}-rev-$(printf '%s' "$tid" | tr '[:upper:]' '[:lower:]')"
+      else
+        if [ "$live_exec" -ge "$EXEC_CAP" ]; then
+          still+=("${waiting[$i]}")
+          continue
+        fi
+        name="$(loop_next_exec "$run" "$names_all" "$spawned")" || {
+          still+=("${waiting[$i]}")
+          continue
+        }
+        branch="${prefix}-$(printf '%s' "$tid" | tr '[:upper:]' '[:lower:]')"
+        live_exec=$((live_exec + 1))
+      fi
+      src=0
+      cmd_spawn "$name" --branch "$branch" --provider "${provider:-ccd}" || src=$?
+      if [ "$src" -ne 0 ]; then
+        still+=("${waiting[$i]}")
+        continue
+      fi
+      # A pane that spawned but did not come back free is not a seat: a dispatch
+      # into an agent that is blocked or still starting is a prompt nobody reads,
+      # and the loop would then wait on it as if it were work.
+      st="$(agent_field "$name" agent_status 2>/dev/null || true)"
+      case "$st" in
+        ready | idle | done)
+          seats+=("$(printf '%s\t%s\t%s\t%s' "$name" "$tid" "${provider:-ccd}" "$lane")")
+          spawned="$(printf '%s\n%s' "$spawned" "$name")"
+          ;;
+        *) still+=("${waiting[$i]}") ;;
+      esac
+    done
+    if [ "${#still[@]}" -gt 0 ]; then
+      waiting=("${still[@]}")
+    else
+      waiting=()
+    fi
+  fi
+
+  # Leftovers matter only when they are all of it: a wave that seated something
+  # has progress to wait on, and stopping here would return to an orchestrator
+  # that thinks the loop is idle while a Dispatch it issued is still out. The
+  # gate is "this wave can move nothing", which is the same words as the
+  # table row — ready rows, and not one free pane to put them on.
+  local ready_list="" i
+  for i in "${!waiting[@]}"; do
+    IFS=$'\t' read -r lane tid provider <<<"${waiting[$i]}"
+    ready_list="${ready_list}${ready_list:+ }${tid}"
+  done
+  if [ -n "$ready_list" ] && [ "${#seats[@]}" -eq 0 ]; then
+    printf '%s\n' "$table"
+    if [ "$spawn" -eq 1 ]; then
+      printf 'loop: %s ready and no pane free for them — %s live (cap %s); settle one, or raise HERDR_TEAM_EXEC_CAP\n' \
+        "$ready_list" "${live_all:-none}" "$EXEC_CAP"
+    else
+      printf 'loop: %s ready and no pane free for them — %s live (cap %s); --spawn <branch-prefix>, or settle one\n' \
+        "$ready_list" "${live_all:-none}" "$EXEC_CAP"
+    fi
+    loop_log "$log" "wave ${wave}: ${ready_list} ready and no pane free — exit 6"
+    return 6
+  fi
+
+  # 3. Dispatch what was seated, through `--from-plan`, so the `blocks`
+  #    predicate, the never-reuse-a-Dispatch-id rule and the journal stay in one
+  #    place. A row the dispatcher refuses is two readers of one plan
+  #    disagreeing — `collect --plan` says its blockers are settled and
+  #    `plan_body` says they are not — and that is a human's to look at.
+  local -a dispatched=()
+  for i in "${!seats[@]}"; do
+    IFS=$'\t' read -r pname tid provider lane <<<"${seats[$i]}"
+    # Captured rather than called straight: `cmd_dispatch` ends its own body
+    # with `|| exit $?`, so a refusal inside it leaves this subshell before any
+    # `||` here could see the code, and the trace would end without saying why.
+    local dout="" drc=0
+    dout="$(cmd_dispatch "$pname" --task "$tid" --run "$run" --from-plan "$plan")" || drc=$?
+    [ -z "$dout" ] || printf '%s\n' "$dout"
+    if [ "$drc" -ne 0 ]; then
+      printf '%s\n' "$table"
+      loop_log "$log" "wave ${wave}: dispatch of ${tid} refused (exit ${drc})"
+      return 1
+    fi
+    dispatched+=("$tid")
+  done
+
+  if [ "${#dispatched[@]}" -gt 0 ]; then
+    printf 'wave %s: dispatched %s, waiting\n' "$wave" "${dispatched[*]}"
+    loop_log "$log" "wave ${wave}: dispatched ${dispatched[*]}, waiting"
+  fi
+
+  # 5. `wait`, and its exit code is the gate table.
+  local wout="" wrc=0
+  if [ -n "$timeout" ]; then
+    wout="$(cmd_wait "$run" --timeout "$timeout")" || wrc=$?
+  else
+    wout="$(cmd_wait "$run")" || wrc=$?
+  fi
+  [ -z "$wout" ] || printf '%s\n' "$wout"
+  case "$wrc" in
+    0) return 0 ;;
+    4)
+      loop_log "$log" "wave ${wave}: wait expired with nothing settled"
+      return 4
+      ;;
+    5)
+      local ba=""
+      ba="$(printf '%s\n' "$wout" | awk 'NR==1{print $1}')"
+      loop_log "$log" "wave ${wave}: ${ba:-an agent} is blocked on a question — team.sh surface ${ba:-<agent>}"
+      return 5
+      ;;
+    3)
+      # `wait` reports 3 when nothing is outstanding, which it decides by
+      # finding a handoff for every journalled Dispatch. Right after this wave
+      # dispatched, that means the agent finished before the wait began — a
+      # pane answers in seconds what a read of the journal took, and the guard
+      # `wait` keeps for that window is the same fact seen from inside it. The
+      # next move is another wave, not a stop: the gate table's 3 is "nothing
+      # outstanding *while collect had nothing ready*", and this wave dispatched.
+      if [ "${#dispatched[@]}" -gt 0 ]; then
+        loop_log "$log" "wave ${wave}: settled before the wait started — next wave"
+        return 0
+      fi
+      loop_log "$log" "wave ${wave}: nothing outstanding to wait for — done or wedged"
+      return 3
+      ;;
+    *)
+      loop_log "$log" "wave ${wave}: wait exit ${wrc}"
+      return 1
+      ;;
+  esac
+}
+
+cmd_loop() {
+  local run="" plan="" max_waves=20 timeout="" spawn=0 prefix=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --plan) [ $# -ge 2 ] || die "loop: --plan needs a plan file"; plan="$2"; shift 2 ;;
+      --max-waves)
+        [ $# -ge 2 ] || die "loop: --max-waves needs a count"
+        max_waves="$2"
+        shift 2
+        ;;
+      --timeout)
+        [ $# -ge 2 ] || die "loop: --timeout needs milliseconds"
+        timeout="$2"
+        shift 2
+        ;;
+      --spawn)
+        [ $# -ge 2 ] || die "loop: --spawn needs a branch prefix"
+        spawn=1
+        prefix="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      -*) die "loop: unknown option $1" ;;
+      *) run="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$plan" ] || die "loop: --plan is required — the loop drives a plan, and nothing else names one"
+  printf '%s' "$max_waves" | grep -qE '^[0-9]+$' ||
+    die "loop: --max-waves takes a whole number of waves, got: ${max_waves}"
+  [ "$max_waves" -ge 1 ] || die "loop: --max-waves must be at least 1"
+  if [ -n "$timeout" ]; then
+    printf '%s' "$timeout" | grep -qE '^[0-9]+$' ||
+      die "loop: --timeout takes milliseconds, got: ${timeout}"
+    # Milliseconds — the unit `wait` takes, and named here because a bare `1` is
+    # a plausible-looking second that expires before any agent could answer, and
+    # it reads exactly like a real timeout.
+    [ "$timeout" -ge 1000 ] ||
+      die "loop: --timeout is milliseconds, and ${timeout} would expire before any agent could answer. Pass at least 1000."
+  fi
+  # A prefix with a trailing slash would mint `feat/x/-t-01`.
+  prefix="${prefix%/}"
+  [ "$spawn" -eq 0 ] || [ -n "$prefix" ] ||
+    die "loop: --spawn needs a branch prefix, e.g. --spawn feat/my-plan"
+
+  [ -n "$run" ] || run="$(resolve_run "$plan")" ||
+    die "loop: no Run started — team.sh run new --plan ${plan}"
+  [ -d "${ROOT}/runs/${run}" ] ||
+    die "loop: no Run ${run} under ${ROOT}/runs — team.sh run list"
+
+  local log="${ROOT}/runs/${run}/loop.log"
+  mkdir -p "${ROOT}/runs/${run}"
+
+  # --max-waves bounds the whole thing, and a Run that is still going when it is
+  # reached is not a Run that finished: 4 is the same kind of answer as a
+  # timeout, because the fact is the same — the Run did not stop, the loop did.
+  local wave=0 rc=0 wrc=0
+  while :; do
+    wave=$((wave + 1))
+    if [ "$wave" -gt "$max_waves" ]; then
+      loop_log "$log" "wave limit ${max_waves} reached — stopping"
+      printf 'wave limit %s reached: the Run is still going; read %s\n' "$max_waves" "$log"
+      rc=4
+      break
+    fi
+    wrc=0
+    ( loop_wave "$run" "$plan" "$wave" "$timeout" "$spawn" "$prefix" ) || wrc=$?
+    if [ "$wrc" -eq 0 ]; then
+      continue
+    fi
+    if [ "$wrc" -eq 10 ]; then
+      rc=0
+    else
+      rc="$wrc"
+      loop_log "$log" "gate: exit ${rc} — $(loop_gate_text "$rc")"
+    fi
+    break
+  done
+
+  # Once, for every way this verb can end. A record that depends on a human
+  # remembering to ask for it is the record that is missing on the day it
+  # matters, and a Run that stopped at a gate is exactly that day.
+  local rrc=0
+  cmd_report "$run" || rrc=$?
+  [ "$rrc" -eq 0 ] ||
+    warn "loop: report exited ${rrc} — the Run's report.json may be missing"
+
+  return "$rc"
 }
 
 # --- surface ---------------------------------------------------------------
@@ -1237,11 +2042,23 @@ cmd_plan() {
         plan_parser_py
         cat <<'PY'
 plan = os.path.abspath(sys.argv[1])
-findings = plan_rows(plan)["findings"]
+parsed = plan_rows(plan)
+findings = parsed["findings"]
 for finding in findings:
     print(finding)
 if not findings:
     print("%s: ok" % plan)
+# The plan's own shape, last, so it is the line an eye lands on after the
+# findings. Its warnings go to stderr and change no exit code: a deep plan is
+# sometimes correct, and what this reports is economics rather than validity.
+# The measurements stay on stdout for the caller — `report` (T-02) reads a
+# plan's depth and width back out of this line rather than re-deriving them.
+shape = parsed["shape"]
+if shape:
+    for warning in shape["warnings"]:
+        sys.stderr.write("lint: %s\n" % warning)
+    print("depth %d  width %d  tasks %d"
+          % (shape["depth"], shape["width"], shape["tasks"]))
 # Every finding at once, where dispatch stops at the first: a planner fixing
 # its own output should not have to run the check seven times.
 sys.exit(1 if findings else 0)
@@ -1278,6 +2095,20 @@ next_dispatch() {
 plan_parser_py() {
   cat <<'PY'
 import json, os, re, sys
+
+# What a plan's *shape* is measured against. Every number here is a starting
+# guess and the warnings that use them say so: a plan file cannot say how long
+# a Task takes, so these are proxies, and a proxy that fails a correct plan is
+# a check that stops being run. Depth and width are properties of the document
+# no individual row can state; the granularity pair are the two proxies the
+# document does carry, and both are what `team.sh report` (T-02) replaces with
+# observed numbers — which is why they live here, together, rather than beside
+# the checks that read them.
+DEPTH_MAX = 4          # the longest chain of `blocks` edges a plan should have
+WIDTH_MIN = 2          # Tasks a plan should be able to run at once ...
+WIDTH_MIN_TASKS = 3    # ... once it has this many Tasks to run at all
+THIN_LINES = 8         # non-blank lines a chained row needs to earn its Dispatch
+FAT_FILES = 8          # paths a row may name before its verify stops localizing
 
 
 def _cycles(by_id):
@@ -1326,15 +2157,197 @@ def _masks_exit(verify):
     return False
 
 
+def _section_bodies(text):
+    """The prose under each `### T-nn`, keyed by Task id.
+
+    Bounded at the next heading of any level rather than at the next `###`:
+    the `## ` a document may carry after the tasks block ends the sections,
+    and a body that ran on into it would make every row look long enough to
+    be worth a Dispatch of its own.
+
+    One reader for both jobs that need a section — the row/section agreement
+    check compares the ids, the thin-row proxy counts the lines — because two
+    readers of one heading is how they come to disagree about whether it is
+    there at all.
+    """
+    out = {}
+    heads = list(re.finditer(r"^(#{1,6})[ \t]+(.*)$", text, re.M))
+    for i, head in enumerate(heads):
+        if head.group(1) != "###":
+            continue
+        words = head.group(2).split()
+        # The slice runs to the next heading of any level, so a section with
+        # nothing under it reads as the empty string rather than as the next
+        # section's prose: the thin-row count is then zero, which is what a
+        # Task stating its work elsewhere actually costs.
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        if words and re.match(r"^T-\d{2}$", words[0]):
+            out[words[0]] = text[head.end():end]
+    return out
+
+
+def _levels(by_id):
+    """The longest chain of `blocks` edges ending at each Task, as a length.
+
+    The walk `_cycles` already makes, asking a different question of the same
+    graph. Cycle-safe: a back edge is a finding of its own, and following it
+    here would be a recursion that never returns rather than a second report
+    of one defect. A row this code has no entry for is not an edge — `blocks`
+    naming a row that does not exist is a finding too.
+    """
+    level = {}
+
+    def walk(tid, path):
+        if tid in level:
+            return level[tid]
+        path = path | {tid}
+        best = 0
+        for b in by_id[tid].get("blocks") or []:
+            if b in by_id and b not in path:
+                best = max(best, walk(b, path))
+        level[tid] = best + 1
+        return level[tid]
+
+    for tid in sorted(by_id):
+        walk(tid, frozenset())
+    return level
+
+
+def _chain(by_id, level):
+    """One longest chain of `blocks` edges, first Task to last.
+
+    Reconstructed by stepping back from the deepest Task to a blocker one
+    level shallower, lowest id first at each step, so a plan with two equally
+    long chains names the same one every run: a warning that named a different
+    chain each time would read as two different problems.
+    """
+    if not level:
+        return []
+    cur = sorted(level, key=lambda t: (-level[t], t))[0]
+    chain = [cur]
+    while True:
+        step = sorted(b for b in (by_id[cur].get("blocks") or [])
+                      if b in level and level[b] == level[cur] - 1)
+        if not step:
+            return list(reversed(chain))
+        cur = step[0]
+        chain.append(cur)
+
+
+def _chained_twin(by_id, tid, path):
+    """A row at the other end of a `blocks` edge that names the same path.
+
+    Either direction is the same defect: a row queued behind another on one
+    file, and a row the other waits on, are two Dispatches doing one task's
+    work. The clause is what keeps the thin warning honest — a small
+    independent Task is fine, and only the chained one is worth merging.
+    """
+    for other in sorted(by_id):
+        if other == tid or path not in (by_id[other].get("files") or []):
+            continue
+        if other in (by_id[tid].get("blocks") or []) or \
+                tid in (by_id[other].get("blocks") or []):
+            return other
+    return None
+
+
+def _granularity(by_id, bodies):
+    """Warnings for rows unlikely to be worth a Dispatch of their own.
+
+    A Dispatch has fixed overhead — a prompt, a handoff, a wave of the
+    orchestrator loop, and a worktree when the pool has to grow — so a Task
+    too small to cover it costs more than it returns, and a Task too broad to
+    have its failure localized costs a whole retry. Nothing here can measure
+    either, so both are proxies, and the text names the number as a guess
+    because a threshold nobody knows is a guess reads as a measurement.
+
+    A trailing slash is the only way a plan file says "tree" rather than
+    "file", so that is what the directory check reads: asking the filesystem
+    would make the answer depend on what is checked out beside the plan.
+    """
+    out, pairs = [], set()
+    for tid in sorted(by_id):
+        body = bodies.get(tid)
+        # A row with no section is a finding of its own, and a proxy measured
+        # against a body that is not there would be a second report of it.
+        if body is None:
+            continue
+        files = [f for f in (by_id[tid].get("files") or []) if isinstance(f, str) and f]
+        dirs = [f for f in files if f.endswith("/")]
+        if dirs:
+            out.append("%s names %s, a directory — no verify can localize a "
+                       "failure inside one, so a retry re-does all of it"
+                       % (tid, dirs[0]))
+        elif len(files) > FAT_FILES:
+            out.append("%s names %d paths, over the %d a verify can localize a "
+                       "failure in — a retry would re-do all of them (%d is a "
+                       "starting guess, not a measurement)"
+                       % (tid, len(files), FAT_FILES, FAT_FILES))
+        lines = len([l for l in body.splitlines() if l.strip()])
+        if len(files) != 1 or lines >= THIN_LINES:
+            continue
+        twin = _chained_twin(by_id, tid, files[0])
+        # Once per pair: both ends of a chain are thin by the same measure,
+        # and naming the same merge twice reads as two problems.
+        if twin and frozenset((tid, twin)) not in pairs:
+            pairs.add(frozenset((tid, twin)))
+            sized = "%d non-blank line%s" % (lines, "" if lines == 1 else "s")
+            out.append("%s is %s and shares %s with %s, which it is chained "
+                       "to — two Dispatches doing one task's work; merge them "
+                       "(%d non-blank lines is a starting guess, not a "
+                       "measurement)" % (tid, sized, files[0], twin, THIN_LINES))
+    return out
+
+
+def _shape(by_id, bodies):
+    """A plan's depth, width and task count, and what they earn in warnings.
+
+    Depth is the longest chain of `blocks` edges, which is the number of
+    Dispatches a Run has to take one at a time; width is the most Tasks any
+    one level holds, which is the most it can ever have out at once. The
+    second is why the executor cap is not the limit on a plan: nothing here
+    branches, so a second executor cannot be used however many are idle.
+    """
+    level = _levels(by_id)
+    counts = {}
+    for lv in level.values():
+        counts[lv] = counts.get(lv, 0) + 1
+    depth = max(level.values()) if level else 0
+    width = max(counts.values()) if counts else 0
+    tasks = len(level)
+    chain = _chain(by_id, level)
+
+    warnings = []
+    if depth > DEPTH_MAX:
+        warnings.append(
+            "depth %d is over the %d a plan should stay under — shape the work "
+            "wide, not deep: depth is where these systems fail (protocol.md). "
+            "Longest chain: %s" % (depth, DEPTH_MAX, " -> ".join(chain)))
+    if tasks >= WIDTH_MIN_TASKS and width < WIDTH_MIN:
+        warnings.append(
+            "width %d on %d Tasks — no two of them can run at once, so a "
+            "second executor cannot help this plan whatever the cap says "
+            "(%d is the width to shape for)" % (width, tasks, WIDTH_MIN))
+    warnings.extend(_granularity(by_id, bodies))
+    return {"depth": depth, "width": width, "tasks": tasks,
+            "chain": chain, "warnings": warnings}
+
+
 def plan_rows(plan):
     """Read a plan's `## Tasks` block.
 
-    Returns {"rows", "sections", "findings"} and raises nothing: the caller
-    decides whether to stop at the first finding (dispatch) or report them
-    all (plan lint). `findings` are human-readable and carry no prefix, so a
-    caller can name itself.
+    Returns {"rows", "sections", "findings", "shape"} and raises nothing: the
+    caller decides whether to stop at the first finding (dispatch) or report
+    them all (plan lint). `findings` are human-readable and carry no prefix, so
+    a caller can name itself.
+
+    `shape` is None until the rows parse, and then the plan's own measurements
+    with the warnings they earn — a property of the whole document that no row
+    can state, which is why it is computed here rather than by each caller.
+    Warnings are not findings and no caller may fail on one: a deep plan is
+    sometimes correct, and a linter that refuses correct plans stops being run.
     """
-    out = {"rows": [], "sections": [], "findings": []}
+    out = {"rows": [], "sections": [], "findings": [], "shape": None}
     say = out["findings"].append
     try:
         text = open(plan, encoding="utf-8").read()
@@ -1356,7 +2369,8 @@ def plan_rows(plan):
         return out
 
     out["rows"] = rows
-    out["sections"] = sorted(set(re.findall(r"^### (T-\d{2})\b", text, re.M)))
+    bodies = _section_bodies(text)
+    out["sections"] = sorted(bodies)
     sections = set(out["sections"])
 
     by_id = {}
@@ -1389,6 +2403,8 @@ def plan_rows(plan):
         if _masks_exit(by_id[tid].get("verify") or ""):
             say("%s: verify pipes without a leading 'set -o pipefail', so its "
                 "exit code is the last stage's and the check cannot fail" % tid)
+
+    out["shape"] = _shape(by_id, bodies)
 
     return out
 PY
@@ -1723,7 +2739,9 @@ case "${1:-}" in
   run) shift; cmd_run "$@" ;;
   status) shift; cmd_status "$@" ;;
   collect) shift; cmd_collect "$@" ;;
+  report) shift; cmd_report "$@" ;;
   wait) shift; cmd_wait "$@" ;;
+  loop) shift; cmd_loop "$@" ;;
   surface) shift; cmd_surface "$@" ;;
   plan) shift; cmd_plan "$@" ;;
   settle) shift; cmd_settle "$@" ;;

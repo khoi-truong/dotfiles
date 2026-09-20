@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # run-tests.sh — the acceptance checks for `team.sh dispatch --from-plan`,
-# `collect --plan`, `wait` and `teardown`.
+# `collect --plan`, `wait`, `report` and `teardown`.
 #
 # Static checks do not see inside team.sh's embedded python, and this
 # repo has no test suite, so this script is the only thing that exercises the
 # plan parser. Run it by hand after touching `plan_body`, `plan_rows`,
-# `dispatched`, `cmd_wait` or the teardown guard:
+# `dispatched`, `journal_lines`, `unproven`, `cmd_wait`, `cmd_report` or the
+# teardown guard:
 #
 #   bash ai/herdr/fixtures/run-tests.sh
 #
@@ -52,6 +53,10 @@ export HERDR_TEAM_RUN_KEY="tab-a"
 # root; this is the same path spelled out, so a case can place a file without
 # asking the thing under test to agree with it.
 handoff_dir() { printf '%s\n' "${HERDR_TEAM_ROOT}/runs/${1}/handoffs"; }
+
+# run_dir <run> — that Run's own directory, which is where `report` leaves
+# `report.json` and where `run new --plan` writes the plan down.
+run_dir() { printf '%s\n' "${HERDR_TEAM_ROOT}/runs/${1}"; }
 
 # pointer <key> — the file naming the Run that key's shell is in.
 pointer() { printf '%s\n' "${HERDR_TEAM_ROOT}/state/run-${1:-tab-a}"; }
@@ -126,6 +131,34 @@ sent() {
   else
     printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"${dir}/.dispatched"
   fi
+}
+
+# plan_for <run> <plan-file> — the line `run new --plan` writes down, so a case
+# can put a Run in front of `report` with the plan it was cut from and nothing
+# in the case has to hand the plan over twice. The path is written as the
+# fixture spells it; `report` opens what it reads, and its own copy of the
+# resolved path is `run new`'s business, not this suite's.
+plan_for() { printf '%s\n' "${FIXTURES}/${2}" >"$(run_dir "$1")/plan"; }
+
+# long_handoff <task> <run> <dispatch> [pad] — a handoff with the frontmatter a
+# case needs and a body padded past the 150-line cap protocol.md states. Its own
+# helper rather than a flag on `handoff`, whose body is a fixed shape and whose
+# whole point is that every case writes the same one.
+long_handoff() {
+  local task="$1" run="$2" d="${3:-D-01}" pad="${4:-160}" dir i=0
+  dir="$(handoff_dir "$run")"
+  mkdir -p "$dir"
+  {
+    printf -- '---\n'
+    printf 'run: %s\ntask: %s\ndispatch: %s\n' "$run" "$task" "$d"
+    printf 'outcome: succeeded\nevidence: reported\n'
+    printf 'commands: []\n'
+    printf -- '---\n\n## What was done\n\n'
+    while [ "$i" -lt "$pad" ]; do
+      printf 'Padding, line %d.\n' "$i"
+      i=$((i + 1))
+    done
+  } >"${dir}/${task}-${d}.md"
 }
 
 # reset — every Run gone, and the key back in the fixture one. The by-plan links
@@ -404,13 +437,15 @@ expect_lint 1 "verify pipes without a leading 'set -o pipefail'" \
 expect_lint 0 ': ok$' "28 a well-formed plan passes" plan-ok.md
 
 # 29. Every finding in one run — the whole reason plan_rows returns them
-#     rather than raising on the first.
+#     rather than raising on the first. The plan-shape line every lint now ends
+#     with is counted out rather than expected: this case is about the findings,
+#     and the shape line has cases of its own below.
 "${TEAM}" plan lint "${FIXTURES}/plan-many.md" >"${TMP}/out" 2>/dev/null
-if [ "$(wc -l <"${TMP}/out")" -eq 3 ]; then
+if [ "$(grep -vcE '^depth [0-9]+  width [0-9]+  tasks [0-9]+$' "${TMP}/out")" -eq 3 ]; then
   ok "29 a plan with three problems reports all three"
 else
   no "29 a plan with three problems reports all three" \
-    "got $(wc -l <"${TMP}/out") line(s): $(tr '\n' '|' <"${TMP}/out")"
+    "got $(tr '\n' '|' <"${TMP}/out")"
 fi
 
 # 30. The same plan through dispatch stops at the first, and still refuses.
@@ -1749,6 +1784,841 @@ printf -- '---\nrun: %s\ntask: T-01\ndispatch: D-01\noutcome: succeeded\nevidenc
   "${OTHER}" >"$(handoff_dir "${RUN}")/T-01-D-01.md"
 expect_exit 3 "100 a handoff naming another Run does not unblock, wherever it sits" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
+
+echo
+echo "plan lint: depth, width and Dispatch granularity"
+
+# The linter's second job. Depth and width are properties of the whole
+# document — no row can state either — so they come out of the same walk that
+# detects cycles, and they are *reported* and *warned about*, never failed on:
+# a deep plan is sometimes correct, and a linter that refuses correct plans
+# stops being run. The granularity checks are the two proxies a plan file
+# carries for "is this row worth a Dispatch", and they warn for the same
+# reason — a proxy that fails a correct plan is worse than no proxy at all.
+#
+# A warning lands on stderr and a measurement on stdout, so every case below
+# reads both: expect_lint holds exit code and stdout, and the greps after it
+# hold what stderr said.
+
+# 101. Five Tasks in a chain: depth is the longest path through `blocks`, width
+#      is the most any one level holds, and neither is a failure.
+expect_lint 0 '^depth 5  width 1  tasks 5$' \
+  "101 a chain of five reports depth 5 and width 1" plan-deep.md
+if grep -q 'wide, not deep' "${TMP}/err" &&
+  grep -q 'Longest chain: T-01 -> T-02 -> T-03 -> T-04 -> T-05' "${TMP}/err"; then
+  ok "101b the depth warning quotes the rule and names the chain"
+else
+  no "101b the depth warning quotes the rule and names the chain" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if grep -q 'no two of them can run at once' "${TMP}/err"; then
+  ok "101c and it says the plan cannot use a second executor"
+else
+  no "101c and it says the plan cannot use a second executor" "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 102. Five rows that block nothing: the shape protocol.md asks for. Neither
+#      plan-level warning fires and no granularity one does either — the empty
+#      stderr is the assertion, so a check that began warning about every clean
+#      plan fails here rather than being noticed by whoever reads the output.
+expect_lint 0 '^depth 1  width 5  tasks 5$' \
+  "102 five independent rows report width 5" plan-wide.md
+if [ ! -s "${TMP}/err" ]; then
+  ok "102b and nothing at all is warned about it"
+else
+  no "102b and nothing at all is warned about it" "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 103. The granularity proxies, all three shapes in one plan.
+expect_lint 0 '^depth 2  width 3  tasks 4$' \
+  "103 thin and fat rows still lint clean, on the shape a clean plan has" plan-thin.md
+# The singular is deliberate in the fixture, and this is the line a plural
+# would have hidden: `1 non-blank lines` is the kind of thing nobody reads
+# past, in the one message whose job is to be read.
+if grep -q 'T-01 is 1 non-blank line and shares ai/herdr/team.sh with T-02' "${TMP}/err"; then
+  ok "103b the thin row is named with the path it shares, and the remedy"
+else
+  no "103b the thin row is named with the path it shares, and the remedy" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+# Both ends of that chain are thin by the same measure. One merge, one warning:
+# naming the same pair twice reads as two problems.
+if [ "$(grep -c 'merge them' "${TMP}/err")" -eq 1 ]; then
+  ok "103c the chained pair is reported once, not once per end"
+else
+  no "103c the chained pair is reported once, not once per end" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if grep -q 'T-03 names ai/herdr/, a directory' "${TMP}/err"; then
+  ok "103d a row naming a tree is warned about"
+else
+  no "103d a row naming a tree is warned about" "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if grep -q 'T-04 names 9 paths' "${TMP}/err"; then
+  ok "103e and so is a row too broad for its verify to localize"
+else
+  no "103e and so is a row too broad for its verify to localize" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 104. The parsers are still one parser. `--from-plan` runs the same walk that
+#      now measures the plan, so a document the linter warns about has to
+#      dispatch exactly as it did — and none of the new text may reach the
+#      prompt an executor reads, which is why the shape line goes to stderr
+#      from `plan lint` alone and never out of plan_rows.
+reset
+code=0
+dispatch --task T-01 --from-plan "${FIXTURES}/plan-deep.md" >"${TMP}/out" || code=$?
+if [ "$code" -eq 0 ] &&
+  grep -q 'plan-deep\.md, section "### T-01"\.' "${TMP}/out" &&
+  grep -q 'shellcheck -x ai/herdr/team.sh' "${TMP}/out"; then
+  ok "104 a plan the linter warns about still dispatches"
+else
+  no "104 a plan the linter warns about still dispatches" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+if ! grep -qE '^depth [0-9]+  width [0-9]+  tasks [0-9]+$' "${TMP}/out" &&
+  ! grep -q 'wide, not deep' "${TMP}/err"; then
+  ok "104b and neither the shape line nor a warning reaches the Dispatch"
+else
+  no "104b and neither the shape line nor a warning reaches the Dispatch" \
+    "$(grep -n 'depth\|wide, not deep' "${TMP}/out" "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 104c. The other caller of the same parser, which reads `rows` and `findings`
+#       and has no opinion about shape at all.
+reset
+expect_collect 0 '^T-01 +ready' "104c collect --plan reads a warned plan unchanged" \
+  --plan "${FIXTURES}/plan-wide.md"
+
+# 105. No shape line for a plan that never parsed. There are no Tasks to
+#      measure, and `depth 0  width 0  tasks 0` would be a report about a
+#      document this code could not read.
+"${TEAM}" plan lint "${FIXTURES}/plan-no-block.md" >"${TMP}/out" 2>/dev/null
+if ! grep -q '^depth ' "${TMP}/out"; then
+  ok "105 a plan with no task block reports no shape"
+else
+  no "105 a plan with no task block reports no shape" "$(tr '\n' '|' <"${TMP}/out")"
+fi
+
+echo
+echo "report: the table, and the two files it leaves behind"
+
+# The one verb here that writes, so these cases are as much about where the
+# writing lands as about what it says: a report printed into a pane dies with
+# the pane, which is the data a "better day by day" loop is supposed to have.
+#
+# Their own Run ids rather than ${RUN}: the series is one line per Run, so a
+# case reporting a Run another case already reported would exercise the dedupe
+# rule instead of the append and pass for the wrong reason. That is also why
+# the ids are fixed and not minted — the dedupe has to be asked for, never
+# stumbled into.
+RPT="R-fixture-0100"
+RPT_NOPLAN="R-fixture-0101"
+METRICS="${HERDR_TEAM_ROOT}/metrics.jsonl"
+
+# metrics_lines — how many rows the series has. A missing file is zero, which is
+# also how "this Run was never reported" reads through this.
+metrics_lines() {
+  local n=0
+  [ -s "${METRICS}" ] && n="$(wc -l <"${METRICS}" | tr -d ' ')"
+  printf '%s' "${n:-0}"
+}
+
+# 106. One Run with the three things a report exists to make visible: a Task
+#      that took two Dispatches, a handoff claiming a check it cannot show, and
+#      a handoff past the line cap. The winning Dispatch is D-02 — the same fold
+#      `collect --plan` reads a Task through — and `sends` is 2, which is the
+#      retry itself rather than a column nobody can act on.
+reset
+use_run "${RPT}"
+plan_for "${RPT}" plan-ok.md
+sent "${RPT}" T-01 D-01 exec-1
+sent "${RPT}" T-01 D-02 exec-1
+handoff T-01 "${RPT}" failed tool_error D-01
+handoff T-01 "${RPT}" succeeded verified D-02
+sent "${RPT}" T-02 D-01 exec-2
+long_handoff T-02 "${RPT}" D-01
+
+code=0
+"${TEAM}" report "${RPT}" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "$code" -eq 0 ] &&
+  grep -qE '^T-01 +D-02 +succeeded +verified +\S+ +2 +[0-9]+ +ok$' "${TMP}/out"; then
+  ok "106 a retried Task shows its winning Dispatch and both attempts"
+else
+  no "106 a retried Task shows its winning Dispatch and both attempts" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+if grep -qE '^T-02 +D-01 +succeeded +reported +\S+ +1 +[0-9]+ +UNVERIFIED$' "${TMP}/out"; then
+  ok "106b a claim the handoff cannot show reads UNVERIFIED"
+else
+  no "106b a claim the handoff cannot show reads UNVERIFIED" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+# The line count is read out of the row rather than inferred from the footer
+# that summarises it: the cap is about the handoff, and the row is where the
+# handoff's own number is.
+row="$(grep -E '^T-02 ' "${TMP}/out" | head -1)"
+lines="$(printf '%s' "$row" | awk '{print $(NF - 1)}')"
+if [ "${lines:-0}" -gt 150 ] && grep -q '(T-02/D-01)' "${TMP}/out"; then
+  ok "106c an over-long handoff is flagged and counted, not refused"
+else
+  no "106c an over-long handoff is flagged and counted, not refused" \
+    "lines=${lines:-?}: $(printf '%s' "$row") $(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 107. `report.json` is the same report, fielded — and the same numbers, not a
+#      second reading of the Run that could drift from the table printed beside
+#      it. Read through python because it has to parse as JSON at all, which is
+#      what a later session opening it will assume.
+rjson="$(run_dir "${RPT}")/report.json"
+code=0
+msg="$(
+  python3 - "$rjson" "${TMP}/out" <<'PY' 2>&1
+import json, sys
+
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+table = open(sys.argv[2], encoding="utf-8").read()
+tot = d["totals"]
+rows = {r["task"]: r for r in d["tasks"]}
+
+assert tot["tasks"] == 2, tot
+assert tot["dispatches"] == 3, tot
+assert tot["retried_tasks"] == 1, tot
+assert tot["retry_rate"] == 0.5, tot
+assert tot["verify_rated"] == 2 and tot["verify_proven"] == 1, tot
+assert tot["verify_pass_rate"] == 0.5, tot
+assert tot["over_long_handoffs"] == 1, tot
+assert rows["T-01"]["dispatch"] == "D-02" and rows["T-01"]["dispatches"] == 2, rows["T-01"]
+assert rows["T-01"]["verify"] == "ok", rows["T-01"]
+assert rows["T-02"]["verify"] == "UNVERIFIED", rows["T-02"]
+assert rows["T-02"]["handoff_lines"] > 150, rows["T-02"]
+# The plan the Run was cut from, measured the way `plan lint` measures it.
+assert d["shape"]["depth"] == 2 and d["shape"]["width"] == 1, d["shape"]
+# And the table beside it says the same two rates.
+assert "retry rate 50%" in table, table
+assert "verify pass rate 50%" in table, table
+print("ok")
+PY
+)" || code=$?
+if [ "$code" -eq 0 ] && [ "$msg" = "ok" ]; then
+  ok "107 report.json parses and carries the same numbers as the table"
+else
+  no "107 report.json parses and carries the same numbers as the table" \
+    "exit ${code}: $(printf '%s' "$msg" | tr '\n' ' ')"
+fi
+
+# 108. The series is one line per Run and the snapshot is not. A second `report`
+#      has to rewrite report.json — "always current" means exactly that —
+#      without putting a second row in the series, which would measure how often
+#      somebody looked rather than how the Run went.
+before="$(metrics_lines)"
+rm -f "$rjson"
+"${TEAM}" report "${RPT}" >"${TMP}/out" 2>"${TMP}/err"
+after="$(metrics_lines)"
+if [ -s "$rjson" ] && [ "$before" = "$after" ] &&
+  [ "$(grep -c "\"run\": \"${RPT}\"" "${METRICS}")" -eq 1 ]; then
+  ok "108 a second report rewrites report.json and appends no second line"
+else
+  no "108 a second report rewrites report.json and appends no second line" \
+    "json $([ -s "$rjson" ] && echo back || echo missing), series ${before}->${after}: $(tr '\n' '|' <"${METRICS}")"
+fi
+
+# 109. `--no-write` is how a Run someone else owns is read. The table still
+#      prints — a flag whose read printed nothing would be indistinguishable
+#      from a broken verb — and neither file moves, which is the difference
+#      between looking at another tab's Run and joining its series.
+cp "$rjson" "${TMP}/report.json.before"
+before="$(metrics_lines)"
+code=0
+"${TEAM}" report "${RPT}" --no-write >"${TMP}/out" 2>"${TMP}/err" || code=$?
+after="$(metrics_lines)"
+if [ "$code" -eq 0 ] && grep -qE '^T-01 +D-02' "${TMP}/out" &&
+  cmp -s "$rjson" "${TMP}/report.json.before" && [ "$before" = "$after" ]; then
+  ok "109 --no-write prints the table and touches neither file"
+else
+  no "109 --no-write prints the table and touches neither file" \
+    "exit ${code}, series ${before}->${after}, json $([ -s "$rjson" ] && echo there || echo missing)"
+fi
+
+# 110. The append is gated on a Run whose plan resolves, which is what keeps a
+#      smoke test out of the real series: a Run with no plan has no depth and no
+#      width, so its line would be a row nothing else in the series could be
+#      compared against. `report.json` is still written, because the Run
+#      happened whether or not a document describes it.
+use_run "${RPT_NOPLAN}"
+handoff T-01 "${RPT_NOPLAN}" succeeded verified
+before="$(metrics_lines)"
+"${TEAM}" report "${RPT_NOPLAN}" >"${TMP}/out" 2>"${TMP}/err"
+after="$(metrics_lines)"
+if [ "$before" = "$after" ] && [ -s "$(run_dir "${RPT_NOPLAN}")/report.json" ] &&
+  grep -qE '^T-01 +D-01 +succeeded +verified' "${TMP}/out"; then
+  ok "110 a Run with no plan reports without joining the series"
+else
+  no "110 a Run with no plan reports without joining the series" \
+    "series ${before}->${after}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 111. No Run at all is the only thing this verb exits non-zero for, and it is
+#      not the planless case above: a Run with no plan is a Run, and a question
+#      about no Run is not a report with no rows.
+reset
+mv "$(pointer)" "${TMP}/run.away"
+code=0
+"${TEAM}" report >"${TMP}/out" 2>"${TMP}/err" || code=$?
+mv "${TMP}/run.away" "$(pointer)"
+if [ "$code" -eq 1 ]; then
+  ok "111 report with no Run exits 1"
+else
+  no "111 report with no Run exits 1" "exit ${code}: $(head -1 "${TMP}/err")"
+fi
+
+# 112. And a Run id with nothing under it, which is a typo rather than a Run: an
+#      empty table at exit 0 would answer it as though it were real.
+code=0
+"${TEAM}" report R-fixture-nope >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "$code" -eq 1 ]; then
+  ok "112 report on a Run that is not there exits 1"
+else
+  no "112 report on a Run that is not there exits 1" "exit ${code}: $(head -1 "${TMP}/err")"
+fi
+
+echo
+echo "loop: one invocation, and the gates it stops at"
+
+# The loop's own herdr: its panes a file the case writes, its prompts recorded,
+# and every argv line appended to ${TMP}/loop-called — the three prohibitions
+# this verb states are properties of no output, and that record is the only
+# place they can be asserted from.
+#
+# The executor behind `agent prompt` runs nothing. It reads the Run, the Task,
+# the Dispatch, the handoff path and the verify out of its own prompt — the same
+# parse a real executor does — writes the handoff its prompt asked for, and
+# records that verify at exit 0, which is what an honest handoff carries.
+# Whether a verify really passes is `wait`'s question (cases 45-52); whether a
+# Run advances is this section's.
+mkdir -p "${TMP}/loop"
+cat >"${TMP}/loop/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"${TMP}/loop-called"
+
+# The status herdr reports, unless the case staged one that only appears after a
+# prompt has gone out: an agent that answers its first Dispatch and then blocks
+# on the next question.
+pane_state() {
+  if [ -f "${TMP}/loop-status-after-prompt" ] && [ -e "${TMP}/loop-prompted" ]; then
+    cat "${TMP}/loop-status-after-prompt"
+  else
+    printf '%s' "\$1"
+  fi
+}
+
+case "\$1 \$2" in
+  "agent list")
+    printf '{"result":{"agents":['
+    sep=""
+    while IFS=\$'\t' read -r n s p; do
+      [ -n "\$n" ] || continue
+      if [ "\$n" = "-" ]; then nj=null; else nj="\"\$n\""; fi
+      printf '%s{"name":%s,"pane_id":"%s","agent_status":"%s"}' \
+        "\$sep" "\$nj" "\$p" "\$(pane_state "\$s")"
+      sep=","
+    done <"${TMP}/loop-panes"
+    printf ']}}\n'
+    ;;
+  "worktree open")
+    # A new pane, unnamed and working — what a real herdr reports between
+    # \`pane run\` and the \`agent rename\` that names it.
+    seq="\$(cat "${TMP}/loop-seq" 2>/dev/null || echo 0)"
+    seq=\$((seq + 1))
+    printf '%s\n' "\$seq" >"${TMP}/loop-seq"
+    printf -- '-\tworking\twL:p%s\n' "\$seq" >>"${TMP}/loop-panes"
+    printf '{"result":{"workspace":{"workspace_id":"wL:w%s","active_tab_id":"wL:t%s"},"root_pane":{"pane_id":"wL:p%s"},"already_open":false}}\n' \
+      "\$seq" "\$seq" "\$seq"
+    ;;
+  "tab rename" | "pane run" | "pane send-keys") ;;
+  "agent rename")
+    # Naming a pane herdr already had: unnamed and working becomes named and
+    # idle, which is the state \`spawn\` polls for and the state the loop seats
+    # a Dispatch on.
+    awk -F'\t' -v p="\$3" -v n="\$4" 'BEGIN{OFS="\t"} \$3==p{\$1=n; \$2="idle"} {print}' \
+      "${TMP}/loop-panes" >"${TMP}/loop-panes.new"
+    mv "${TMP}/loop-panes.new" "${TMP}/loop-panes"
+    ;;
+  "agent prompt")
+    : >"${TMP}/loop-prompted"
+    [ -e "${TMP}/loop-no-write" ] && exit 0
+    run="\$(printf '%s\n' "\$4" | sed -n 's/^run: //p' | tail -1)"
+    task="\$(printf '%s\n' "\$4" | sed -n 's/^task: //p' | tail -1)"
+    disp="\$(printf '%s\n' "\$4" | sed -n 's/^dispatch: //p' | tail -1)"
+    path="\$(printf '%s\n' "\$4" | awk '/^  .*\/handoffs\/.*\.md\$/ {p=\$0; sub(/^[ \t]+/, "", p)} END{print p}')"
+    cmd="\$(printf '%s\n' "\$4" | awk '/^Your verification command is:\$/ {getline; getline; sub(/^[ \t]+/, ""); print; exit}')"
+    {
+      printf -- '---\n'
+      printf 'run: %s\ntask: %s\ndispatch: %s\n' "\$run" "\$task" "\$disp"
+      printf 'outcome: succeeded\nevidence: verified\nfiles_changed: []\nartifacts: []\n'
+      if [ -e "${TMP}/loop-unproven" ]; then
+        printf 'commands: []\n'
+      else
+        printf 'commands: [{"cmd": "%s", "exit": 0}]\n' "\$cmd"
+      fi
+      printf -- '---\n\n## What was done\n\nFixture.\n\n## What was found\n\nNothing.\n\n## What remains\n\nNothing.\n'
+    } >"\$path"
+    ;;
+  "agent wait")
+    [ -e "${TMP}/loop-slow-wait" ] && exec sleep 300
+    ;;
+  *) exit 9 ;;
+esac
+exit 0
+SH
+chmod +x "${TMP}/loop/herdr"
+
+# spawn's git, in the shape the `--spawn` path asks its questions: a worktree
+# list that reports what `wta` created, and nothing else. The worktree itself is
+# the real one the spawn cases use (67-78) — this case is about which pane the
+# loop draws a Dispatch from, so the stub answers the path question and no more.
+cat >"${TMP}/loop/git" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"${TMP}/loop-git-called"
+case "\$*" in
+  *"worktree list --porcelain"*)
+    printf 'worktree %s\nHEAD x\nbranch refs/heads/main\n' "${DOTFILES}"
+    if [ -f "${TMP}/loop-branches" ]; then
+      while read -r b; do
+        [ -n "\$b" ] || continue
+        printf 'worktree %s/%s\nHEAD x\nbranch refs/heads/%s\n' "${TMP}/loop-wt" "\$b" "\$b"
+      done <"${TMP}/loop-branches"
+    fi
+    ;;
+  *wta*)
+    # \`git wta <branch>\`, which is the shape the loop's spawn uses; the
+    # branch is the last argument whether or not the call carries a -C.
+    last=""
+    for arg in "\$@"; do last="\$arg"; done
+    printf '%s\n' "\$last" >>"${TMP}/loop-branches"
+    ;;
+esac
+exit 0
+SH
+chmod +x "${TMP}/loop/git"
+
+# And the login shell the provider check asks, wrapped the same way the spawn
+# section wraps it: a real zsh with the fixture's provider appended last, so
+# whichever `ccd` row the loop spawns is checked against the check that would
+# really run rather than against a stub's opinion of it.
+cat >"${TMP}/loop/zsh" <<SH
+#!/usr/bin/env bash
+[ "\$1" = "-ic" ] || exec "${REAL_ZSH}" "\$@"
+exec "${REAL_ZSH}" -ic "_cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
+SH
+chmod +x "${TMP}/loop/zsh"
+
+# loop_fresh <"name status"...> — every recording and knob cleared, the live
+# panes set, the Run back to the fixture one. A knob left set by an earlier case
+# would stage the next case's loop without saying so.
+loop_fresh() {
+  local line name st n=1
+  rm -f "${TMP}/loop-called" "${TMP}/loop-prompted" \
+    "${TMP}/loop-seq" "${TMP}/loop-branches" "${TMP}/loop-git-called" \
+    "${TMP}/loop-status-after-prompt" "${TMP}/loop-slow-wait" \
+    "${TMP}/loop-no-write" "${TMP}/loop-unproven"
+  : >"${TMP}/loop-panes"
+  reset
+  for line in "$@"; do
+    name="${line%% *}"
+    st="${line##* }"
+    [ -n "$name" ] || continue
+    printf '%s\t%s\twL:p%s\n' "$name" "$st" "$n" >>"${TMP}/loop-panes"
+    n=$((n + 1))
+  done
+}
+
+# loop_on <want-exit> <stdout-regex> <label> [args...] — one `loop` against the
+# stubs. An empty regex checks the exit code only.
+loop_on() {
+  local want="$1" re="$2" label="$3" code=0
+  shift 3
+  env PATH="${TMP}/loop:${PATH}" "${TEAM}" loop "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif [ -n "$re" ] && ! grep -qE "$re" "${TMP}/out"; then
+    no "$label" "no /${re}/ in: $(tr '\n' '|' <"${TMP}/out")"
+  else
+    ok "$label"
+  fi
+}
+
+# loop_refuse <stderr-regex> <label> [args...] — a `loop` that has to die before
+# it calls herdr at all: a precondition is answered at the door or not at all.
+loop_refuse() {
+  local re="$1" label="$2" code=0
+  shift 2
+  env PATH="${TMP}/loop:${PATH}" "${TEAM}" loop "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -eq 1 ] && grep -qE "$re" "${TMP}/err"; then
+    ok "$label"
+  else
+    no "$label" "exit ${code}: $(head -1 "${TMP}/err")"
+  fi
+}
+
+# called <n> <argv-regex> <label> — how many recorded herdr calls matched. The
+# record is per case, so a case that counts calls counts its own.
+called() {
+  local want="$1" re="$2" label="$3" got=0 calls=""
+  [ -f "${TMP}/loop-called" ] && got="$(grep -cE "$re" "${TMP}/loop-called")"
+  if [ "${got:-0}" -eq "$want" ]; then
+    ok "$label"
+  else
+    [ -f "${TMP}/loop-called" ] && calls="$(tr '\n' '|' <"${TMP}/loop-called")"
+    no "$label" "${got:-0} matched /${re}/: ${calls:-<nothing called>}"
+  fi
+}
+
+# loop_tail <regex> <label> — the last line of the Run's trace, which is the gate
+# the loop returned on: why a stopped Run stopped, kept where a reader of that
+# Run will look rather than only in a pane that has since closed.
+loop_tail() {
+  local re="$1" label="$2" line="" log=""
+  [ -f "$(run_dir "${RUN}")/loop.log" ] && log="$(cat "$(run_dir "${RUN}")/loop.log")"
+  line="$(printf '%s\n' "$log" | tail -1)"
+  if grep -qE "$re" <<<"$line"; then
+    ok "$label"
+  else
+    no "$label" "last line: ${line:-<no loop.log>}"
+  fi
+}
+
+# loop_says <regex> <label> — any line of the Run's trace. The last line is the
+# gate and `loop_tail` reads that; the wave lines above it are what the loop did
+# on the way to the gate, which is what says a gate was reached the long way.
+loop_says() {
+  local re="$1" label="$2" log=""
+  [ -f "$(run_dir "${RUN}")/loop.log" ] && log="$(cat "$(run_dir "${RUN}")/loop.log")"
+  if grep -qE "$re" <<<"$log"; then
+    ok "$label"
+  else
+    no "$label" "no /${re}/ in: $(printf '%s' "$log" | tr '\n' '|')"
+  fi
+}
+
+# loop_err <regex> <label> — a line of what the last `loop` wrote to stderr.
+# Every refusal this verb hands out goes there: stdout is the table a human
+# reads, and a refusal mixed into it would be read as a row.
+loop_err() {
+  local re="$1" label="$2"
+  if grep -qE "$re" "${TMP}/err"; then
+    ok "$label"
+  else
+    no "$label" "no /${re}/ in: $(head -3 "${TMP}/err" | tr '\n' '|')"
+  fi
+}
+
+# 113. The whole of what this verb is for: one invocation drives a plan to the
+#      end of its chain — dispatch, wait, collect, dispatch — and the
+#      orchestrator's turn is spent once instead of once per settle. The chain
+#      here is five Tasks rather than the three the Task was written around,
+#      because `plan-deep.md` is the fixture that already has one and a longer
+#      chain is the stronger claim: a loop that stopped at the first settle ends
+#      this case with one handoff and no wave line for T-02.
+loop_fresh "exec-0001-1 idle"
+plan_for "${RUN}" plan-deep.md
+metrics_before="$(metrics_lines)"
+loop_on 0 '^wave 5: dispatched T-05, waiting$' \
+  "113 one invocation drives a five-Task chain to its end" \
+  --plan "${FIXTURES}/plan-deep.md"
+
+# Every Task's handoff is on disk, where that Task's own prompt said to write
+# it: the stub reads the path out of the prompt, so this checks the prompt's
+# claim against the Run's handoff directory rather than the fixture's memory of
+# where it put things.
+missing=""
+for n in 01 02 03 04 05; do
+  [ -f "$(handoff_dir "${RUN}")/T-${n}-D-01.md" ] || missing="${missing} T-${n}"
+done
+if [ -z "$missing" ]; then
+  ok "113b every Task in the chain has its handoff under the Run"
+else
+  no "113b every Task in the chain has its handoff under the Run" "missing:${missing}"
+fi
+
+# The journal is the dispatcher's, four columns a line: the loop writes no line
+# of its own there, and a Task that settled in wave 1 is not dispatched again in
+# wave 3.
+journal="$(handoff_dir "${RUN}")/.dispatched"
+entries="$(wc -l <"${journal}" 2>/dev/null | tr -d ' ')"
+bad_rows="$(awk -F'\t' 'NF != 4' "${journal}" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${entries:-0}" -eq 5 ] && [ "${bad_rows:-1}" -eq 0 ]; then
+  ok "113c five journal lines, one per Task, four columns each"
+else
+  no "113c five journal lines, one per Task, four columns each" \
+    "lines=${entries:-0} malformed=${bad_rows:-?}"
+fi
+called 5 '^agent prompt exec-0001-1 ' "113d every Dispatch went to the one live pane"
+
+# The trace: a line per wave, and the last line says why it stopped. One pane
+# drives the whole chain — reuse within a lane is the sanctioned kind, and it is
+# what makes a single executor enough for a plan.
+waves="$(grep -c ' dispatched T-0[0-9], waiting$' "$(run_dir "${RUN}")/loop.log")"
+if [ "${waves:-0}" -eq 5 ]; then
+  ok "113e the trace has one line per wave"
+else
+  no "113e the trace has one line per wave" \
+    "${waves:-0} wave lines: $(tr '\n' '|' <"$(run_dir "${RUN}")/loop.log")"
+fi
+loop_tail 'wave 6: nothing ready and nothing running — the Run is complete$' \
+  "113f the trace's last line says the Run is complete"
+
+# `report` ran once on the way out. A Run that ran unattended is exactly the Run
+# whose numbers nobody asked for, so the file and its series line have to be
+# there without being requested.
+if [ -s "$(run_dir "${RUN}")/report.json" ]; then
+  ok "113g the loop wrote report.json on the way out"
+else
+  no "113g the loop wrote report.json on the way out" "no report.json"
+fi
+metrics_after="$(metrics_lines)"
+if [ "$metrics_after" -eq $((metrics_before + 1)) ]; then
+  ok "113h the Run joined the metrics series exactly once"
+else
+  no "113h the Run joined the metrics series exactly once" \
+    "series ${metrics_before}->${metrics_after}"
+fi
+
+# Asked again about the finished Run, the loop stops at the top of the first
+# wave and dispatches nothing: this is `collect`'s 3 read as "complete", which
+# it can only be because nothing was running. The prompt count is the assertion
+# — a second Dispatch at a settled Task is what that would look like.
+loop_on 0 '' "113i a finished Run dispatches nothing when it is asked again" \
+  --plan "${FIXTURES}/plan-deep.md"
+called 5 '^agent prompt ' "113j five Dispatches in total — no Task was dispatched twice"
+expect_collect 3 '^T-05 +done' \
+  "113k collect --plan reads the finished Run as done, exit 3" \
+  --plan "${FIXTURES}/plan-deep.md"
+
+# 114. Exit 3 from `collect` is not "finished". A Run whose only remaining Task
+#      is running reports nothing ready and exits 3, and a loop that read that as
+#      the end would abandon the executor that is still working — the manual step
+#      this verb exists to remove. Staged directly: a Dispatch the journal knows
+#      about with no handoff for it, and a wait the stub never answers, because
+#      exit 4 is reachable at no other point in this verb.
+loop_fresh "exec-0001-1 working"
+sent "${RUN}" T-01 D-01 exec-0001-1
+: >"${TMP}/loop-slow-wait"
+loop_on 4 '' "114 collect exit 3 with a Task still running goes on to the wait" \
+  --plan "${FIXTURES}/plan-deep.md" --timeout 1000
+loop_says 'nothing ready, a Dispatch is still out — waiting' \
+  "114b a running Task with nothing ready takes the wait, not the end"
+loop_err 'wait: --timeout 1000ms expired with nothing settled' \
+  "114c the timeout reached the wait, which is the only place it expires"
+called 1 '^agent wait exec-0001-1 ' "114d the running Task's own agent was waited on"
+
+# 115. A ready row with no pane to put it on. Two executors are up and both are
+#      working, so nothing can move this wave — and the decision the loop hands
+#      back is the one it must not make for itself: spawn a pane, or settle one.
+#      The refusal names the rows, the live panes and the cap, because "no pane
+#      free" without them is a message nobody can act on.
+loop_fresh "exec-0001-1 working" "exec-0001-2 working"
+loop_on 6 'no pane free for them' "115 a ready row with no free pane stops at 6" \
+  --plan "${FIXTURES}/plan-wide.md"
+if grep -qE '^loop: T-01 T-02 T-03 T-04 T-05 ready and no pane free for them — exec-0001-1 exec-0001-2 live \(cap 2\); --spawn <branch-prefix>, or settle one$' \
+  "${TMP}/out"; then
+  ok "115b the refusal names the rows, the live panes and the cap"
+else
+  no "115b the refusal names the rows, the live panes and the cap" \
+    "$(grep -E '^loop: ' "${TMP}/out" | tr '\n' '|')"
+fi
+called 0 '^agent prompt' "115c nothing was dispatched into a pool with no room"
+loop_tail 'gate: exit 6 — a Task is ready and no pane is free — spawn one, or settle one$' \
+  "115d the trace ends at gate 6"
+
+# 116. The other way to 3: a Dispatch is out, and the journal line for it is one
+#      nobody can wait on — the three-column shape an older journal still has,
+#      with no agent in it. `wait` says so and refuses rather than waiting out
+#      the readable half of the journal, and the loop carries that refusal out:
+#      nothing was dispatched this wave, so there is nothing to go round again
+#      for.
+loop_fresh "exec-0001-1 working"
+sent "${RUN}" T-01 D-01
+loop_on 3 '' "116 a Dispatch nobody can wait on stops at 3" \
+  --plan "${FIXTURES}/plan-deep.md"
+called 0 '^agent wait' "116b a journal line with no agent is not waited on"
+loop_err 'nothing waitable' "116c the refusal is the wait's, and says why"
+loop_says 'nothing outstanding to wait for — done or wedged' \
+  "116d the trace says which 3 this is"
+loop_tail 'gate: exit 3 — nothing the loop can dispatch and nothing running' \
+  "116e and ends at the gate that names it"
+
+# 116f. The third way to 3, and the one a reader is most likely to meet: a
+#       handoff that claims success without the row's own verify in it. That
+#       Task is `review` — work for a reviewer no plan row names — and the
+#       dependent behind it stays blocked, so there is nothing to dispatch and
+#       nothing to wait for. The table is printed, because the reviewer's
+#       business is in its cause column.
+loop_fresh "exec-0001-1 idle"
+: >"${TMP}/loop-unproven"
+loop_on 3 'UNVERIFIED' "116f a handoff that cannot prove its verify stops at 3" \
+  --plan "${FIXTURES}/plan-deep.md"
+called 0 '^agent wait' "116g nothing is waited on when nothing was dispatched"
+loop_says 'need a reviewer no plan row names' "116h the trace names what is missing"
+loop_tail 'gate: exit 3 — nothing the loop can dispatch and nothing running' \
+  "116i and ends at the gate that names it"
+
+# 117. A Task that failed. Retry is human-gated — a script that retried a
+#      failure would re-run a verify that has already said no, forever — so the
+#      loop stops at 2 and hands the decision back. The three prohibitions are
+#      asserted here rather than assumed: `settle` is an
+#      `agent prompt <name> /clear` and `teardown` is a `workspace close`, so
+#      both would appear in the same record as the Dispatches, and a second
+#      Dispatch at a failed Task would be a second prompt for T-01.
+loop_fresh "exec-0001-1 idle"
+handoff T-01 "${RUN}" failed tool_error
+loop_on 2 '^T-01 +failed' "117 a failed Task stops the loop at 2" \
+  --plan "${FIXTURES}/plan-ok.md"
+called 0 '^agent prompt' "117b a failed Task is not retried, and nothing is settled"
+called 0 'workspace close' "117c nothing is torn down"
+if [ ! -f "${TMP}/loop-called" ]; then
+  ok "117d the failure was read off the table already in hand, herdr never called"
+else
+  no "117d the failure was read off the table already in hand, herdr never called" \
+    "$(tr '\n' '|' <"${TMP}/loop-called")"
+fi
+if [ ! -f "$(handoff_dir "${RUN}")/T-01-D-02.md" ]; then
+  ok "117e no second Dispatch was journaled for the failed Task"
+else
+  no "117e no second Dispatch was journaled for the failed Task" \
+    "$(tr '\n' '|' <"$(handoff_dir "${RUN}")/.dispatched" 2>/dev/null)"
+fi
+# And read off the source, where a stub cannot help: the day the stub above
+# stopped recording, a body that called settle would still pass every case in
+# this section. The words appear in the section's own comments and in gate 6's
+# message; what is asserted is that neither verb is ever *called*.
+if [ "$(awk '/^loop_wave\(\)/,/^}/' "${TEAM}" | grep -cE '(^|[^_a-z])cmd_(settle|teardown)\b')" -eq 0 ]; then
+  ok "117f the wave's body calls neither settle nor teardown"
+else
+  no "117f the wave's body calls neither settle nor teardown" \
+    "the body names one of them as a call"
+fi
+
+# 118. A precondition failed: the plan cannot be read, so there is nothing to
+#      drive and no Dispatch to make. Exit 1 with herdr never called — the
+#      refusal is `collect`'s, and the loop's job is to carry it out rather than
+#      to work around it.
+loop_fresh "exec-0001-1 idle"
+loop_on 1 '' "118 an unreadable plan stops the loop at 1" --plan "${FIXTURES}/plan-cycle.md"
+if [ ! -f "${TMP}/loop-called" ] && grep -qE '^collect: ' "${TMP}/err"; then
+  ok "118b the refusal is collect's, carried out before anything was called"
+else
+  no "118b the refusal is collect's, carried out before anything was called" \
+    "called=$(tr '\n' '|' <"${TMP}/loop-called" 2>/dev/null) err=$(head -1 "${TMP}/err")"
+fi
+
+# 118c. The same gate by the other route: a journal line nobody can read. The
+#       wave dispatches first, because `dispatch` is what journals — so this is
+#       also the shape of the one case where a malformed journal is met after a
+#       Dispatch rather than before it.
+loop_fresh "exec-0001-1 idle"
+printf '%s\t%s\n' "${RUN}" T-01 >>"$(handoff_dir "${RUN}")/.dispatched"
+loop_on 1 '' "118c an unreadable journal stops the loop at 1" \
+  --plan "${FIXTURES}/plan-ok.md"
+called 1 '^agent prompt ' "118d the wave's Dispatch was made, and then reported"
+loop_err 'not 3 or 4 columns' "118e the refusal is the wait's, and quotes the line"
+loop_says 'wait exit 1' "118f the trace says which refusal stopped it"
+
+# 119. --max-waves bounds a Run that would not end on its own. Two waves of the
+#      chain, then 4 — the same answer as a timeout, because the fact is the
+#      same one: the Run did not stop, the loop did.
+loop_fresh "exec-0001-1 idle"
+loop_on 4 '^wave limit 2 reached' "119 --max-waves stops a Run that is still going" \
+  --plan "${FIXTURES}/plan-deep.md" --max-waves 2
+called 2 '^agent prompt ' "119b exactly the two waves were dispatched"
+loop_tail 'wave limit 2 reached — stopping$' \
+  "119c the trace says the loop stopped, not the Run"
+
+# 120. An agent that goes blocked is holding a question nobody in the Run may
+#      answer. The next move is a human reading that pane, so the loop stops at 5
+#      and names it: a loop that guessed 0 here is what leaves the question
+#      invisible until somebody happens to look at the pane.
+loop_fresh "exec-0001-1 idle"
+: >"${TMP}/loop-no-write"
+printf '%s\n' blocked >"${TMP}/loop-status-after-prompt"
+loop_on 5 '^exec-0001-1 T-01 blocked$' \
+  "120 a blocked agent stops the loop at 5 and is named" --plan "${FIXTURES}/plan-deep.md"
+loop_says 'team\.sh surface exec-0001-1$' "120b the trace names the pane to surface"
+loop_tail 'gate: exit 5 — an agent is blocked on a question' "120c and ends at gate 5"
+
+# 121. A review row draws from the `rev-` pool. `plan-ok.md`'s T-02 is `cc` and
+#      names T-01 in `blocks` — `dispatchable-plan`: "a review is work, so it
+#      gets a row like anything else, with `blocks` naming what it reviews" — so
+#      with T-01 settled it goes to the reviewer while both executors sit idle.
+#      A loop that sent it to an exec pane would be queueing a review behind the
+#      pool it exists to check.
+loop_fresh "exec-0001-1 idle" "exec-0001-2 idle" "rev-t-02 idle"
+handoff T-01 "${RUN}" succeeded verified
+loop_on 0 '^wave 1: dispatched T-02, waiting$' "121 a review row goes to the reviewer" \
+  --plan "${FIXTURES}/plan-ok.md"
+called 1 '^agent prompt rev-t-02 ' "121b the review went to the rev- pane"
+called 0 '^agent prompt exec-0001-1 ' "121c and no executor was used for it"
+called 0 '^agent prompt exec-0001-2 ' "121d nor the other one"
+if awk -F'\t' -v r="${RUN}" \
+  '$1==r && $2=="T-02" && $4=="rev-t-02"{f=1} END{exit !f}' \
+  "$(handoff_dir "${RUN}")/.dispatched"; then
+  ok "121e the journal records which pane holds the review"
+else
+  no "121e the journal records which pane holds the review" \
+    "$(tr '\n' '|' <"$(handoff_dir "${RUN}")/.dispatched")"
+fi
+
+# 122. `--spawn` is opt-in because it creates a worktree. With a ready row and
+#      no pane at all it draws panes from the pool's own name space, spawns the
+#      cap's worth and no more, and then dispatches into them and carries on in
+#      the same invocation — the executor it started is one it waits on, not one
+#      it hands back. `plan-wide.md`'s five rows are independent, so this is
+#      also where the loop reuses a pane it spawned for the next Task in line.
+loop_fresh
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+export FIXTURE_REF HERDR_FIXTURE_KEY
+loop_on 0 '^wave 3: dispatched T-05, waiting$' \
+  "122 --spawn draws panes, dispatches into them and carries on" \
+  --plan "${FIXTURES}/plan-wide.md" --spawn feat/loop
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+called 2 '^worktree open' "122b two panes were spawned, which is the cap"
+branches="$(sort "${TMP}/loop-branches" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+if [ "$branches" = "feat/loop-t-01 feat/loop-t-02" ]; then
+  ok "122c the branches are named for the Tasks they carry, to the cap"
+else
+  no "122c the branches are named for the Tasks they carry, to the cap" \
+    "branches: ${branches:-<none>}"
+fi
+called 5 '^agent prompt ' "122d all five rows were dispatched, three onto reused panes"
+# Five Dispatches through two panes is the reuse; the panes file is the loop's
+# own record of the pool, so it is also where a third pane would have shown up.
+if [ "$(wc -l <"${TMP}/loop-panes" | tr -d ' ')" -eq 2 ] &&
+  grep -qE '^exec-0001-1[[:space:]]' "${TMP}/loop-panes" &&
+  grep -qE '^exec-0001-2[[:space:]]' "${TMP}/loop-panes"; then
+  ok "122e both panes stayed in the pool's name space, and there were only two"
+else
+  no "122e both panes stayed in the pool's name space, and there were only two" \
+    "$(tr '\n' '|' <"${TMP}/loop-panes")"
+fi
+
+# 123. The preconditions, answered before anything is read. `--timeout` is
+#      milliseconds — the unit `wait` takes — and a bare `999` is a
+#      plausible-looking second, which is why the floor exists and why the
+#      refusal names the unit rather than the number.
+loop_fresh "exec-0001-1 idle"
+loop_refuse 'milliseconds' "123 --timeout 999 is refused, and the refusal names the unit" \
+  --plan "${FIXTURES}/plan-deep.md" --timeout 999
+loop_refuse 'plan is required' "123b a loop with no plan is refused" --max-waves 1
+loop_refuse 'branch prefix' "123c --spawn with nothing to name the branch is refused" \
+  --plan "${FIXTURES}/plan-deep.md" --spawn
+if [ ! -f "${TMP}/loop-called" ]; then
+  ok "123d no precondition was answered by calling herdr first"
+else
+  no "123d no precondition was answered by calling herdr first" \
+    "$(tr '\n' '|' <"${TMP}/loop-called")"
+fi
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
