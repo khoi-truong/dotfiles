@@ -18,7 +18,7 @@ When you are done, and ALSO if you fail or are blocked, write exactly one
 handoff file — write it atomically (<name>.md.tmp then mv), keep it under
 150 lines, and do not report by any other means:
 
-  <HANDOFFS>/T-01-D-01.md
+  <ROOT>/runs/R-fixture-0001/handoffs/T-01-D-01.md
 
 ---
 run: R-fixture-0001
@@ -28,12 +28,19 @@ outcome: succeeded | failed | blocked
 cause: null | timeout | blocked_on_approval | tool_error | precondition_failed
 evidence: verified | reported | heuristic | asserted
 files_changed: [path, ...]
+artifacts: [path, ...]
 commands: [{"cmd": "...", "exit": 0}]
 ---
 
 ## What was done
 ## What was found
 ## What remains
+
+'artifacts:' is for documents, not edits: if a skill or workflow you invoke
+writes its own artifact — `/research` under `.omc/research/`, `/plan` under
+`.omc/plans/` — leave it where that workflow put it and list its absolute
+path under `artifacts:`. Do not copy it into the handoff: the handoff is a
+receipt for it, and nothing deletes it.
 
 'evidence: verified' means a command ran and you observed its exit code.
 Anything you have only asserted is 'reported' and will not settle the Task.
