@@ -108,7 +108,7 @@ function cc-providers {
 # panes did not.
 #
 # DEEPSEEK_API_KEY is the 1Password field label: ai/setup.sh dumps that item
-# to ai/env.secrets.zsh as one export per field, under the label verbatim. The
+# to ai/env.local.zsh as one export per field, under the label verbatim. The
 # item is where the name is decided. 1Password stays the place the key is
 # *kept*; this is only about how it is *read* at launch.
 cc_provider deepseek \
