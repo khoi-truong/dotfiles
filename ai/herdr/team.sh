@@ -14,6 +14,7 @@
 # `zsh -ic <wrapper>` instead, and the provider is asserted afterwards.
 #
 #   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
+#   team.sh spawn exec-<run-suffix>-N --branch <b>   # 2 live at once (HERDR_TEAM_EXEC_CAP)
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
 #   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
@@ -46,6 +47,12 @@ require_macos
 ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
+
+# How many `exec-` panes may be live at once. An executor is a worktree, a
+# provider key and an agent that runs work, and the ceiling is the machine's
+# rather than a Run's: two orchestrator tabs in one checkout share all three,
+# so a per-Run count would let each tab start two and call it discipline.
+EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
 
 command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
 command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
@@ -98,6 +105,25 @@ handoffs_dir() { printf '%s\n' "${HERDR_TEAM_HANDOFFS:-${ROOT}/runs/${1}/handoff
 agent_field() {
   herdr agent list 2>/dev/null | jget \
     "next((a.get('$2','') for a in d['result']['agents'] if a.get('name')=='$1'), '')"
+}
+
+# exec_live — the executors live right now, one name per line. Every Run's, not
+# this one's: `EXEC_CAP` is a property of the machine, so a count scoped to the
+# Run in this tab would hand out a third executor behind another tab's back.
+# A name this repo never minted is still counted, because a pane still running
+# work costs what it costs however it was named; the cap is on panes, not on
+# the spelling. Empty output when there are none, so a caller can loop over it.
+#
+# `or ''` because herdr reports a pane whose title was cleared with a null name,
+# which would otherwise be an AttributeError rather than the not-an-executor it
+# is. Whether the key is missing or null differs between panes; both mean the
+# same thing here.
+exec_live() {
+  local names
+  names="$(herdr agent list 2>/dev/null |
+    jget "','.join(a['name'] for a in d['result']['agents'] if (a.get('name') or '').startswith('exec-'))")"
+  [ -n "$names" ] || return 0
+  printf '%s\n' "$names" | tr ',' '\n'
 }
 
 # provider_key <command> — what the login shell says about the key that
@@ -196,6 +222,24 @@ cmd_spawn() {
   if [ -n "$(agent_field "$name" pane_id)" ]; then
     ok "agent ${name} already live — nothing to do"
     return 0
+  fi
+
+  # The executor cap, and the order is the point: the early return above means
+  # this counts *other* live executors, so re-spawning one of a full pool is
+  # still the idempotent no-op it was. Only `exec-` names are capped — a busy
+  # executor pool must never block a `spec-`, `res-` or `rev-` pane, because
+  # those are how a blocked executor gets unblocked. The names go in the
+  # refusal: the caller's next move is to settle one of them, and being told
+  # which is the difference between that and reading `agent list` by hand.
+  if printf '%s' "$name" | grep -q '^exec-'; then
+    local live="" count=0 executor=""
+    while IFS= read -r executor; do
+      [ -n "$executor" ] || continue
+      live="${live:+${live} }${executor}"
+      count=$((count + 1))
+    done <<<"$(exec_live)"
+    [ "$count" -lt "$EXEC_CAP" ] ||
+      die "spawn: ${count} executors already live (${live}) — the cap is ${EXEC_CAP} across every Run; settle one, or raise HERDR_TEAM_EXEC_CAP if this machine can carry another worktree."
   fi
 
   # The provider check, before anything exists to undo. A `ccd` pane launched
@@ -334,7 +378,7 @@ cmd_status() {
   run="$(current_run)" || run=""
   if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
   python3 - "$handoffs" "$run" "$agents_json" <<'PY'
-import glob, json, os, sys
+import glob, json, os, re, sys
 handoffs, run = sys.argv[1], sys.argv[2]
 d = json.loads(sys.argv[3])
 agents = d["result"]["agents"]
@@ -343,8 +387,16 @@ if not agents:
 else:
     w = max(len(a.get("name") or a["pane_id"]) for a in agents)
     for a in sorted(agents, key=lambda a: a["pane_id"]):
-        print("%-*s  %-8s  %-8s  %s" % (
-            w, a.get("name") or a["pane_id"], a["pane_id"],
+        name = a.get("name") or a["pane_id"]
+        # An executor's name says which Run it works: `exec-<run-suffix>-N`, the
+        # suffix being the last field of `R-<date>-<hhmmss>`, so a table holding
+        # three orchestrators' executors reads as three groups instead of a
+        # flat run of `exec-1`. Six digits or nothing: a pane named any other
+        # way — another role, or the older hand-typed `exec-1` — has no Run in
+        # its name, and a guessed one would be worse than the dash.
+        m = re.match(r"^exec-(\d{6})-", name)
+        print("%-*s  %-6s  %-8s  %-8s  %s" % (
+            w, name, m.group(1) if m else "-", a["pane_id"],
             a.get("agent_status", "?"), a.get("cwd", "")))
 if not run:
     print("\nno Run started — team.sh run new")
