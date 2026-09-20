@@ -437,7 +437,8 @@ echo "wait"
 # `wait` blocks on a live pane, which a fixture run does not have, so herdr is
 # stubbed on PATH. One stub per behaviour a real pane can have, and each case
 # picks the one that makes its claim falsifiable rather than merely true.
-mkdir -p "${TMP}/poison" "${TMP}/idle" "${TMP}/stuck" "${TMP}/error"
+mkdir -p "${TMP}/poison" "${TMP}/idle" "${TMP}/stuck" "${TMP}/error" \
+  "${TMP}/ghost" "${TMP}/vanish"
 # Fails and records the call, so a `wait` that reaches herdr when it must not
 # fails loudly instead of quietly passing.
 cat >"${TMP}/poison/herdr" <<SH
@@ -445,24 +446,75 @@ cat >"${TMP}/poison/herdr" <<SH
 printf '%s\n' "\$*" >>"${TMP}/herdr-called"
 exit 1
 SH
+# `wait` looks every outstanding agent up before it blocks on one (T-01), so a
+# stub that does not answer the listing is a precondition failure rather than
+# the behaviour its case is named for. idle, stuck and error therefore share
+# this answer — the journal's two agents, both live — and differ only in what
+# `agent wait` does, which is the axis those cases are about.
+LIVE='{"result":{"agents":[{"name":"exec-1","pane_id":"wM:p1","agent_status":"idle"},{"name":"exec-2","pane_id":"wM:p2","agent_status":"idle"}]}}'
 # Returns at once, the way a pane that just reached a terminal state does.
-cat >"${TMP}/idle/herdr" <<'SH'
+cat >"${TMP}/idle/herdr" <<SH
 #!/usr/bin/env bash
-exit 0
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  *) exit 0 ;;
+esac
 SH
 # Never returns: an agent that has not settled while the caller is watching.
-cat >"${TMP}/stuck/herdr" <<'SH'
+# The listing still answers, so the case measures the clock and not the lookup.
+cat >"${TMP}/stuck/herdr" <<SH
 #!/usr/bin/env bash
-exec sleep 300
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  *) exec sleep 300 ;;
+esac
 SH
-# Fails at once without matching, the shape of a herdr that cannot find the
-# agent the journal names.
-cat >"${TMP}/error/herdr" <<'SH'
+# Fails at once without matching, and the agent is live all the same: herdr's
+# exit code is not a report on the pane's state, which is why `wait` asks the
+# agent rather than reading the settle out of the wait. Case 41 is the point of
+# the split — non-zero wait, readable status, settled.
+cat >"${TMP}/error/herdr" <<SH
 #!/usr/bin/env bash
-exit 3
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  *) exit 3 ;;
+esac
+SH
+# The precondition, from the other side: a journal naming an agent herdr has
+# never heard of. exec-7 is not in the listing, so the outstanding Dispatch
+# cannot be watched at all — and `agent wait` records the call, so a `wait`
+# that blocks on the agent anyway is a failure here rather than a hang.
+cat >"${TMP}/ghost/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  "agent wait") printf '%s\n' "\$*" >>"${TMP}/ghost-waited"; exit 1 ;;
+  *) exit 9 ;;
+esac
+SH
+# The race the empty-status check exists for: the agent resolves when `wait`
+# looks the outstanding Dispatch up, and is gone by the time the winner is
+# asked how it ended. Staged off the wait rather than by counting listings, so
+# the marker lands after the precondition however many times that reads.
+cat >"${TMP}/vanish/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list")
+    if [ -e "${TMP}/vanish-seen" ]; then
+      printf '{"result":{"agents":[]}}\n'
+    else
+      printf '%s\n' '$LIVE'
+    fi
+    ;;
+  "agent wait")
+    : >"${TMP}/vanish-seen"
+    exit 1
+    ;;
+  *) exit 9 ;;
+esac
 SH
 chmod +x "${TMP}/poison/herdr" "${TMP}/idle/herdr" "${TMP}/stuck/herdr" \
-  "${TMP}/error/herdr"
+  "${TMP}/error/herdr" "${TMP}/ghost/herdr" "${TMP}/vanish/herdr"
 
 # T-06: one pane, one knob. `${TMP}/status` is the state that pane is in, and
 # two agents are always live in it — exec-1, who the journal below knows, and
@@ -607,7 +659,11 @@ sent "${RUN}" T-01 D-01 exec-1
 wait_on stuck 4 "" "40 --timeout with nothing settled exits 4, not 3" --timeout 400
 
 # 41. herdr exiting non-zero is reported rather than acted on — its exit codes
-#     on a match and on an expiry are not documented as distinguishable.
+#     on a match and on an expiry are not documented as distinguishable. The
+#     stub's listing names the agent and says idle, so this is also T-01's
+#     decision pinned rather than its bug: a failing wait over a readable
+#     `idle` status is exit 0 and a settle, because the status is what decides
+#     and the exit code is not.
 reset
 sent "${RUN}" T-01 D-01 exec-1
 wait_on error 0 '^exec-1 T-01 settled$' "41 a non-zero herdr still settles and is reported" \
@@ -674,9 +730,10 @@ else
 fi
 
 # 45d. The counterpart, so 5 cannot be a constant: the same stub with the agent
-#      idle is 0 and says settled. A stub that answers no state at all is a
-#      third shape, covered by 34 and 42 — the empty answer has to stay a
-#      settle, or every `idle` case in this section would turn into a 5.
+#      idle is 0 and says settled. A stub that answers *no* status is a third
+#      shape, and since T-01 it is a third answer too: 45f and 45i cover it as
+#      an exit 1, so the empty answer no longer stands in for a settle here —
+#      every stub in this section answers a listing now.
 reset
 sent "${RUN}" T-01 D-01 exec-1
 printf 'idle\n' >"${TMP}/status"
@@ -688,6 +745,42 @@ reset
 sent "${RUN}" T-01 D-01 exec-1
 printf 'done\n' >"${TMP}/status"
 wait_on panes 0 '^exec-1 T-01 settled$' "45e a done agent is still exit 0" --timeout 5000
+
+# 45f. A journal naming an agent herdr has never heard of: the Dispatch cannot
+#      be watched at all, and that is a precondition failure, not a settle and
+#      not a quiet 3. `collect --plan` counts the row because the journal says
+#      so, so the two verbs would disagree about what is out until someone read
+#      the table — which is why the refusal names that reader.
+reset
+sent "${RUN}" T-01 D-01 exec-7
+rm -f "${TMP}/ghost-waited"
+wait_on ghost 1 "" "45f an agent herdr does not know exits 1" --timeout 5000
+if grep -qE 'exec-7' "${TMP}/err" && grep -q 'collect --plan' "${TMP}/err"; then
+  ok "45g the refusal names the agent and the reader that still reports it"
+else
+  no "45g the refusal names the agent and the reader that still reports it" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if [ ! -e "${TMP}/ghost-waited" ]; then
+  ok "45h herdr was never blocked on the unresolved agent"
+else
+  no "45h herdr was never blocked on the unresolved agent" \
+    "agent wait called with: $(tr '\n' '|' <"${TMP}/ghost-waited")"
+fi
+
+# 45i. The race the empty-status check exists for: the agent resolves when the
+#      outstanding Dispatch is looked up and is gone by the time the winner is
+#      asked how it ended. Nothing on disk says how the Dispatch ended, so the
+#      honest answer is 1 — the settle this used to print is the defect.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+wait_on vanish 1 "" "45i an agent that is gone when it is asked exits 1, not 0" --timeout 5000
+if grep -q 'undecided' "${TMP}/err" && [ "$(grep -c 'settled' "${TMP}/out")" -eq 0 ]; then
+  ok "45j the undecided Dispatch says so and prints no settle"
+else
+  no "45j the undecided Dispatch says so and prints no settle" \
+    "err: $(tr '\n' '|' <"${TMP}/err") out: $(tr '\n' '|' <"${TMP}/out")"
+fi
 
 echo
 echo "verify ↔ commands:"

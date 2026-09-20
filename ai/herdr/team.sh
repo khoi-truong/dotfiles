@@ -924,8 +924,8 @@ PY
   # and is correct under either answer. run-tests.sh case 44 stages this window
   # (a python3 that writes the handoff after reading the journal) and fails if
   # the guard goes away, which is what keeps it from being dead code.
-  local task dispatch agent
-  local -a w_task=() w_agent=()
+  local task dispatch agent pane
+  local -a w_task=() w_dispatch=() w_agent=()
   while IFS=$'\t' read -r task dispatch agent; do
     [ -n "$task" ] || continue
     if [ -e "${handoffs}/${task}-${dispatch}.md" ]; then
@@ -936,7 +936,22 @@ PY
       warn "wait: ${task}/${dispatch} has no agent in the journal — skipped"
       continue
     fi
+    # A journal naming an agent herdr has never heard of is a Dispatch this
+    # verb cannot watch, and it is a precondition failure rather than another
+    # skip. `collect --plan` counts the Dispatch because the journal says so —
+    # blocking is a question about the Run — so the two verbs would disagree
+    # about what is out until someone reads the table. Naming the reader is
+    # the point: it is how the orchestrator finds the Dispatch this is about.
+    #
+    # `|| true` because `agent_field` is a pipeline over a herdr that may have
+    # died, and `set -e` would otherwise take the wait with it before it can
+    # say which agent it could not resolve. An agent missing from the listing
+    # is the empty answer, not the failing one, so both are read as unresolved.
+    pane="$(agent_field "$agent" pane_id 2>/dev/null || true)"
+    [ -n "$pane" ] ||
+      die "wait: ${dispatch} for ${task} names ${agent}, which herdr does not know — collect --plan still reports it"
     w_task+=("$task")
+    w_dispatch+=("$dispatch")
     w_agent+=("$agent")
   done <<<"$rows"
 
@@ -1018,10 +1033,26 @@ PY
   # pane — so the honest answer is 5, and the next move is to put that screen
   # in front of them. Guessing 0 here is what left the question invisible until
   # someone happened to look at the pane, which is the manual step this exists
-  # to remove. The lookup is best-effort: an empty answer is not `blocked`, so
-  # a herdr that has gone away reports a settle rather than failing the wait.
+  # to remove.
+  #
+  # An empty answer is a third thing again, and it is not a settle. The read is
+  # empty either because herdr has gone away or because the agent went with it,
+  # and both leave the Dispatch undecided: no handoff was found above, so
+  # nothing on disk says how it ended. The comment here used to argue the other
+  # way — that an empty answer is "not blocked", so a herdr that has gone away
+  # should report a settle rather than failing the wait — and that is the
+  # defect: it turns the one condition the caller most needs to hear about into
+  # a success, and the orchestrator reads a Dispatch with no handoff and no
+  # agent as finished. Exit 1, name the agent, and print no `settled` line.
+  #
+  # `|| true`: the failure to answer and the empty answer are the same case
+  # here, so the non-zero from a herdr that died mid-pipeline must not escape
+  # to `set -e` and exit without the message that says which Dispatch it was.
   local state=""
   state="$(agent_field "${w_agent[$winner]}" agent_status 2>/dev/null || true)"
+  if [ -z "$state" ]; then
+    die "wait: ${w_agent[$winner]} answered no status for ${w_task[$winner]} (${w_dispatch[$winner]}) — the Dispatch is undecided, and collect --plan still reports it"
+  fi
   if [ "$state" = "blocked" ]; then
     printf '%s %s blocked\n' "${w_agent[$winner]}" "${w_task[$winner]}"
     warn "wait: ${w_agent[$winner]} is blocked on a question — team.sh surface ${w_agent[$winner]}"
