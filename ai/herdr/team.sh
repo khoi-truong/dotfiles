@@ -18,7 +18,8 @@
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
 #   team.sh run [new]
 #   team.sh status
-#   team.sh collect [<run-id>]
+#   team.sh collect [<run-id>] [--plan <plan.md>]
+#   team.sh plan lint <plan.md>
 #   team.sh settle <name> <reuse|retain|release>
 #   team.sh teardown <name> [--force]
 #
@@ -34,7 +35,13 @@ require_macos
 # instead of writing fixtures into live state.
 HANDOFFS="${HERDR_TEAM_HANDOFFS:-${DOTFILES}/.omc/handoffs}"
 # The current Run id, so `dispatch` does not have to be told it every time.
-RUN_FILE="${DOTFILES}/.omc/state/team-run"
+# Overridable for the same reason HANDOFFS is: a test that read the developer's
+# live Run would report on whatever they happen to be working on.
+RUN_FILE="${HERDR_TEAM_RUN_FILE:-${DOTFILES}/.omc/state/team-run}"
+# Every real dispatch is journalled here, one `run<TAB>task<TAB>dispatch` line.
+# It is the only durable evidence that a Task was sent out, which is what tells
+# `running` apart from `ready`. The dot keeps it out of the `*.md` handoff glob.
+DISPATCHED="${HANDOFFS}/.dispatched"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
 
@@ -232,8 +239,73 @@ PY
 # Reads outcomes from the handoff files. Never from a transcript: an agent's
 # pane is not the record of what it did.
 
+# handoff_py — the one reader of a handoff's frontmatter, emitted as python
+# source for the same reason plan_parser_py is: `collect`, `collect --plan` and
+# the dispatch gate must agree about what a handoff says.
+handoff_py() {
+  cat <<'PY'
+import os
+
+
+def handoff_meta(path):
+    """One handoff's frontmatter, or None when it has none."""
+    lines = open(path, encoding="utf-8").read().splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    meta = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    return meta
+
+
+def dispatched(handoffs, run):
+    """The highest Dispatch id sent per Task under `run`, from the journal.
+
+    A Task with a record here and no handoff for it is still out with an
+    agent. Nothing else on disk distinguishes that from never dispatched.
+    """
+    sent = {}
+    path = os.path.join(handoffs, ".dispatched")
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return sent
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3 or parts[0] != run:
+            continue
+        task, dispatch = parts[1], parts[2]
+        if dispatch > sent.get(task, ""):
+            sent[task] = dispatch
+    return sent
+PY
+}
+
 cmd_collect() {
-  local run="${1:-}"
+  local run="" plan=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --plan) plan="${2:-}"; shift 2 ;;
+      --) shift; break ;;
+      -*) die "collect: unknown option $1" ;;
+      *) run="$1"; shift ;;
+    esac
+  done
+
+  if [ -n "$plan" ]; then
+    # --plan reports one plan under one Run, so an absent Run falls back to the
+    # current one. Plain `collect` keeps its own rule below: no Run named means
+    # every Run, which is the output it has always produced.
+    [ -n "$run" ] || run="$(current_run)" ||
+      die "collect: no Run started — team.sh run new"
+    cmd_collect_plan "$plan" "$run"
+    return $?
+  fi
+
   python3 - "$HANDOFFS" "$run" <<'PY'
 import glob, os, sys
 handoffs, run = sys.argv[1], sys.argv[2]
@@ -268,6 +340,118 @@ sys.exit(1 if bad else 0)
 PY
 }
 
+# cmd_collect_plan <plan> <run> — one row per Task in the plan, not per
+# handoff, so an orchestrator can pick its next move from the table and the
+# exit code without diffing two lists by hand.
+#
+# It reports and never decides: nothing here writes state or blocks a dispatch.
+#
+#   0  at least one Task is `ready` or `review` — dispatch it
+#   1  the plan is malformed, a handoff is, or there is no Run
+#   2  nothing actionable and at least one Task `failed` — a human must look
+#   3  nothing to do: the Run is finished, or every remaining Task is out
+#      with an agent. Not an error, and not a reason to dispatch.
+#
+# 3 exists so a loop can tell "nothing to dispatch" from "dispatch this"
+# without reading the table back. It is not an invitation to poll: the table
+# says which of the two cases it is, and there is still no `wait` verb.
+cmd_collect_plan() {
+  {
+    plan_parser_py
+    handoff_py
+    cat <<'PY'
+import glob, sys
+
+plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
+plan = os.path.abspath(plan)
+
+parsed = plan_rows(plan)
+if parsed["findings"]:
+    for finding in parsed["findings"]:
+        sys.stderr.write("collect: %s\n" % finding)
+    sys.exit(1)
+
+# Handoffs for this Run, indexed task -> dispatch id -> frontmatter.
+bad, seen = [], {}
+for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
+    name = os.path.basename(path)
+    meta = handoff_meta(path)
+    if meta is None:
+        bad.append((name, "no frontmatter"))
+        continue
+    if meta.get("run") != run:
+        continue
+    missing = [k for k in ("run", "task", "dispatch", "outcome", "evidence") if k not in meta]
+    if missing:
+        bad.append((name, "missing " + ",".join(missing)))
+        continue
+    seen.setdefault(meta["task"], {})[meta["dispatch"]] = meta
+
+sent = dispatched(handoffs, run)
+
+
+def settled_state(tid):
+    """State from this Task's own handoffs, or None when it has none.
+
+    The highest Dispatch id wins. Without that fold a Task that failed at
+    D-01 and was retried to success at D-02 reads `failed` forever, and an
+    orchestrator loop can never terminate.
+    """
+    hs = seen.get(tid)
+    last_sent = sent.get(tid)
+    if not hs:
+        return ("running", last_sent, "dispatched, no handoff yet") if last_sent else None
+    last = max(hs)
+    if last_sent and last_sent > last:
+        return "running", last_sent, "dispatched, no handoff yet"
+    m = hs[last]
+    detail = "%s/%s" % (m["outcome"], m.get("evidence", "-"))
+    if m["outcome"] == "succeeded":
+        # Verified is the only evidence that settles a Task; a claim is work
+        # to dispatch a reviewer at, not a result.
+        return ("done" if m.get("evidence") == "verified" else "review"), last, detail
+    # An agent that reports `blocked` needs a human exactly as a failure does.
+    # The `blocked` state name is already spoken for by the dependency sense.
+    cause = m.get("cause") or ""
+    if cause and cause != "null":
+        detail += " (%s)" % cause
+    return "failed", last, detail
+
+
+states = {}
+for row in parsed["rows"]:
+    states[row["task"]] = settled_state(row["task"])
+
+out = []
+for row in parsed["rows"]:
+    tid = row["task"]
+    known = states[tid]
+    if known:
+        out.append((tid,) + known)
+        continue
+    blocks = row.get("blocks") or []
+    unmet = [b for b in blocks if not states.get(b) or states[b][0] != "done"]
+    if unmet:
+        out.append((tid, "blocked", None, "blocked on %s" % " ".join(unmet)))
+    else:
+        out.append((tid, "ready", None, "-"))
+
+for tid, state, dispatch, detail in out:
+    print("%-6s %-8s %-6s %s" % (tid, state, dispatch or "-", detail))
+for name, why in bad:
+    print("MALFORMED %s (%s)" % (name, why))
+
+if bad:
+    sys.exit(1)
+if any(s in ("ready", "review") for _, s, _, _ in out):
+    sys.exit(0)
+if any(s == "failed" for _, s, _, _ in out):
+    sys.exit(2)
+sys.exit(3)
+PY
+  } | python3 - "$1" "$2" "$HANDOFFS"
+}
+
 # --- run ------------------------------------------------------------------
 # A Run is one user objective and the namespace every Task and Dispatch hangs
 # off. It outlives panes, so it lives in a file rather than a shell variable.
@@ -292,6 +476,35 @@ cmd_run() {
   esac
 }
 
+# --- plan ------------------------------------------------------------------
+# A thin alias over plan_rows. It owns no parsing of its own: a linter that
+# read the block separately from the dispatcher would eventually bless a plan
+# the dispatcher refuses, or worse, the other way round.
+
+cmd_plan() {
+  case "${1:-}" in
+    lint)
+      shift
+      [ -n "${1:-}" ] || die "plan: lint needs a plan file"
+      {
+        plan_parser_py
+        cat <<'PY'
+plan = os.path.abspath(sys.argv[1])
+findings = plan_rows(plan)["findings"]
+for finding in findings:
+    print(finding)
+if not findings:
+    print("%s: ok" % plan)
+# Every finding at once, where dispatch stops at the first: a planner fixing
+# its own output should not have to run the check seven times.
+sys.exit(1 if findings else 0)
+PY
+      } | python3 - "$1"
+      ;;
+    *) die "plan: expected 'lint'" ;;
+  esac
+}
+
 # --- dispatch --------------------------------------------------------------
 # The completion contract is handed over verbatim, never reconstructed by the
 # orchestrator from memory: that is the whole point of having a command for it.
@@ -311,6 +524,128 @@ next_dispatch() {
   die "dispatch: ${1} has 99 settled dispatches — that is a loop, not a retry"
 }
 
+# plan_parser_py — the one reader of a plan's `## Tasks` block, emitted as
+# python source so `dispatch` and every later caller run the same code. Two
+# readers that disagreed about a plan would be a silent unblock.
+plan_parser_py() {
+  cat <<'PY'
+import json, os, re, sys
+
+
+def _cycles(by_id):
+    """Every cycle in `blocks`, as a list of id paths ending where it began."""
+    colour, stack, found = {}, [], []
+
+    def walk(tid):
+        colour[tid] = 1
+        stack.append(tid)
+        for b in sorted(by_id[tid].get("blocks") or []):
+            if b not in by_id:
+                continue
+            if colour.get(b) == 1:
+                found.append(stack[stack.index(b):] + [b])
+            elif colour.get(b) is None:
+                walk(b)
+        stack.pop()
+        colour[tid] = 2
+
+    for tid in sorted(by_id):
+        if colour.get(tid) is None:
+            walk(tid)
+    return found
+
+
+def _masks_exit(verify):
+    """True when `verify` pipes without `set -o pipefail` leading.
+
+    A pipeline exits with its last stage's status, so `… | tail -1` exits 0
+    whatever the check did. An executor observes 0 and claims `evidence:
+    verified` on something that cannot fail, which turns the one invariant
+    the protocol rests on into a rubber stamp. Narrow, and it will flag a
+    deliberate pipeline — the remedy is `set -o pipefail; …`, correct anyway.
+    """
+    if verify.lstrip().startswith("set -o pipefail"):
+        return False
+    quote = ""
+    for ch in verify:
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "|":
+            return True
+    return False
+
+
+def plan_rows(plan):
+    """Read a plan's `## Tasks` block.
+
+    Returns {"rows", "sections", "findings"} and raises nothing: the caller
+    decides whether to stop at the first finding (dispatch) or report them
+    all (plan lint). `findings` are human-readable and carry no prefix, so a
+    caller can name itself.
+    """
+    out = {"rows": [], "sections": [], "findings": []}
+    say = out["findings"].append
+    try:
+        text = open(plan, encoding="utf-8").read()
+    except OSError as e:
+        say("cannot read plan: %s" % e)
+        return out
+
+    m = re.search(r"^## Tasks\s*\n+```json\n(.*?)\n```", text, re.S | re.M)
+    if not m:
+        say("%s has no '## Tasks' json block" % plan)
+        return out
+    try:
+        rows = json.loads(m.group(1))
+    except ValueError as e:
+        say("task block is not valid JSON: %s" % e)
+        return out
+    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
+        say("%s: the task block must be a list of objects" % plan)
+        return out
+
+    out["rows"] = rows
+    out["sections"] = sorted(set(re.findall(r"^### (T-\d{2})\b", text, re.M)))
+    sections = set(out["sections"])
+
+    by_id = {}
+    for r in rows:
+        missing = [k for k in ("task", "files", "verify", "blocks") if k not in r]
+        if missing:
+            say("row %s is missing %s" % (r.get("task", "(unnamed)"), " ".join(missing)))
+        if r.get("task"):
+            by_id[r["task"]] = r
+
+    # A row and its prose section must agree, in both directions: a row with no
+    # section dispatches an executor to read nothing, and a section with no row
+    # is work nobody will ever be sent to do.
+    for tid in sorted(by_id):
+        if tid not in sections:
+            say("%s has a row for %s but no '### %s' section" % (plan, tid, tid))
+    orphans = sorted(sections - set(by_id))
+    if orphans:
+        say("%s has sections with no row: %s" % (plan, " ".join(orphans)))
+
+    for tid in sorted(by_id):
+        dangling = sorted(b for b in (by_id[tid].get("blocks") or []) if b not in by_id)
+        if dangling:
+            say("%s blocks on %s, which has no row" % (tid, " ".join(dangling)))
+
+    for cycle in _cycles(by_id):
+        say("blocks has a cycle: %s" % " -> ".join(cycle))
+
+    for tid in sorted(by_id):
+        if _masks_exit(by_id[tid].get("verify") or ""):
+            say("%s: verify pipes without a leading 'set -o pipefail', so its "
+                "exit code is the last stage's and the check cannot fail" % tid)
+
+    return out
+PY
+}
+
 # plan_body <plan> <task> <run> <force> — the body for a task named in a plan's
 # `## Tasks` block. Prints it on stdout; exits 3 when a blocker is unmet.
 #
@@ -318,53 +653,34 @@ next_dispatch() {
 # plan file itself. The plan lives in the main checkout, which outlives any
 # worktree, so an absolute path stays readable from every pane.
 plan_body() {
-  python3 - "$1" "$2" "$3" "$HANDOFFS" "$4" <<'PY'
-import glob, json, os, re, sys
+  {
+    plan_parser_py
+    handoff_py
+    cat <<'PY'
+import glob
 
 plan, task, run, handoffs, force = sys.argv[1:6]
 plan = os.path.abspath(plan)
-try:
-    text = open(plan, encoding="utf-8").read()
-except OSError as e:
-    sys.exit("dispatch: cannot read plan: %s" % e)
 
-m = re.search(r"^## Tasks\s*\n+```json\n(.*?)\n```", text, re.S | re.M)
-if not m:
-    sys.exit("dispatch: %s has no '## Tasks' json block" % plan)
-try:
-    rows = json.loads(m.group(1))
-except ValueError as e:
-    sys.exit("dispatch: task block is not valid JSON: %s" % e)
+# A malformed plan fails whole, before any pane is spawned, so the linter and
+# the dispatcher can never disagree about whether a document is dispatchable.
+parsed = plan_rows(plan)
+if parsed["findings"]:
+    sys.exit("dispatch: %s" % parsed["findings"][0])
 
-by_id = {r.get("task"): r for r in rows}
+by_id = {r["task"]: r for r in parsed["rows"]}
 row = by_id.get(task)
 if row is None:
     sys.exit("dispatch: %s has no row for %s" % (plan, task))
 
-# A row and its prose section must agree, in both directions: a row with no
-# section dispatches an executor to read nothing, and a section with no row is
-# work nobody will ever be sent to do.
-sections = set(re.findall(r"^### (T-\d{2})\b", text, re.M))
-if task not in sections:
-    sys.exit("dispatch: %s has a row for %s but no '### %s' section" % (plan, task, task))
-orphans = sorted(sections - set(by_id))
-if orphans:
-    sys.exit("dispatch: %s has sections with no row: %s" % (plan, " ".join(orphans)))
-
 # Settled, for this Run only. Task ids restart every Run and handoff filenames
-# carry no Run, so the frontmatter is the only thing that scopes them.
+# carry no Run, so the frontmatter is the only thing that scopes them. This
+# stays out of plan_rows: it is the dispatch gate, not a property of the
+# document.
 settled = set()
 for path in glob.glob(os.path.join(handoffs, "*.md")):
-    meta, lines = {}, open(path, encoding="utf-8").read().splitlines()
-    if not lines or lines[0].strip() != "---":
-        continue
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta[k.strip()] = v.strip()
-    if meta.get("run") != run:
+    meta = handoff_meta(path)
+    if meta is None or meta.get("run") != run:
         continue
     # 'succeeded' at 'reported' is a claim, not a result: it does not settle.
     if meta.get("outcome") == "succeeded" and meta.get("evidence") == "verified":
@@ -394,6 +710,7 @@ if verify:
         "only then claim evidence: verified." % verify)
 print("\n\n".join(body))
 PY
+  } | python3 - "$1" "$2" "$3" "$HANDOFFS" "$4"
 }
 
 cmd_dispatch() {
@@ -492,6 +809,9 @@ EOF
 
   herdr agent prompt "$name" "$prompt" >/dev/null ||
     die "dispatch: herdr refused the prompt (agent blocked?) — read ${name} and retry by hand"
+  # Journalled only once the prompt is away: a refused dispatch never happened,
+  # and recording it would leave `collect --plan` reporting `running` forever.
+  printf '%s\t%s\t%s\n' "$run" "$task" "$dispatch" >>"${DISPATCHED}"
   ok "${run} ${task}/${dispatch} → ${name}; expects ${handoff}"
 }
 
@@ -576,6 +896,7 @@ case "${1:-}" in
   run) shift; cmd_run "$@" ;;
   status) shift; cmd_status "$@" ;;
   collect) shift; cmd_collect "$@" ;;
+  plan) shift; cmd_plan "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;
   -h | --help | help) usage 0 ;;

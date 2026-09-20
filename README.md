@@ -50,7 +50,7 @@ directory, so edits in the repo are live immediately.
 | `ai/claude/*`                                           | `~/.claude/`                            |
 | `ai/copilot/*`                                          | `~/.copilot/`                           |
 | `ai/omp/*`, `ai/shared/skills`, `ai/shared/rules/common.md` (as `AGENTS.md`) | `~/.omp/agent/` |
-| `ai/shared/skills/*`                                    | `~/.claude/skills/`                     |
+| `ai/shared/skills/*` (incl. `herdr-team`, `dispatchable-plan`) | `~/.claude/skills/`              |
 | `ai/herdr/config.toml`                                  | `~/.config/herdr/config.toml`           |
 | `vscode/{settings,keybindings}.json`, `vscode/snippets` | VS Code user dir                        |
 
@@ -376,6 +376,8 @@ ai/herdr/team.sh dispatch exec-1 --task T-01 "…"  # hand over the contract
 ai/herdr/team.sh dispatch exec-1 --task T-01 --from-plan .omc/plans/x.md
 ai/herdr/team.sh status                         # roster and pending handoffs
 ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
+ai/herdr/team.sh collect --plan .omc/plans/x.md # per-task state, exit says what next
+ai/herdr/team.sh plan lint .omc/plans/x.md      # check a plan before dispatching
 ai/herdr/team.sh settle <name> reuse|retain|release
 ai/herdr/team.sh teardown <name> [--force]
 ```
@@ -413,8 +415,30 @@ carry no Run, so a gate that only globs the directory unblocks work with a
 previous Run's result. `--force` overrides it, because retry is human-gated and
 a gate with no key is a trap. A plan with no json block dispatches exactly as
 before. `ai/herdr/fixtures/run-tests.sh` is the only check the embedded parser
-gets — `shellcheck` cannot see inside a heredoc — so run it after touching
-`plan_body`.
+gets — `shellcheck` cannot see inside a heredoc — so run it after touching it.
+
+`plan lint <plan.md>` checks a plan against that format before anything is
+spawned, printing every problem at once: a row with no `### T-nn` section or a
+section with no row, `blocks` naming a task that does not exist, a cycle in
+`blocks`, and a `verify` whose exit code its own pipeline masks. That last one
+is the reason the rest exists — `cmd | tail -1` exits 0 however `cmd` exited,
+so an executor observes 0 and claims `evidence: verified` on a check that
+cannot fail. Lead a piped `verify` with `set -o pipefail`. The format itself is
+documented in the `dispatchable-plan` skill, which is separate from
+`herdr-team` for a routing reason: a planning session never says "herdr", so
+`herdr-team`'s triggers never fire and the format would never reach the session
+that has to produce it.
+
+`collect --plan <plan.md>` is the other direction, and the reason an
+orchestrator does not have to stay in the loop token by token: one row per task
+in the plan rather than one per handoff — `done`, `review`, `failed`,
+`running`, `ready`, `blocked` — with the exit code carrying the decision. **0**
+dispatch something, **1** a human must look, **2** nothing actionable and a
+task failed, **3** nothing to do. Where a task has several handoffs the highest
+`D-nn` wins, so a task retried to success stops reading `failed` forever.
+`running` means dispatched and unanswered, which no handoff file can show, so
+`dispatch` journals each real dispatch to `.omc/handoffs/.dispatched`. Plain
+`collect` is unchanged, including naming no Run meaning every Run.
 
 ## tmux
 

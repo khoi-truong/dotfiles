@@ -83,9 +83,9 @@ judge, so it is never the most expensive thing running. Details in
 
 ## Tooling
 
-`ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `settle`,
-`teardown`. `prefix+alt+t` shows the status table. The script owns topology;
-this skill owns the protocol.
+`ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `plan`,
+`settle`, `teardown`. `prefix+alt+t` shows the status table. The script owns
+topology; this skill owns the protocol.
 
 Only `team.sh` starts an agent. It is the only place that knows `cc` and `ccd`
 are shell functions rather than binaries, which is what keeps work off the
@@ -114,3 +114,15 @@ Three things the table does not say for you:
 - **The Run id lives in a file**, `.omc/state/team-run`, not in the transcript.
   `team.sh run new` mints one and every later `dispatch` reads it. Start a Run
   before dispatching; a compaction or a dead pane then costs nothing.
+
+**`collect --plan <plan.md>` is how the orchestrator picks its next move.** It
+prints one row per task in the plan — `done`, `review`, `failed`, `running`,
+`ready`, `blocked` — and its exit code says what to do without reading the
+table back: **0** dispatch something, **1** a human must look, **2** nothing
+actionable and a task failed, **3** nothing to do. That is the alternative to
+diffing `collect` against the plan by hand every turn, which is the pattern
+`references/cost.md` calls the configuration to avoid. It reports and never
+decides: nothing it does writes state or blocks a dispatch.
+
+The format it reads is the `dispatchable-plan` skill's, and `team.sh plan lint
+<plan.md>` checks a plan against it before anything is spawned.
