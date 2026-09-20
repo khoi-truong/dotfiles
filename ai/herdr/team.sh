@@ -19,6 +19,7 @@
 #   team.sh run [new]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
+#   team.sh wait [<run-id>] [--plan <plan.md>] [--timeout <ms>]
 #   team.sh plan lint <plan.md>
 #   team.sh settle <name> <reuse|retain|release>
 #   team.sh teardown <name> [--force]
@@ -38,9 +39,12 @@ HANDOFFS="${HERDR_TEAM_HANDOFFS:-${DOTFILES}/.omc/handoffs}"
 # Overridable for the same reason HANDOFFS is: a test that read the developer's
 # live Run would report on whatever they happen to be working on.
 RUN_FILE="${HERDR_TEAM_RUN_FILE:-${DOTFILES}/.omc/state/team-run}"
-# Every real dispatch is journalled here, one `run<TAB>task<TAB>dispatch` line.
-# It is the only durable evidence that a Task was sent out, which is what tells
-# `running` apart from `ready`. The dot keeps it out of the `*.md` handoff glob.
+# Every real dispatch is journalled here, one `run<TAB>task<TAB>dispatch<TAB>agent`
+# line. It is the only durable evidence that a Task was sent out, which is what
+# tells `running` apart from `ready`, and the agent column is what `wait` blocks
+# on — a Task id cannot be resolved back to a pane. The dot keeps it out of the
+# `*.md` handoff glob. A line with three columns was written before the agent
+# column existed: still `running`, merely un-waitable.
 DISPATCHED="${HANDOFFS}/.dispatched"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
@@ -271,8 +275,25 @@ def handoff_meta(path):
     return meta
 
 
+def journal_row(line):
+    """(task, dispatch, agent) for a journal line this code can read.
+
+    Three columns is the shape written before `wait` needed a pane to block
+    on: it yields agent None, so a journal from before that change keeps
+    counting as `running` and is merely un-waitable. Four is the current
+    shape. Anything else is None — `dispatched` skips it so one bad line
+    cannot hide a whole Run, and `wait` refuses on it instead.
+    """
+    parts = line.split("\t")
+    if len(parts) == 3:
+        return parts[1], parts[2], None
+    if len(parts) == 4:
+        return parts[1], parts[2], parts[3].strip() or None
+    return None
+
+
 def dispatched(handoffs, run):
-    """The highest Dispatch id sent per Task under `run`, from the journal.
+    """The highest Dispatch id sent per Task under `run`, with its agent.
 
     A Task with a record here and no handoff for it is still out with an
     agent. Nothing else on disk distinguishes that from never dispatched.
@@ -284,13 +305,34 @@ def dispatched(handoffs, run):
     except OSError:
         return sent
     for line in text.splitlines():
-        parts = line.split("\t")
-        if len(parts) != 3 or parts[0] != run:
+        if not line.strip() or line.split("\t")[0] != run:
             continue
-        task, dispatch = parts[1], parts[2]
-        if dispatch > sent.get(task, ""):
-            sent[task] = dispatch
+        row = journal_row(line)
+        if row is None:
+            continue
+        task, dispatch, agent = row
+        if dispatch > sent.get(task, {}).get("dispatch", ""):
+            sent[task] = {"dispatch": dispatch, "agent": agent}
     return sent
+
+
+def journal_malformed(handoffs, run):
+    """Journal lines under `run` that are neither three nor four columns.
+
+    A line this code cannot read is a Dispatch it cannot wait for, so `wait`
+    names them rather than blocking on the rest: silently waiting for a
+    subset is how an orchestrator loop stalls with work outstanding.
+    """
+    bad = []
+    path = os.path.join(handoffs, ".dispatched")
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return bad
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.strip() and line.split("\t")[0] == run and journal_row(line) is None:
+            bad.append((n, line))
+    return bad
 PY
 }
 
@@ -363,7 +405,8 @@ PY
 #
 # 3 exists so a loop can tell "nothing to dispatch" from "dispatch this"
 # without reading the table back. It is not an invitation to poll: the table
-# says which of the two cases it is, and there is still no `wait` verb.
+# says which of the two cases it is, and `wait` is how an orchestrator blocks
+# until there is a table to read.
 cmd_collect_plan() {
   {
     plan_parser_py
@@ -407,7 +450,7 @@ def settled_state(tid):
     orchestrator loop can never terminate.
     """
     hs = seen.get(tid)
-    last_sent = sent.get(tid)
+    last_sent = sent.get(tid, {}).get("dispatch")
     if not hs:
         return ("running", last_sent, "dispatched, no handoff yet") if last_sent else None
     last = max(hs)
@@ -459,6 +502,180 @@ if any(s == "failed" for _, s, _, _ in out):
 sys.exit(3)
 PY
   } | python3 - "$1" "$2" "$HANDOFFS"
+}
+
+# --- wait ------------------------------------------------------------------
+# The "something happens" step of the orchestrator loop: block until one
+# outstanding Dispatch under this Run reaches a terminal agent state, then
+# return. It reports nothing about an outcome — `collect --plan` reads the
+# table afterwards, and deciding is its job, not this one's.
+#
+#   0  an agent reached a terminal state, or a handoff appeared — collect
+#   1  no Run, a malformed journal, or a precondition failed
+#   3  nothing outstanding to wait for — the same "nothing to do" as collect
+#   4  --timeout expired with nothing settled
+#
+# 4 is not 3 because a timeout is a checkpoint, not a result (SKILL.md rule 3):
+# absence is never evidence, so "I waited and nothing happened" has to be
+# tellable apart from "there was nothing to wait for".
+#
+# Outstanding is the fold `running` already uses in cmd_collect_plan — the
+# highest Dispatch sent per Task with no handoff file yet — read through
+# dispatched(), so the two verbs cannot come to disagree about what is out.
+cmd_wait() {
+  local run="" timeout=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      # Accepted and dropped: blocking is a question about the Run, not about
+      # the plan. Taken at all so `wait` and `collect --plan` read alike in a
+      # loop.
+      --plan) [ $# -ge 2 ] || die "wait: --plan needs a plan file"; shift 2 ;;
+      --timeout)
+        [ $# -ge 2 ] || die "wait: --timeout needs milliseconds"
+        timeout="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      -*) die "wait: unknown option $1" ;;
+      *) run="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$run" ] || run="$(current_run)" ||
+    die "wait: no Run started — team.sh run new"
+  if [ -n "$timeout" ]; then
+    printf '%s' "$timeout" | grep -qE '^[0-9]+$' ||
+      die "wait: --timeout takes milliseconds, got: ${timeout}"
+  fi
+
+  # A journal line this code cannot read is a Dispatch it cannot watch, so it
+  # is named and refused rather than skipped: waiting out the readable half of
+  # a journal is how an orchestrator stalls with work still outstanding.
+  local rows
+  rows="$(
+    {
+      handoff_py
+      cat <<'PY'
+import os, sys
+
+handoffs, run = sys.argv[1], sys.argv[2]
+
+bad = journal_malformed(handoffs, run)
+for line_no, text in bad:
+    sys.stderr.write("wait: journal line %d is not 3 or 4 columns: %s\n"
+                      % (line_no, text))
+if bad:
+    sys.exit(1)
+
+for task, rec in sorted(dispatched(handoffs, run).items()):
+    path = os.path.join(handoffs, "%s-%s.md" % (task, rec["dispatch"]))
+    if not os.path.exists(path):
+        print("%s\t%s\t%s" % (task, rec["dispatch"], rec["agent"] or ""))
+PY
+    } | python3 - "$HANDOFFS" "$run"
+  )" || exit $?
+
+  if [ -z "$rows" ]; then
+    warn "wait: nothing outstanding under ${run} — collect --plan reads the table"
+    return 3
+  fi
+
+  # One look at each handoff before blocking. A herdr subscription does not
+  # replay (SKILL.md), so a wait started after the agent it names is already
+  # terminal is the one way this verb could hang forever — an executor that
+  # finished while the journal above was being read has its handoff on disk
+  # already, and that is evidence enough to return on. Could not observe which
+  # way herdr behaves here: a fixture run has no live pane, so the guard stays
+  # and is correct under either answer. run-tests.sh case 44 stages this window
+  # (a python3 that writes the handoff after reading the journal) and fails if
+  # the guard goes away, which is what keeps it from being dead code.
+  local task dispatch agent
+  local -a w_task=() w_agent=()
+  while IFS=$'\t' read -r task dispatch agent; do
+    [ -n "$task" ] || continue
+    if [ -e "${HANDOFFS}/${task}-${dispatch}.md" ]; then
+      printf '%s %s settled\n' "${agent:--}" "$task"
+      return 0
+    fi
+    if [ -z "$agent" ]; then
+      warn "wait: ${task}/${dispatch} has no agent in the journal — skipped"
+      continue
+    fi
+    w_task+=("$task")
+    w_agent+=("$agent")
+  done <<<"$rows"
+
+  # Bash 3.2 is what this repo runs (/bin/bash), and it has no `wait -n`, so
+  # the first finisher is found by polling a status file. An empty array
+  # expands to nothing here anyway: every remaining row is un-waitable.
+  if [ "${#w_agent[@]}" -eq 0 ]; then
+    warn "wait: nothing waitable under ${run} — collect --plan still reports them"
+    return 3
+  fi
+
+  # The fan-in: one `herdr agent wait` per outstanding agent, first to finish
+  # wins and the rest are killed. A Run has up to three Dispatch out at once,
+  # and the caller is waiting for one of them, not for all of them.
+  #
+  # The subshell is there to record the exit status, and the status file is
+  # what the poll below reads. `|| rc=$?` rather than a bare call: under
+  # `set -e` a herdr that fails would take the subshell with it and leave no
+  # status behind, which is a wait that never returns. The stderr redirect on
+  # the subshell is for the kill path below, where bash reports a job it had
+  # to kill and there is nothing useful in that report.
+  local status
+  status="$(mktemp -d)"
+  local -a pids=()
+  local i
+  for i in "${!w_agent[@]}"; do
+    (
+      rc=0
+      herdr agent wait "${w_agent[$i]}" --until "idle" --until "done" --until "blocked" \
+        >/dev/null 2>&1 || rc=$?
+      printf '%s\n' "$rc" >"${status}/${i}"
+    ) 2>/dev/null &
+    pids+=("$!")
+  done
+
+  local winner="" tick=0 rc=""
+  while :; do
+    for i in "${!pids[@]}"; do
+      if [ -e "${status}/${i}" ]; then
+        winner="$i"
+        break
+      fi
+    done
+    if [ -n "$winner" ]; then break; fi
+    if [ -n "$timeout" ] && [ "$tick" -ge "$timeout" ]; then break; fi
+    sleep 0.2
+    tick=$((tick + 200))
+  done
+
+  # Whatever is still waiting is killed: one settled Dispatch is what was
+  # asked for. The herdr wait goes first — killing the subshell around it
+  # would orphan a live subscription with nobody left to read it — and the
+  # `wait` reaps the job, which is what keeps bash from announcing the kill.
+  for i in "${!pids[@]}"; do
+    pkill -P "${pids[$i]}" 2>/dev/null || true
+    kill "${pids[$i]}" 2>/dev/null || true
+    wait "${pids[$i]}" 2>/dev/null || true
+  done
+
+  if [ -z "$winner" ]; then
+    rm -rf "${status}"
+    warn "wait: --timeout ${timeout}ms expired with nothing settled under ${run}"
+    return 4
+  fi
+
+  rc="$(cat "${status}/${winner}")"
+  rm -rf "${status}"
+  printf '%s %s settled\n' "${w_agent[$winner]}" "${w_task[$winner]}"
+  # herdr's exit codes on a match and on an expiry are not documented as
+  # distinguishable (T-01), so a non-zero one is reported rather than acted
+  # on: the caller is going to `collect --plan` either way.
+  [ "$rc" = "0" ] ||
+    warn "wait: herdr agent wait for ${w_agent[$winner]} exited ${rc}"
+  return 0
 }
 
 # --- run ------------------------------------------------------------------
@@ -820,7 +1037,9 @@ EOF
     die "dispatch: herdr refused the prompt (agent blocked?) — read ${name} and retry by hand"
   # Journalled only once the prompt is away: a refused dispatch never happened,
   # and recording it would leave `collect --plan` reporting `running` forever.
-  printf '%s\t%s\t%s\n' "$run" "$task" "$dispatch" >>"${DISPATCHED}"
+  # The agent goes in as the fourth column so `wait` knows which pane this
+  # Dispatch is on.
+  printf '%s\t%s\t%s\t%s\n' "$run" "$task" "$dispatch" "$name" >>"${DISPATCHED}"
   ok "${run} ${task}/${dispatch} → ${name}; expects ${handoff}"
 }
 
@@ -905,6 +1124,7 @@ case "${1:-}" in
   run) shift; cmd_run "$@" ;;
   status) shift; cmd_status "$@" ;;
   collect) shift; cmd_collect "$@" ;;
+  wait) shift; cmd_wait "$@" ;;
   plan) shift; cmd_plan "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;
