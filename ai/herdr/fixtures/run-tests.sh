@@ -1318,7 +1318,15 @@ cat >"${TMP}/settle/herdr" <<SH
 printf '%s\n' "\$*" >>"${TMP}/settle-called"
 case "\$1 \$2" in
   "agent list")
-    printf '{"result":{"agents":[{"name":"exec-1","pane_id":"wS:p1","agent_status":"%s"}]}}\n' "\$(cat "${TMP}/settle-status")"
+    # A pane that lost its name is not in the list at all: that is what
+    # agent_field reads as empty, and what the settle-lose-name marker arms. The
+    # resolve of the pane happens before any rename, so a case that arms it
+    # still gets a pane to clear.
+    if [ -e "${TMP}/settle-nameless" ]; then
+      printf '{"result":{"agents":[]}}\n'
+    else
+      printf '{"result":{"agents":[{"name":"exec-1","pane_id":"wS:p1","agent_status":"%s"}]}}\n' "\$(cat "${TMP}/settle-status")"
+    fi
     ;;
   "agent prompt")
     printf '%s\n' "\$*" >>"${TMP}/settle-prompt"
@@ -1335,6 +1343,10 @@ case "\$1 \$2" in
     # one when the case asks it to.
     printf '%s\n' "\$*" >>"${TMP}/settle-rename"
     [ ! -e "${TMP}/settle-rename-fail" ] || exit 1
+    # The settle-lose-name marker is the race itself: the rename is accepted,
+    # and the title reset it is racing lands right after it, so the pane drops
+    # out of agent list and stays out however many times it is renamed.
+    if [ -e "${TMP}/settle-lose-name" ]; then : >"${TMP}/settle-nameless"; fi
     ;;
   "pane report-metadata")
     printf '%s\n' "\$*" >>"${TMP}/settle-meta"
@@ -1357,11 +1369,18 @@ chmod +x "${TMP}/settle/herdr"
 # pre-check cannot see, so the refusal has to come from the helper. That is the
 # case where "the record was written after the clear" is the whole difference.
 # `norename` is its counterpart one call later — the send lands and the name
-# will not come back.
+# will not come back. `lose` is the race itself: the rename is taken and the
+# title reset undoes it, so the pane goes nameless and stays that way.
+#
+# A case may shorten the confirmation's deadline for its own run by prefixing
+# the call — `HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT=2 settle_on lose ...` — the way
+# case 96 raises the executor cap. The default is 15s, so the one case that
+# reaches it would otherwise spend that long failing on purpose.
 settle_on() {
   local status="$1" want="$2" re="$3" label="$4" code=0
   shift 4
-  rm -f "${TMP}/settle-refuse" "${TMP}/settle-rename-fail"
+  rm -f "${TMP}/settle-refuse" "${TMP}/settle-rename-fail" \
+    "${TMP}/settle-lose-name" "${TMP}/settle-nameless"
   case "$status" in
     refuse)
       printf 'idle\n' >"${TMP}/settle-status"
@@ -1370,6 +1389,10 @@ settle_on() {
     norename)
       printf 'idle\n' >"${TMP}/settle-status"
       : >"${TMP}/settle-rename-fail"
+      ;;
+    lose)
+      printf 'idle\n' >"${TMP}/settle-status"
+      : >"${TMP}/settle-lose-name"
       ;;
     *)
       printf '%s\n' "$status" >"${TMP}/settle-status"
@@ -1530,6 +1553,20 @@ else
 fi
 asked '^(agent list|agent prompt exec-1 /clear|agent rename wS:p1 exec-1|pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=1)$' \
   "83d and the clear, the rename and the record are all it did"
+# 83e. The confirmation, which is the half of 83 the recordings cannot see: the
+#      pane is read back twice *after* the rename. A settle that assumed the
+#      binding — or confirmed it before renaming — leaves four reads without
+#      that ordering, and the count is what separates the exit code, which is 0
+#      either way, from the work. Four is the two reads a clear already makes
+#      (who the agent is, whether it is blocked) plus the confirming pair.
+if [ "$(grep -c '^agent list$' "${TMP}/settle-called")" -eq 4 ] &&
+  [ "$(awk '/^agent rename wS:p1 exec-1$/ { r=NR } /^agent list$/ { l=NR }
+              END { print (r && l > r) ? "after" : "wrong" }' "${TMP}/settle-called")" = "after" ]; then
+  ok "83e and the pane is read back twice after the rename"
+else
+  no "83e and the pane is read back twice after the rename" \
+    "$(tr '\n' '|' <"${TMP}/settle-called")"
+fi
 
 # 84. The rename belongs to the clear and not to reuse: a pane whose transcript
 #     is intact keeps the name it already has, untouched.
@@ -1555,6 +1592,57 @@ else
 fi
 untouched meta "85d and no decision at all, for a pane that lost its name"
 recorded sent '^/clear$' "85e the clear itself did go out first"
+
+# T-02. The race 85 cannot reach, because 85's stub refuses the rename: here
+# herdr *takes* it and the title reset the clear already put in flight undoes it
+# a beat later. That is the shape the live failure had — the rename returned 0,
+# the pane went nameless, and the next `dispatch` died on the name. Nothing
+# orders the two processes, so the answer is to read the binding back, and the
+# only interesting question is what happens when the read says no.
+#
+# The deadline is shortened for the case: reaching it is the point, and 15s of
+# waiting to reach a failure whose shape is known buys nothing. What the case
+# asserts is the shape — non-zero, nothing recorded, a remedy named — not how
+# long the pane was given to prove itself.
+
+# 85f. The name does not hold, so the reuse did not happen.
+HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT=2 settle_on lose 1 '' \
+  "85f a name that does not hold is not a reuse" exec-1 reuse --clear
+if grep -q 'would not hold' "${TMP}/err" &&
+  grep -q 'agent rename wS:p1 exec-1' "${TMP}/err"; then
+  ok "85g and the refusal says which pane, and the command that fixes it"
+else
+  no "85g and the refusal says which pane, and the command that fixes it" \
+    "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -q 'settled' "${TMP}/out"; then
+  no "85h no settle is printed for a pane it could not bind" "$(tr '\n' '|' <"${TMP}/out")"
+else
+  ok "85h no settle is printed for a pane it could not bind"
+fi
+untouched meta "85i and no decision, and no cleared=1, is recorded for it"
+# 85j. The retry, which is what separates a confirmed binding from a rename that
+#      happened to return 0: a failed pair re-renames and re-reads rather than
+#      giving up on the first read.
+if [ -f "${TMP}/settle-rename" ] &&
+  [ "$(grep -c '^agent rename wS:p1 exec-1$' "${TMP}/settle-rename")" -ge 2 ]; then
+  ok "85j and the rename goes out again when a pair fails"
+else
+  no "85j and the rename goes out again when a pair fails" \
+    "$(if [ -f "${TMP}/settle-rename" ]; then tr '\n' '|' <"${TMP}/settle-rename"; else echo 'nothing recorded'; fi)"
+fi
+# 85k. And the deadline is the source's to set, which is what lets this case run
+#      at all: the constant is the default, the environment is the override. Two
+#      greps rather than one pattern, so the dollar sign of the expansion never
+#      has to sit inside a single-quoted string where shellcheck reads it as a
+#      mistake rather than as the literal being matched.
+if grep -q '^CLEAR_CONFIRM_TIMEOUT=' "${TEAM}" &&
+  grep -q 'HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15' "${TEAM}"; then
+  ok "85k the confirmation deadline defaults to 15s and is overridable"
+else
+  no "85k the confirmation deadline defaults to 15s and is overridable" \
+    "$(grep -n 'CLEAR_CONFIRM_TIMEOUT=' "${TEAM}" | tr '\n' '|')"
+fi
 
 echo
 echo "the state root: one Run per key"

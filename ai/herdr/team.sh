@@ -54,6 +54,13 @@ DETECT_TIMEOUT=60
 # so a per-Run count would let each tab start two and call it discipline.
 EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
 
+# How long a clear may spend proving the pane took its name back. A rename that
+# holds answers on the first read pair, so this is only ever reached by a pane
+# that lost its name — and spending it there buys the difference between a
+# nameless pane and a recorded decision that says one is ready to dispatch to.
+# Overridable so a test can drive the expiry without waiting it out.
+CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
+
 command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
 command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
 
@@ -1621,6 +1628,36 @@ EOF
 # send rather than living in `spawn` alone: /clear resets the terminal title,
 # the title carries the name, and a reused pane without a name is a pane the
 # next `dispatch` cannot address at all.
+#
+# One rename cannot close that, because the race is between two processes and
+# nothing orders them. `agent prompt` returns when the keys are away; the pane
+# processes the clear after that, and the title reset lands last — so a rename
+# issued the instant the send returns can be undone by the very clear it is
+# meant to survive. Measured: a cycle that ran `settle` straight into `dispatch`
+# with no pause between them lost the name *after* the dispatch had resolved it,
+# while every later cycle, which had a `sleep` in between, kept it. So the
+# binding is confirmed rather than assumed: a rename that returned 0 is not
+# evidence, and a pane that never holds its name is a failure the orchestrator
+# reads, not a decision recorded against a Dispatch that cannot be delivered.
+
+# confirm_clear_binding <pane> <name> — read the pane back twice, a second
+# apart, and require it to answer to its name both times. A read that comes back
+# empty or naming another pane means the reset landed after the rename, so the
+# rename goes out again and the pair is re-read. The loop is bounded by
+# CLEAR_CONFIRM_TIMEOUT and returns 1 when it runs out, which is the only thing
+# a caller can do about a pane that will not hold its name. Reads are harmless:
+# a herdr that cannot answer at all is the same answer as an empty one.
+confirm_clear_binding() {
+  local pane="$1" name="$2" start="$SECONDS" first second
+  while [ "$((SECONDS - start))" -lt "$CLEAR_CONFIRM_TIMEOUT" ]; do
+    first="$(agent_field "$name" pane_id)" || true
+    sleep 1
+    second="$(agent_field "$name" pane_id)" || true
+    if [ "$first" = "$pane" ] && [ "$second" = "$pane" ]; then return 0; fi
+    herdr agent rename "$pane" "$name" >/dev/null || return 1
+  done
+  return 1
+}
 
 cmd_settle() {
   local name="${1:-}" decision="${2:-}" clear=0
@@ -1667,8 +1704,15 @@ cmd_settle() {
     # was typed by hand. A clear that loses the name has not finished clearing,
     # so a rename herdr refuses dies here rather than recording a decision that
     # says a nameless pane is ready for the next Dispatch.
+    local remedy="herdr agent rename ${pane} ${name}"
     herdr agent rename "$pane" "$name" >/dev/null ||
-      die "settle: ${name} was cleared but herdr would not take the name back on ${pane} — rename it by hand: herdr agent rename ${pane} ${name}"
+      die "settle: ${name} was cleared but herdr would not take the name back on ${pane} — rename it by hand: ${remedy}"
+    # And the rename returning 0 is not the same as the name holding: the reset
+    # it is racing lands after it, so the binding is read back before anything
+    # is recorded. Both failure modes end in the same place — no decision, no
+    # `cleared=1`, and a remedy the orchestrator can type.
+    confirm_clear_binding "$pane" "$name" ||
+      die "settle: ${name} was cleared but the name would not hold on ${pane} for ${CLEAR_CONFIRM_TIMEOUT}s — rename it by hand: ${remedy}"
     cleared=1
   fi
 
