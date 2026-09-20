@@ -16,7 +16,7 @@
 #   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
-#   team.sh run [new]
+#   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
 #   team.sh wait [<run-id>] [--plan <plan.md>] [--timeout <ms>]
@@ -32,21 +32,18 @@ DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
 . "${DOTFILES}/lib/common.sh"
 require_macos
 
-# Agents are told where to write through HERDR_TEAM_HANDOFFS; honour it here
-# too, so a test run can point the whole script at a throwaway directory
-# instead of writing fixtures into live state.
-HANDOFFS="${HERDR_TEAM_HANDOFFS:-${DOTFILES}/.omc/handoffs}"
-# The current Run id, so `dispatch` does not have to be told it every time.
-# Overridable for the same reason HANDOFFS is: a test that read the developer's
-# live Run would report on whatever they happen to be working on.
-RUN_FILE="${HERDR_TEAM_RUN_FILE:-${DOTFILES}/.omc/state/team-run}"
-# Every real dispatch is journalled here, one `run<TAB>task<TAB>dispatch<TAB>agent`
-# line. It is the only durable evidence that a Task was sent out, which is what
-# tells `running` apart from `ready`, and the agent column is what `wait` blocks
-# on — a Task id cannot be resolved back to a pane. The dot keeps it out of the
-# `*.md` handoff glob. A line with three columns was written before the agent
-# column existed: still `running`, merely un-waitable.
-DISPATCHED="${HANDOFFS}/.dispatched"
+# The state root: every Run this checkout has started, and the pointer naming
+# the one this shell is in. Deliberately not `${DOTFILES}/.omc`, which is OMC's
+# own root: an agent writes OMC artifacts of its own under it, and a Run's
+# handoffs are not one agent's scratch state. Grown beside it instead.
+#
+#   state/run-<key>       the Run this shell is in, written by `run new`
+#   runs/<run-id>/        the Run: its handoffs, and the plan it was cut from
+#   runs/by-plan/<sha1>   plan path → the Run that plan started
+#
+# Overridable, so a test run can point the whole script at a throwaway
+# directory instead of reading and writing live state.
+ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
 
@@ -68,6 +65,34 @@ jget() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(eval(sys.arg
 valid_name() {
   printf '%s' "$1" | grep -qE '^[a-z][a-z0-9_-]{0,31}$'
 }
+
+# run_key — which of this checkout's Runs this shell is standing in. One tab,
+# one key: a second tab is a second Run unless it says otherwise, which is the
+# point of it — two orchestrators working the same plan in two tabs must not
+# take turns overwriting one pointer file.
+#
+# Sanitised to [a-z0-9_-] because it becomes a path component under `state/`:
+# a herdr pane id or a session uuid must not bring directory structure with it.
+run_key() {
+  local key="${HERDR_TEAM_RUN_KEY:-${HERDR_PANE_ID:-${CLAUDE_CODE_SESSION_ID:-}}}"
+  key="$(printf '%s' "$key" | tr '[:upper:]' '[:lower:]' |
+    tr -c '[:lower:][:digit:]_-' '-' |
+    sed -e 's/--*/-/g' -e 's/^-//' -e 's/-$//')"
+  # A shell with none of the three set is still a shell, and `default` is what
+  # it gets: an absent key still has to name something to be in a Run at all.
+  [ -n "$key" ] || key=default
+  printf '%s\n' "$key"
+}
+
+# run_file — this key's pointer to the Run it is in.
+run_file() { printf '%s\n' "${ROOT}/state/run-$(run_key)"; }
+
+# handoffs_dir <run> — that Run's handoffs, and its journal inside them.
+#
+# HERDR_TEAM_HANDOFFS still overrides the directory whole, ignoring the Run:
+# the fixture suite points every case at one throwaway directory through it,
+# and a Run-scoped answer is exactly what it has to be able to replace.
+handoffs_dir() { printf '%s\n' "${HERDR_TEAM_HANDOFFS:-${ROOT}/runs/${1}/handoffs}"; }
 
 # agent_field <name> <key> — empty when the agent does not exist.
 agent_field() {
@@ -214,9 +239,12 @@ cmd_spawn() {
   [ -z "$(git -C "$dir" status --porcelain)" ] ||
     die "spawn: ${dir} is dirty — clean it before dispatching work there"
 
-  # .omc/ is gitignored and a linked worktree's copy dies with the worktree,
-  # so state and handoffs go to the main checkout.
-  mkdir -p "${HANDOFFS}"
+  # .herdr/ is gitignored and a linked worktree's copy dies with the worktree,
+  # so state and handoffs go to the main checkout. The root is all that is
+  # created here: a Run's own handoff directory belongs to the Run, and this
+  # pane does not have one yet — `run new` creates it, and `dispatch` creates
+  # it again for a pane spawned before its Run was.
+  mkdir -p "${ROOT}"
 
   # `worktree open` rather than `workspace create --cwd`: the same directory
   # either way, but this one carries the checkout's provenance, so herdr groups
@@ -258,6 +286,11 @@ cmd_spawn() {
   # exiting, so a hand-restarted `ccd` in the same pane still writes its
   # handoff to the main checkout.
   #
+  # The root, not one Run's handoff directory: the dispatch prompt states the
+  # absolute handoff path every time, so a handoff directory pinned into the
+  # pane is redundant on the success path and wrong the moment a retained pane
+  # is reused by another Run — it would go on naming the Run that spawned it.
+  #
   # `pane run` types the command; it does NOT submit it. Without the Enter the
   # spawn hangs forever and looks exactly like a slow start.
   # omp's config.yml prompts on the `eval` tool, and a per-tool override is
@@ -270,7 +303,7 @@ cmd_spawn() {
     launch="omp --config ${DOTFILES}/ai/omp/executor.yml"
 
   herdr pane run "$pane" \
-    "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_HANDOFFS=${HANDOFFS}; zsh -ic '${launch}'" \
+    "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_ROOT=${ROOT}; zsh -ic '${launch}'" \
     >/dev/null
   herdr pane send-keys "$pane" enter >/dev/null
 
@@ -293,12 +326,17 @@ cmd_spawn() {
 # --- status ----------------------------------------------------------------
 
 cmd_status() {
-  local agents_json
+  local agents_json run="" handoffs=""
   agents_json="$(herdr agent list 2>/dev/null)"
-  python3 - "$HANDOFFS" "$agents_json" <<'PY'
+  # The panes are every Run's, because a pane outlives the Run that spawned it
+  # and the point of the table is to see them all at once. The handoffs below
+  # are one Run's, because a handoff is what one Run's Dispatch wrote.
+  run="$(current_run)" || run=""
+  if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
+  python3 - "$handoffs" "$run" "$agents_json" <<'PY'
 import glob, json, os, sys
-handoffs = sys.argv[1]
-d = json.loads(sys.argv[2])
+handoffs, run = sys.argv[1], sys.argv[2]
+d = json.loads(sys.argv[3])
 agents = d["result"]["agents"]
 if not agents:
     print("no agents")
@@ -308,10 +346,13 @@ else:
         print("%-*s  %-8s  %-8s  %s" % (
             w, a.get("name") or a["pane_id"], a["pane_id"],
             a.get("agent_status", "?"), a.get("cwd", "")))
-pending = sorted(glob.glob(os.path.join(handoffs, "*.md")))
-print("\n%d handoff(s) in %s" % (len(pending), handoffs))
-for p in pending[-10:]:
-    print("  " + os.path.basename(p))
+if not run:
+    print("\nno Run started — team.sh run new")
+else:
+    pending = sorted(glob.glob(os.path.join(handoffs, "*.md")))
+    print("\n%d handoff(s) in %s" % (len(pending), handoffs))
+    for p in pending[-10:]:
+        print("  " + os.path.basename(p))
 PY
 }
 
@@ -366,6 +407,11 @@ def dispatched(handoffs, run):
     agent. Nothing else on disk distinguishes that from never dispatched.
     """
     sent = {}
+    # No directory at all is no journal, and never the one in the caller's
+    # working directory: `surface` asks this with no Run and must not read a
+    # `.dispatched` it happens to be standing next to.
+    if not handoffs:
+        return sent
     path = os.path.join(handoffs, ".dispatched")
     try:
         text = open(path, encoding="utf-8").read()
@@ -415,20 +461,33 @@ cmd_collect() {
   done
 
   if [ -n "$plan" ]; then
-    # --plan reports one plan under one Run, so an absent Run falls back to the
-    # current one. Plain `collect` keeps its own rule below: no Run named means
-    # every Run, which is the output it has always produced.
-    [ -n "$run" ] || run="$(current_run)" ||
+    # --plan reports one plan under one Run, so an absent Run is asked of the
+    # plan first — the by-plan link names the Run that plan started, which need
+    # not be the one this tab is in — and falls back to the key's pointer.
+    # Plain `collect` keeps its own rule below: no Run named means every Run,
+    # which is the output it has always produced.
+    [ -n "$run" ] || run="$(resolve_run "$plan")" ||
       die "collect: no Run started — team.sh run new"
     cmd_collect_plan "$plan" "$run"
     return $?
   fi
 
-  python3 - "$HANDOFFS" "$run" <<'PY'
+  # One directory when a Run is named, or when the fixture suite set an
+  # override; empty means neither, and no Run named is every Run — one
+  # directory per Run in the real layout, and the override's single directory
+  # when there is an override, because that is what the override means.
+  local hdir=""
+  if [ -n "$run" ] || [ -n "${HERDR_TEAM_HANDOFFS:-}" ]; then
+    hdir="$(handoffs_dir "$run")"
+  fi
+  python3 - "$hdir" "${ROOT}/runs" "$run" <<'PY'
 import glob, os, sys
-handoffs, run = sys.argv[1], sys.argv[2]
+handoffs, runs_root, run = sys.argv[1], sys.argv[2], sys.argv[3]
+# A Run id is R-<date>-<time>: globbing that shape cannot pick up a stray
+# directory under runs/ that is not one.
+dirs = [handoffs] if handoffs else sorted(glob.glob(os.path.join(runs_root, "R-*", "handoffs")))
 rows, bad = [], []
-for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
+for path in sorted(p for d in dirs for p in glob.glob(os.path.join(d, "*.md"))):
     lines = open(path, encoding="utf-8").read().splitlines()
     if not lines or lines[0].strip() != "---":
         bad.append((os.path.basename(path), "no frontmatter")); continue
@@ -674,7 +733,7 @@ if any(s == "failed" for _, s, _, _ in out):
     sys.exit(2)
 sys.exit(3)
 PY
-  } | python3 - "$1" "$2" "$HANDOFFS"
+  } | python3 - "$1" "$2" "$(handoffs_dir "$2")"
 }
 
 # --- wait ------------------------------------------------------------------
@@ -701,13 +760,13 @@ PY
 # highest Dispatch sent per Task with no handoff file yet — read through
 # dispatched(), so the two verbs cannot come to disagree about what is out.
 cmd_wait() {
-  local run="" timeout=""
+  local run="" plan="" timeout=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      # Accepted and dropped: blocking is a question about the Run, not about
-      # the plan. Taken at all so `wait` and `collect --plan` read alike in a
-      # loop.
-      --plan) [ $# -ge 2 ] || die "wait: --plan needs a plan file"; shift 2 ;;
+      # Used for one thing and one thing only: resolving the Run, exactly as
+      # `collect --plan` does. It is still not used for deciding what is
+      # outstanding — blocking is a question about the Run, not about the plan.
+      --plan) [ $# -ge 2 ] || die "wait: --plan needs a plan file"; plan="$2"; shift 2 ;;
       --timeout)
         [ $# -ge 2 ] || die "wait: --timeout needs milliseconds"
         timeout="$2"
@@ -719,7 +778,7 @@ cmd_wait() {
     esac
   done
 
-  [ -n "$run" ] || run="$(current_run)" ||
+  [ -n "$run" ] || run="$(resolve_run "$plan")" ||
     die "wait: no Run started — team.sh run new"
   if [ -n "$timeout" ]; then
     printf '%s' "$timeout" | grep -qE '^[0-9]+$' ||
@@ -729,7 +788,8 @@ cmd_wait() {
   # A journal line this code cannot read is a Dispatch it cannot watch, so it
   # is named and refused rather than skipped: waiting out the readable half of
   # a journal is how an orchestrator stalls with work still outstanding.
-  local rows
+  local handoffs rows
+  handoffs="$(handoffs_dir "$run")"
   rows="$(
     {
       handoff_py
@@ -750,7 +810,7 @@ for task, rec in sorted(dispatched(handoffs, run).items()):
     if not os.path.exists(path):
         print("%s\t%s\t%s" % (task, rec["dispatch"], rec["agent"] or ""))
 PY
-    } | python3 - "$HANDOFFS" "$run"
+    } | python3 - "$handoffs" "$run"
   )" || exit $?
 
   if [ -z "$rows" ]; then
@@ -771,7 +831,7 @@ PY
   local -a w_task=() w_agent=()
   while IFS=$'\t' read -r task dispatch agent; do
     [ -n "$task" ] || continue
-    if [ -e "${HANDOFFS}/${task}-${dispatch}.md" ]; then
+    if [ -e "${handoffs}/${task}-${dispatch}.md" ]; then
       printf '%s %s settled\n' "${agent:--}" "$task"
       return 0
     fi
@@ -903,8 +963,11 @@ cmd_surface() {
   # journal line it cannot read: there, an unreadable line is a Dispatch it
   # cannot watch, while here the screen is the answer and refusing to print it
   # would withhold the one thing the human was asked to come and look at.
-  local run="" header=""
+  local run="" handoffs="" header=""
   run="$(current_run)" || run=""
+  # No Run is an empty directory, not a guessed one: the header below says
+  # `unknown` rather than reading some other Run's journal for this agent.
+  if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
   header="$(
     {
       handoff_py
@@ -925,7 +988,7 @@ if not rows:
     sys.stderr.write("surface: no journal line under %s names %s\n"
                       % (run or "(no Run)", agent))
 PY
-    } | python3 - "$HANDOFFS" "$run" "$name"
+    } | python3 - "$handoffs" "$run" "$name"
   )"
   printf 'Agent: %s\n%s\n' "$name" "$header"
 
@@ -937,10 +1000,56 @@ PY
 
 # --- run ------------------------------------------------------------------
 # A Run is one user objective and the namespace every Task and Dispatch hangs
-# off. It outlives panes, so it lives in a file rather than a shell variable.
+# off. It outlives panes, so it lives on disk: a directory per Run under
+# ${ROOT}/runs, and a pointer per key naming the one this shell is in — which
+# is what makes two tabs two Runs rather than two writers of one file.
 
+# current_run — the Run this key is in, or nothing.
 current_run() {
-  [ -s "${RUN_FILE}" ] && cat "${RUN_FILE}"
+  local f
+  f="$(run_file)"
+  [ -s "$f" ] && cat "$f"
+}
+
+# plan_path <plan> — the one spelling of one plan file. Real, not just
+# absolute: on macOS `mktemp -d` hands back a `/var/...` path and python's
+# os.path.abspath resolves the *cwd* through that symlink, so the same file
+# reached from two shells would otherwise be two plans and could start two
+# Runs — the thing the by-plan link exists to prevent. Python rather than the
+# shell for the same reason: it is the expression the plan's readers use.
+plan_path() {
+  python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1"
+}
+
+# plan_key <plan-path> — the by-plan key. sha1 of that one spelling, so a plan
+# reached by two spellings is one plan, and one plan file is one Run.
+plan_key() { printf '%s' "$1" | shasum -a 1 | awk '{print $1}'; }
+
+# run_for_plan <plan> — the Run that plan started, when it has one and that Run
+# is still on disk. Silent and non-zero otherwise, including for a link whose
+# Run was removed: the caller's next move is the key's pointer in every one of
+# those cases, and an error would turn a fallback into a failure.
+run_for_plan() {
+  local id
+  id="$(cat "${ROOT}/runs/by-plan/$(plan_key "$(plan_path "$1")")" 2>/dev/null || true)"
+  if [ -n "$id" ] && [ -d "${ROOT}/runs/${id}" ]; then
+    printf '%s\n' "$id"
+    return 0
+  fi
+  return 1
+}
+
+# resolve_run <plan> — the Run a verb should use when it was given --plan and
+# no Run of its own. The plan is the more specific statement of what the call
+# is about, so by-plan is asked first; the key's pointer is the fallback, which
+# is what keeps a Run started without --plan behaving exactly as it did.
+resolve_run() {
+  local id
+  if [ -n "${1:-}" ] && id="$(run_for_plan "$1")"; then
+    printf '%s\n' "$id"
+    return 0
+  fi
+  current_run
 }
 
 cmd_run() {
@@ -950,12 +1059,70 @@ cmd_run() {
       run="$(current_run)" || die "run: none started — team.sh run new"
       printf '%s\n' "$run"
       ;;
-    new)
-      mkdir -p "$(dirname "${RUN_FILE}")"
-      date -u '+R-%Y%m%d-%H%M%S' >"${RUN_FILE}"
-      ok "run $(cat "${RUN_FILE}")"
+    list)
+      # Newest last: the ids are timestamps, so the glob's own order is
+      # chronological and nothing has to be sorted.
+      local d
+      for d in "${ROOT}"/runs/R-*; do
+        [ -d "$d" ] || continue
+        printf '%s\n' "${d##*/}"
+      done
       ;;
-    *) die "run: expected 'show' or 'new'" ;;
+    resolve)
+      local id
+      [ -n "${2:-}" ] || die "run: resolve needs a plan file"
+      id="$(run_for_plan "$2")" ||
+        die "run: ${2} has no Run — team.sh run new --plan ${2}"
+      printf '%s\n' "$id"
+      ;;
+    new)
+      shift
+      local plan="" run="" existing="" dir=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --plan)
+            [ $# -ge 2 ] || die "run: --plan needs a plan file"
+            plan="$2"
+            shift 2
+            ;;
+          *) die "run: unknown option $1" ;;
+        esac
+      done
+      # A plan that already has a Run is refused rather than given a second
+      # one. `--plan` is how a verb finds its Run without being told, and two
+      # Runs behind one plan would make that answer whichever was minted
+      # first, silently. The existing id goes to stdout before the refusal, so
+      # the caller's next move — use it — needs nothing retyped.
+      if [ -n "$plan" ] && existing="$(run_for_plan "$plan")"; then
+        printf '%s\n' "$existing"
+        die "run: ${plan} is already Run ${existing} — team.sh run resolve ${plan}"
+      fi
+      # The id is a timestamp to the second, and two tabs minting a Run in the
+      # same second is exactly what a loop over plans does. Sharing the id
+      # would put two Runs in one directory and hand each the other's
+      # handoffs, which is the isolation this layout is for; so wait for the
+      # next second rather than suffix the id, because the shape protocol.md
+      # documents is worth keeping and `run new` is once per objective, never
+      # on a hot path.
+      run="$(date -u '+R-%Y%m%d-%H%M%S')"
+      while [ -e "${ROOT}/runs/${run}" ]; do
+        sleep 1
+        run="$(date -u '+R-%Y%m%d-%H%M%S')"
+      done
+      dir="${ROOT}/runs/${run}"
+      mkdir -p "${dir}/handoffs" "${ROOT}/state"
+      printf '%s\n' "$run" >"$(run_file)"
+      if [ -n "$plan" ]; then
+        # Written down, because a plan's path is the only thing about it that
+        # survives the tab it was started in.
+        plan="$(plan_path "$plan")"
+        printf '%s\n' "$plan" >"${dir}/plan"
+        mkdir -p "${ROOT}/runs/by-plan"
+        printf '%s\n' "$run" >"${ROOT}/runs/by-plan/$(plan_key "$plan")"
+      fi
+      ok "run ${run}"
+      ;;
+    *) die "run: expected 'new', 'show', 'resolve' or 'list'" ;;
   esac
 }
 
@@ -994,17 +1161,18 @@ PY
 # `herdr agent prompt` refuses a blocked agent before sending anything, so an
 # approval dialog is never answered by accident.
 
-# next_dispatch <task> — the lowest D-nn with no handoff file yet. A settled id
-# is never reused, so an existing file means that attempt already happened.
+# next_dispatch <run> <task> — the lowest D-nn with no handoff file yet, under
+# that Run. A settled id is never reused, so an existing file means that
+# attempt already happened.
 next_dispatch() {
-  local n=1
+  local run="$1" task="$2" hdir="" n=1 id
+  hdir="$(handoffs_dir "$run")"
   while [ "$n" -lt 100 ]; do
-    local id
     id="$(printf 'D-%02d' "$n")"
-    [ -e "${HANDOFFS}/${1}-${id}.md" ] || { printf '%s' "$id"; return 0; }
+    [ -e "${hdir}/${task}-${id}.md" ] || { printf '%s' "$id"; return 0; }
     n=$((n + 1))
   done
-  die "dispatch: ${1} has 99 settled dispatches — that is a loop, not a retry"
+  die "dispatch: ${task} has 99 settled dispatches — that is a loop, not a retry"
 }
 
 # plan_parser_py — the one reader of a plan's `## Tasks` block, emitted as
@@ -1193,11 +1361,11 @@ if verify:
         "only then claim evidence: verified." % verify)
 print("\n\n".join(body))
 PY
-  } | python3 - "$1" "$2" "$3" "$HANDOFFS" "$4"
+  } | python3 - "$1" "$2" "$3" "$(handoffs_dir "$3")" "$4"
 }
 
 cmd_dispatch() {
-  local name="${1:-}" task="" dispatch="" run="" dry=0 plan="" force=0
+  local name="${1:-}" task="" dispatch="" run="" dry=0 plan="" force=0 hdir=""
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1218,13 +1386,14 @@ cmd_dispatch() {
   printf '%s' "$task" | grep -qE '^T-[0-9]{2}$' ||
     die "dispatch: --task must look like T-01"
 
-  [ -n "$run" ] || run="$(current_run)" ||
+  [ -n "$run" ] || run="$(resolve_run "$plan")" ||
     die "dispatch: no Run started — team.sh run new"
-  [ -n "$dispatch" ] || dispatch="$(next_dispatch "$task")"
+  hdir="$(handoffs_dir "$run")"
+  [ -n "$dispatch" ] || dispatch="$(next_dispatch "$run" "$task")"
   printf '%s' "$dispatch" | grep -qE '^D-[0-9]{2}$' ||
     die "dispatch: --dispatch must look like D-01"
 
-  local handoff="${HANDOFFS}/${task}-${dispatch}.md"
+  local handoff="${hdir}/${task}-${dispatch}.md"
   [ ! -e "$handoff" ] ||
     die "dispatch: ${task}/${dispatch} already settled (${handoff}) — use a new Dispatch id"
 
@@ -1246,7 +1415,7 @@ cmd_dispatch() {
   if [ "$dry" -eq 0 ]; then
     [ -n "$(agent_field "$name" pane_id)" ] || die "dispatch: no live agent named ${name}"
   fi
-  mkdir -p "${HANDOFFS}"
+  mkdir -p "${hdir}"
 
   local prompt
   prompt="$(
@@ -1296,7 +1465,7 @@ EOF
   # and recording it would leave `collect --plan` reporting `running` forever.
   # The agent goes in as the fourth column so `wait` knows which pane this
   # Dispatch is on.
-  printf '%s\t%s\t%s\t%s\n' "$run" "$task" "$dispatch" "$name" >>"${DISPATCHED}"
+  printf '%s\t%s\t%s\t%s\n' "$run" "$task" "$dispatch" "$name" >>"${hdir}/.dispatched"
   ok "${run} ${task}/${dispatch} → ${name}; expects ${handoff}"
 }
 

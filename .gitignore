@@ -29,6 +29,7 @@ brew/Brewfile.generated
 
 # Agent/tooling scratch state
 .omc/
+.herdr/
 .ruby-lsp/
 ai/omp/config.yml.lock
 
