@@ -403,6 +403,13 @@ PY
 #   3  nothing to do: the Run is finished, or every remaining Task is out
 #      with an agent. Not an error, and not a reason to dispatch.
 #
+# `done` is a claim the handoff can prove. A Task whose `succeeded`/`verified`
+# handoff does not name the row's own `verify` at exit 0 in its `commands:`
+# reads `review` with UNVERIFIED (or UNPARSED, for a shape nobody can read) in
+# the cause column instead, so the orchestrator sends a reviewer rather than
+# building on it. That changes what this shows and never blocks a dispatch: a
+# false positive from a substring match must not be able to wedge a Run.
+#
 # 3 exists so a loop can tell "nothing to dispatch" from "dispatch this"
 # without reading the table back. It is not an invitation to poll: the table
 # says which of the two cases it is, and `wait` is how an orchestrator blocks
@@ -412,7 +419,7 @@ cmd_collect_plan() {
     plan_parser_py
     handoff_py
     cat <<'PY'
-import glob, sys
+import glob, json, sys
 
 plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 plan = os.path.abspath(plan)
@@ -442,13 +449,54 @@ for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
 sent = dispatched(handoffs, run)
 
 
-def settled_state(tid):
+def unproven(meta, verify):
+    """The cause to report instead of `done`, or None when the handoff proves it.
+
+    A handoff's `commands:` is one JSON object per command the agent ran — the
+    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
+    be one of those commands at exit 0, or the handoff is claiming a check
+    nobody can see; `settled_state` says so rather than showing `done`.
+
+    Substring, not equality: the verify reaches the handoff through an agent,
+    so a `cd` or a quote around it is still the same command. Loose on purpose —
+    a false positive here must not be able to wedge a Run (see the header) — and
+    the exit code is required alongside the command, never instead of it.
+
+    An empty `verify` is the planner saying no command settles this Task. There
+    is nothing to check, so `done` stands.
+    """
+    if not verify:
+        return None
+    raw = meta.get("commands")
+    if raw is None or not raw.strip():
+        # No commands recorded: absent, or present with nothing after the colon.
+        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
+        # rather than UNPARSED — and absence is never evidence.
+        return "UNVERIFIED"
+    try:
+        entries = json.loads(raw)
+    except ValueError:
+        # A handoff written before this contract existed. A human has to be
+        # able to tell a shape they cannot read from a claim that does not hold.
+        return "UNPARSED"
+    if not isinstance(entries, list):
+        return "UNVERIFIED"
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
+            return None
+    return "UNVERIFIED"
+
+
+def settled_state(row):
     """State from this Task's own handoffs, or None when it has none.
 
     The highest Dispatch id wins. Without that fold a Task that failed at
     D-01 and was retried to success at D-02 reads `failed` forever, and an
     orchestrator loop can never terminate.
     """
+    tid = row["task"]
     hs = seen.get(tid)
     last_sent = sent.get(tid, {}).get("dispatch")
     if not hs:
@@ -461,7 +509,15 @@ def settled_state(tid):
     if m["outcome"] == "succeeded":
         # Verified is the only evidence that settles a Task; a claim is work
         # to dispatch a reviewer at, not a result.
-        return ("done" if m.get("evidence") == "verified" else "review"), last, detail
+        if m.get("evidence") != "verified":
+            return "review", last, detail
+        why = unproven(m, row.get("verify") or "")
+        if why:
+            # Not `done` — the row's own verify is not in the handoff — but not
+            # a failure either. `review` is what sends a reviewer at it, and a
+            # dependent stays `blocked` on it rather than building on a claim.
+            return "review", last, "%s %s" % (why, detail)
+        return "done", last, detail
     # An agent that reports `blocked` needs a human exactly as a failure does.
     # The `blocked` state name is already spoken for by the dependency sense.
     cause = m.get("cause") or ""
@@ -472,7 +528,7 @@ def settled_state(tid):
 
 states = {}
 for row in parsed["rows"]:
-    states[row["task"]] = settled_state(row["task"])
+    states[row["task"]] = settled_state(row)
 
 out = []
 for row in parsed["rows"]:
@@ -1015,7 +1071,7 @@ outcome: succeeded | failed | blocked
 cause: null | timeout | blocked_on_approval | tool_error | precondition_failed
 evidence: verified | reported | heuristic | asserted
 files_changed: [path, ...]
-commands: [{cmd: "...", exit: 0}, ...]
+commands: [{"cmd": "...", "exit": 0}]
 ---
 
 ## What was done

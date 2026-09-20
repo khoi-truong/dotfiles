@@ -44,21 +44,33 @@ no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); }
 # A case the environment cannot run is not a case that passed. Say so.
 sk() { printf '  skip %s\n    %s\n' "$1" "$2"; skip=$((skip + 1)); }
 
-# handoff <task> <run> <outcome> <evidence> [dispatch] — one fixture handoff.
-handoff() {
-  local d="${5:-D-01}"
-  cat >"${HERDR_TEAM_HANDOFFS}/${1}-${d}.md" <<EOF
----
-run: ${2}
-task: ${1}
-dispatch: ${d}
-outcome: ${3}
-evidence: ${4}
----
+# proven <task> — the `commands:` body that proves plan-ok.md's verify for that
+# task: what an honest handoff carries. It mirrors the fixture plan, so a change
+# there has to come here too — and when it does not, every case expecting `done`
+# fails loudly instead of passing on a stale string.
+proven() {
+  case "$1" in
+    T-01) printf '[{"cmd": "shellcheck -x ai/setup.sh", "exit": 0}]' ;;
+    T-02) printf '[{"cmd": "set -o pipefail; npx markdownlint-cli2 README.md | tail -1", "exit": 0}]' ;;
+    *) printf '[]' ;;
+  esac
+}
 
-## What was done
-Fixture.
-EOF
+# handoff <task> <run> <outcome> <evidence> [dispatch] [commands] — one fixture
+# handoff. `commands` is written verbatim after the colon: the default proves
+# that task's plan-ok verify, `none` writes no commands line at all (absence is
+# never evidence), and the wrong-command, non-zero-exit and pre-contract shapes
+# are what the cases pass in.
+handoff() {
+  local task="$1" d="${5:-D-01}" cmds=""
+  if [ $# -ge 6 ]; then cmds="$6"; else cmds="$(proven "$task")"; fi
+  {
+    printf -- '---\n'
+    printf 'run: %s\ntask: %s\ndispatch: %s\n' "$2" "$task" "$d"
+    printf 'outcome: %s\nevidence: %s\n' "$3" "$4"
+    [ "$cmds" = "none" ] || printf 'commands: %s\n' "$cmds"
+    printf -- '---\n\n## What was done\n\nFixture.\n'
+  } >"${HERDR_TEAM_HANDOFFS}/${task}-${d}.md"
 }
 
 # sent <run> <task> <dispatch> [agent] — one line in the dispatch journal,
@@ -564,6 +576,86 @@ fi
 # 45. The live case: a real pane, a real agent, a real transition.
 sk "45 a live agent settling returns from wait" \
   "a fixture run has no herdr session — drive it by hand: team.sh wait while a dispatched agent works"
+
+echo
+echo "verify ↔ commands:"
+
+# One `commands:` shape per case. Each is the string a handoff puts after
+# `commands: ` — the default, which proves plan-ok's verify, is case 46.
+BAD_EXIT='[{"cmd": "shellcheck -x ai/setup.sh", "exit": 1}]'
+OTHER_CMD='[{"cmd": "shellcheck -x README.md", "exit": 0}]'
+PRE_CONTRACT='[{cmd: "shellcheck -x ai/setup.sh", exit: 0}]'
+
+# 46. The contract holding: the handoff names the row's verify at exit 0.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01
+expect_collect 0 '^T-01 +done +D-01' "46 a proved verify is done" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 47. The same command at a non-zero exit proves nothing. This is the case the
+#     mutation check deletes the `"exit": 0` requirement to break.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$BAD_EXIT"
+expect_collect 0 '^T-01 +review +D-01 +UNVERIFIED' "47 exit 1 is UNVERIFIED, not done" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 48. A handoff full of commands that are not this Task's verify.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$OTHER_CMD"
+expect_collect 0 '^T-01 +review +D-01 +UNVERIFIED' "48 another command is UNVERIFIED" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 49. No commands line at all. Absence is never evidence, and it has to be
+#     tellable apart from 50.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 none
+expect_collect 0 '^T-01 +review +D-01 +UNVERIFIED' "49 an absent commands line is UNVERIFIED" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 50. The shape every handoff written before this task carries. A human has to
+#     be able to tell it from a claim that does not hold — hence UNPARSED.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$PRE_CONTRACT"
+expect_collect 0 '^T-01 +review +D-01 +UNPARSED' "50 an unquoted-key commands line is UNPARSED" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 51. An empty verify is the planner's own choice: nothing to check, done
+#     stands — even with no commands line to check against, which is 49's shape
+#     read as a result. Nothing actionable follows, so the exit is 3.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 none
+expect_collect 3 '^T-01 +done +D-01' "51 an empty verify needs no commands entry" \
+  --plan "${FIXTURES}/plan-empty-verify.md"
+
+# 52. The case the whole task exists for: a dependent of an UNVERIFIED Task
+#     waits, because `done` is the only state that unblocks anything.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$BAD_EXIT"
+expect_collect 0 '^T-02 +blocked +- +blocked on T-01' \
+  "52 a dependent of an UNVERIFIED Task is blocked, not ready" \
+  --plan "${FIXTURES}/plan-ok.md"
+if grep -qE '^T-01 +review +D-01 +UNVERIFIED' "${TMP}/out"; then
+  ok "52b the blocker itself reads UNVERIFIED"
+else
+  no "52b the blocker itself reads UNVERIFIED" "$(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 53. The prompt's golden line is the contract this check reads: quoted keys on
+#     one line, and a value json.loads accepts. A multi-line value would break
+#     the line-oriented frontmatter parser, which is why it stays one line.
+cmds="$(grep -m1 '^commands: ' "${FIXTURES}/golden/T-01-dispatch.prompt" | sed 's/^commands: //')"
+if [ -n "$cmds" ] && printf '%s' "$cmds" | python3 -c '
+import json, sys
+entries = json.load(sys.stdin)
+ok = (isinstance(entries, list) and entries and isinstance(entries[0], dict)
+      and "cmd" in entries[0] and entries[0]["exit"] == 0)
+sys.exit(0 if ok else 1)
+'; then
+  ok "53 the golden prompt's commands: line is JSON the check can read"
+else
+  no "53 the golden prompt's commands: line is JSON the check can read" \
+    "value: ${cmds:-<none>}"
+fi
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
