@@ -349,10 +349,12 @@ PY
 #   0  at least one Task is `ready` or `review` — dispatch it
 #   1  the plan is malformed, a handoff is, or there is no Run
 #   2  nothing actionable and at least one Task `failed` — a human must look
+#   3  nothing to do: the Run is finished, or every remaining Task is out
+#      with an agent. Not an error, and not a reason to dispatch.
 #
-# Nothing actionable with nothing failed is also 0: the Run is finished, or
-# every remaining Task is out with an agent. The table says which, and there
-# is no `wait` verb to hand that case off to.
+# 3 exists so a loop can tell "nothing to dispatch" from "dispatch this"
+# without reading the table back. It is not an invitation to poll: the table
+# says which of the two cases it is, and there is still no `wait` verb.
 cmd_collect_plan() {
   {
     plan_parser_py
@@ -443,7 +445,9 @@ if bad:
     sys.exit(1)
 if any(s in ("ready", "review") for _, s, _, _ in out):
     sys.exit(0)
-sys.exit(2 if any(s == "failed" for _, s, _, _ in out) else 0)
+if any(s == "failed" for _, s, _, _ in out):
+    sys.exit(2)
+sys.exit(3)
 PY
   } | python3 - "$1" "$2" "$HANDOFFS"
 }

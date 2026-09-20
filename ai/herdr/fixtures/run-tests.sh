@@ -243,7 +243,15 @@ expect_collect 0 '^T-01 +review' "15 succeeded/reported is review, not done" \
 #     apart from never dispatched.
 reset
 sent "${RUN}" T-01 D-01
-expect_collect 0 '^T-01 +running +D-01' "16 a journalled dispatch with no handoff is running" \
+expect_collect 3 '^T-01 +running +D-01' "16 a journalled dispatch with no handoff is running" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 16b. Nothing to dispatch and nothing wrong: every Task settled. A loop needs
+#      this apart from 0, or it re-reads the table to find out it is finished.
+reset
+handoff T-01 "${RUN}" succeeded verified
+handoff T-02 "${RUN}" succeeded verified
+expect_collect 3 '^T-02 +done' "16b exits 3 when every Task is done" \
   --plan "${FIXTURES}/plan-ok.md"
 
 # 17. Nothing actionable and something failed: the orchestrator stops.
