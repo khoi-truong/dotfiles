@@ -37,10 +37,12 @@ then closes the workspace, runs `git worktree remove` and `git tidy`.
 
 ## State that must outlive the worktree
 
-`.omc/` is gitignored, and a linked worktree's `.omc/` is removed with the
-worktree. So handoffs are written to the **main checkout's** `.omc/handoffs/`
-as an absolute path, and `OMC_STATE_DIR` is exported into the workspace so OMC
-state lands there too.
+`.herdr/` and `.omc/` are both gitignored, and a linked worktree's copy of
+either is removed with the worktree. So handoffs are written to the **main
+checkout's** `.herdr/runs/<run>/handoffs/` as an absolute path, and the
+workspace is given `HERDR_TEAM_ROOT` (the state root, never one Run's
+directory — a pane outlives the Dispatch that spawned it) and `OMC_STATE_DIR`
+so OMC state lands in the main checkout too.
 
 Because `workspace create --env` only reaches the **root pane**, the agent must
 occupy that root pane — or `--env` must be repeated on the split.

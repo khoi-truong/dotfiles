@@ -9,13 +9,13 @@
 #
 #   bash ai/herdr/fixtures/run-tests.sh
 #
-# Every case points HERDR_TEAM_HANDOFFS at a throwaway directory, so nothing
-# here reads or writes the live .omc/handoffs — which would also shift the
-# next-dispatch ids of a real Run. The `wait` cases drive herdr itself through
-# stubs on PATH: a fixture run has no herdr session, and a case that cannot run
-# is a skip, not a pass. The `teardown` cases go further and register a real
-# throwaway worktree under ${TMP}: the guard is a `git` question, so a fixture
-# that answered it would be testing the fixture.
+# Every case points HERDR_TEAM_ROOT at a throwaway directory, so nothing here
+# reads or writes the live .herdr/ — which would also shift the next-dispatch
+# ids of a real Run. The `wait` cases drive herdr itself through stubs on PATH:
+# a fixture run has no herdr session, and a case that cannot run is a skip, not
+# a pass. The `teardown` cases go further and register a real throwaway worktree
+# under ${TMP}: the guard is a `git` question, so a fixture that answered it
+# would be testing the fixture.
 set -uo pipefail
 
 # The tree under test is the tree this file is part of, resolved from its own
@@ -29,15 +29,48 @@ export DOTFILES
 FIXTURES="${DOTFILES}/ai/herdr/fixtures"
 TEAM="${DOTFILES}/ai/herdr/team.sh"
 RUN="R-fixture-0001"
+OTHER="R-fixture-9999"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
-export HERDR_TEAM_HANDOFFS="${TMP}/handoffs"
-mkdir -p "${HERDR_TEAM_HANDOFFS}"
-# Same reason: without an override `collect --plan` with no positional Run
-# would read whatever Run the developer happens to have started.
-export HERDR_TEAM_RUN_FILE="${TMP}/team-run"
-printf '%s\n' "${RUN}" >"${HERDR_TEAM_RUN_FILE}"
+
+# The state root, and the key standing in for the tab driving it. Every case
+# reads and writes ${HERDR_TEAM_ROOT} and nothing else, so a fixture run never
+# touches the live .herdr/ — and the layout under test is the one `run new`
+# writes: a directory per Run, and a pointer per key naming the Run a shell is
+# in. The isolation cases at the end switch keys, the way a second tab would.
+export HERDR_TEAM_ROOT="${TMP}/herdr"
+# Cleared rather than merely overridden: a pane team.sh spawned carries an
+# override of its own in the environment, so a case that inherited one would
+# read the developer's handoff directory while reporting on a fixture Run. The
+# case that is about the override sets it itself.
+unset HERDR_TEAM_HANDOFFS
+export HERDR_TEAM_RUN_KEY="tab-a"
+
+# handoff_dir <run> — that Run's handoffs, which is where every fixture in this
+# file is written and read from. team.sh answers the same question from its own
+# root; this is the same path spelled out, so a case can place a file without
+# asking the thing under test to agree with it.
+handoff_dir() { printf '%s\n' "${HERDR_TEAM_ROOT}/runs/${1}/handoffs"; }
+
+# pointer <key> — the file naming the Run that key's shell is in.
+pointer() { printf '%s\n' "${HERDR_TEAM_ROOT}/state/run-${1:-tab-a}"; }
+
+# use_run <run> [key] — the state `run new` leaves behind: that Run's handoff
+# directory, and the pointer putting <key>'s shell in it. A fixed id rather
+# than a minted timestamp, so a case can name the Run it wrote to; the cases
+# about the verb itself ask the verb for theirs.
+use_run() {
+  mkdir -p "$(handoff_dir "$1")" "${HERDR_TEAM_ROOT}/state"
+  printf '%s\n' "$1" >"$(pointer "${2:-tab-a}")"
+}
+use_run "${RUN}"
+# The fixture Run's handoff directory, exported for the one stub that writes
+# into it (case 44). A stub is a real process: it reads the environment the way
+# team.sh does, and a variable known only to the suite's own shell would never
+# reach it.
+HERDR_FIXTURE_HANDOFFS="$(handoff_dir "${RUN}")"
+export HERDR_FIXTURE_HANDOFFS
 
 pass=0 fail=0 skip=0
 
@@ -58,38 +91,50 @@ proven() {
   esac
 }
 
-# handoff <task> <run> <outcome> <evidence> [dispatch] [commands] — one fixture
-# handoff. `commands` is written verbatim after the colon: the default proves
-# that task's plan-ok verify, `none` writes no commands line at all (absence is
-# never evidence), and the wrong-command, non-zero-exit and pre-contract shapes
-# are what the cases pass in.
+# handoff <task> <run> <outcome> <evidence> [dispatch] [commands] [artifacts] —
+# one fixture handoff, in the directory that names its Run. `commands` is
+# written verbatim after the colon: the default proves that task's plan-ok
+# verify, `none` writes no commands line at all (absence is never evidence), and
+# the wrong-command, non-zero-exit and pre-contract shapes are what the cases
+# pass in. `artifacts` is the receipt line, absent unless a case asks for it.
 handoff() {
-  local task="$1" d="${5:-D-01}" cmds=""
+  local task="$1" dir d="${5:-D-01}" cmds="" arts="${7:-}"
   if [ $# -ge 6 ]; then cmds="$6"; else cmds="$(proven "$task")"; fi
+  dir="$(handoff_dir "$2")"
+  mkdir -p "$dir"
   {
     printf -- '---\n'
     printf 'run: %s\ntask: %s\ndispatch: %s\n' "$2" "$task" "$d"
     printf 'outcome: %s\nevidence: %s\n' "$3" "$4"
     [ "$cmds" = "none" ] || printf 'commands: %s\n' "$cmds"
+    [ -z "$arts" ] || printf 'artifacts: %s\n' "$arts"
     printf -- '---\n\n## What was done\n\nFixture.\n'
-  } >"${HERDR_TEAM_HANDOFFS}/${task}-${d}.md"
+  } >"${dir}/${task}-${d}.md"
 }
 
-# sent <run> <task> <dispatch> [agent] — one line in the dispatch journal,
-# standing in for a real `dispatch` that has not been answered yet. The agent is
-# the fourth column `dispatch` writes; leaving it off writes the three-column
-# shape an older journal still has on disk, which both verbs have to read.
+# sent <run> <task> <dispatch> [agent] — one line in that Run's dispatch
+# journal, standing in for a real `dispatch` that has not been answered yet. The
+# agent is the fourth column `dispatch` writes; leaving it off writes the
+# three-column shape an older journal still has on disk, which both verbs have
+# to read.
 sent() {
+  local dir
+  dir="$(handoff_dir "$1")"
+  mkdir -p "$dir"
   if [ $# -ge 4 ]; then
-    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >>"${HERDR_TEAM_HANDOFFS}/.dispatched"
+    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >>"${dir}/.dispatched"
   else
-    printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"${HERDR_TEAM_HANDOFFS}/.dispatched"
+    printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"${dir}/.dispatched"
   fi
 }
 
-# reset — no handoffs, no journal.
+# reset — every Run gone, and the key back in the fixture one. The by-plan links
+# go with them: a link left behind would silently answer `--plan` for a Run this
+# case is not about, which is the one way a hand-built fixture can change what a
+# later case is looking at.
 reset() {
-  rm -f "${HERDR_TEAM_HANDOFFS}"/*.md "${HERDR_TEAM_HANDOFFS}/.dispatched"
+  rm -rf "${HERDR_TEAM_ROOT}/runs"
+  use_run "${RUN}"
 }
 
 # dispatch <args...> — always --dry-run, so no agent is required. Prints the
@@ -114,11 +159,13 @@ expect_exit() {
 echo "dispatch --from-plan"
 
 # 1. The prompt is a pointer carrying the plan path, the task and the verify
-#    command. Normalised against a golden file: the plan path and the handoff
-#    directory are absolute and machine-specific.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+#    command. Normalised against a golden file: the plan path and the state root
+#    are absolute and machine-specific — the root's, not the handoff
+#    directory's, because the Run is named inside it and the golden should show
+#    which Run the prompt is addressed to.
+rm -f "$(handoff_dir "${RUN}")"/*.md
 dispatch --task T-01 --from-plan "${FIXTURES}/plan-ok.md" >"${TMP}/out"
-sed -e "s#${FIXTURES}#<FIXTURES>#g" -e "s#${HERDR_TEAM_HANDOFFS}#<HANDOFFS>#g" \
+sed -e "s#${FIXTURES}#<FIXTURES>#g" -e "s#${HERDR_TEAM_ROOT}#<ROOT>#g" \
   "${TMP}/out" >"${TMP}/norm"
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
   cp "${TMP}/norm" "${FIXTURES}/golden/T-01-dispatch.prompt"
@@ -130,32 +177,34 @@ else
 fi
 
 # 2. A blocker with no handoff at all.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+reset
 expect_exit 3 "2 blocked when the blocker has no handoff" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 # 3. The Run-scoping case: a verified handoff for T-01 under a *different* Run.
-#    Task ids restart every Run and the filename carries no Run, so this is the
-#    case that silently unblocks if the gate forgets to read the frontmatter.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+#    The filename carries only the Task and the Dispatch — both of which restart
+#    every Run — so this is the case that silently unblocks if the gate reads
+#    the wrong directory, or trusts the name it found there. Case 100 is the
+#    same claim with the file *inside* this Run's directory.
+reset
 handoff T-01 "R-fixture-9999" succeeded verified
 expect_exit 3 "3 blocked when the only verified handoff is another Run's" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 # 4. succeeded but only reported: a claim, not a result.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+reset
 handoff T-01 "${RUN}" succeeded reported
 expect_exit 3 "4 blocked when the blocker is succeeded/reported" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 # 5. succeeded and verified, this Run.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+reset
 handoff T-01 "${RUN}" succeeded verified
 expect_exit 0 "5 ready when the blocker is verified under this Run" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 # 6. --force is the human-gated escape.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+reset
 expect_exit 0 "6 --force dispatches over an unmet blocker" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md" --force
 if grep -q 'force' "${TMP}/err"; then
@@ -177,7 +226,7 @@ echo
 echo "body precedence"
 
 # 8. argv still wins, with no plan involved.
-rm -f "${HERDR_TEAM_HANDOFFS}"/*.md
+reset
 if dispatch --task T-01 "do the thing" >"${TMP}/out" &&
   grep -q 'do the thing' "${TMP}/out"; then
   ok "8 argv body unchanged"
@@ -242,11 +291,13 @@ handoff T-01 "${RUN}" succeeded verified
 expect_collect 0 '^T-01 +done' "11 --plan resolves the current Run, not the flag" \
   --plan "${FIXTURES}/plan-ok.md"
 
-# 12. No Run at all is a precondition failure, not an empty report.
+# 12. No Run at all is a precondition failure, not an empty report. The key's
+#     pointer is the only thing that names one here: this plan started no Run of
+#     its own, so there is no by-plan link to fall back on either.
 reset
-mv "${HERDR_TEAM_RUN_FILE}" "${TMP}/run.away"
+mv "$(pointer)" "${TMP}/run.away"
 expect_collect 1 "" "12 --plan with no Run exits 1" --plan "${FIXTURES}/plan-ok.md"
-mv "${TMP}/run.away" "${HERDR_TEAM_RUN_FILE}"
+mv "${TMP}/run.away" "$(pointer)"
 
 # 13. The fold rule. A Task that failed and was retried to success must read
 #     `done`, or a loop watching this table can never terminate.
@@ -455,7 +506,7 @@ cat >"${TMP}/window/python3" <<'SH'
 #!/usr/bin/env bash
 "${REAL_PY}" "$@"
 printf -- '---\nrun: fixture\ntask: T-01\ndispatch: D-01\noutcome: succeeded\nevidence: verified\n---\n' \
-  >"${HERDR_TEAM_HANDOFFS}/T-01-D-01.md"
+  >"${HERDR_FIXTURE_HANDOFFS}/T-01-D-01.md"
 SH
 cp "${TMP}/poison/herdr" "${TMP}/window/herdr"
 chmod +x "${TMP}/window/python3" "${TMP}/window/herdr"
@@ -532,16 +583,16 @@ else
     "herdr called: $(tr '\n' '|' <"${TMP}/herdr-called" 2>/dev/null); $(head -2 "${TMP}/err" | tr '\n' ' ')"
 fi
 
-# 38. No Run and no run file: a precondition failure, like every other verb.
+# 38. No Run and no pointer: a precondition failure, like every other verb.
 reset
-mv "${HERDR_TEAM_RUN_FILE}" "${TMP}/run.away"
+mv "$(pointer)" "${TMP}/run.away"
 wait_on poison 1 "" "38 wait with no Run exits 1"
-mv "${TMP}/run.away" "${HERDR_TEAM_RUN_FILE}"
+mv "${TMP}/run.away" "$(pointer)"
 
 # 39. A journal line this code cannot read is a Dispatch it cannot watch.
 #     Skipping it would let a wait outlive the work it was started for.
 reset
-printf '%s\tT-01\n' "${RUN}" >>"${HERDR_TEAM_HANDOFFS}/.dispatched"
+printf '%s\tT-01\n' "${RUN}" >>"$(handoff_dir "${RUN}")/.dispatched"
 wait_on poison 1 "" "39 a journal line that is neither 3 nor 4 columns is refused"
 if grep -q 'journal line 1 is not 3 or 4 columns' "${TMP}/err"; then
   ok "39b the refused line is named by number"
@@ -1411,6 +1462,293 @@ else
 fi
 untouched meta "85d and no decision at all, for a pane that lost its name"
 recorded sent '^/clear$' "85e the clear itself did go out first"
+
+echo
+echo "the state root: one Run per key"
+
+# T-01's isolation, from the outside. Three tabs in one checkout used to share
+# one Run pointer and one flat handoff namespace: two of them dispatching `T-01`
+# wrote one filename between them, and the second was refused as already
+# settled. What separates them now is the key — one pointer per shell, one
+# directory per Run — and this section is those three tabs, driven by key from
+# one shell because a fixture run has no panes.
+rm -rf "${HERDR_TEAM_ROOT}/runs"
+
+# new_run <key> [args...] — the real `run new` under that key, printing the id
+# it minted. Every case above builds the layout by hand; these ask the verb that
+# defines it, and the ids are timestamps because that is what the verb mints.
+new_run() {
+  local key="$1"
+  shift
+  HERDR_TEAM_RUN_KEY="$key" "${TEAM}" run new "$@" 2>"${TMP}/err" |
+    sed -n 's/.*run \(R-[0-9]\{8\}-[0-9]\{6\}\)$/\1/p'
+}
+
+# dispatch_as <key> <file> <args...> — a dry-run Dispatch under that key's Run,
+# its prompt going to <file>. No `--run`: which Run the Dispatch lands in is the
+# question these cases are asking, so the key and the plan have to answer it.
+dispatch_as() {
+  local key="$1" file="$2"
+  shift 2
+  HERDR_TEAM_RUN_KEY="$key" "${TEAM}" dispatch exec-1 --dry-run "$@" 2>"${TMP}/err" >"$file"
+}
+
+# 86. Two keys, two Runs. The pointer is per key, so a second tab starting a Run
+#     cannot take the first one's — and each key reads back its own.
+RA="$(new_run tab-a)"
+RB="$(new_run tab-b)"
+if [ -n "$RA" ] && [ -n "$RB" ] && [ "$RA" != "$RB" ]; then
+  ok "86 two keys mint two Runs"
+else
+  no "86 two keys mint two Runs" "tab-a: ${RA:-<none>} tab-b: ${RB:-<none>}"
+fi
+if [ "$(HERDR_TEAM_RUN_KEY=tab-a "${TEAM}" run show 2>/dev/null)" = "$RA" ] &&
+  [ "$(HERDR_TEAM_RUN_KEY=tab-b "${TEAM}" run show 2>/dev/null)" = "$RB" ] &&
+  [ -d "$(handoff_dir "$RA")" ] && [ -d "$(handoff_dir "$RB")" ]; then
+  ok "86b run show answers each key with its own, and both have a handoff directory"
+else
+  no "86b run show answers each key with its own, and both have a handoff directory" \
+    "a: ${RA:-<none>} b: ${RB:-<none>}"
+fi
+
+# 87. Both tabs dispatch T-01 as D-01. Task and Dispatch ids restart every Run,
+#     so the same pair in two Runs is not a collision — and each prompt has to
+#     name its own Run's handoff path, or a reused pane reads its neighbour's.
+for key in tab-a tab-b; do
+  case "$key" in tab-a) want="$RA" ;; *) want="$RB" ;; esac
+  code=0
+  dispatch_as "$key" "${TMP}/${key}.prompt" --task T-01 --from-plan "${FIXTURES}/plan-ok.md" ||
+    code=$?
+  if [ "$code" -ne 0 ]; then
+    no "87 ${key} dispatches T-01/D-01 without being refused" \
+      "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif grep -q "^You are exec-1, working Task T-01 under Run ${want}\.$" "${TMP}/${key}.prompt" &&
+    grep -q '^This is Dispatch D-01\.' "${TMP}/${key}.prompt" &&
+    grep -q "${want}/handoffs/T-01-D-01\.md$" "${TMP}/${key}.prompt"; then
+    ok "87 ${key} dispatches T-01/D-01 into its own Run"
+  else
+    no "87 ${key} dispatches T-01/D-01 into its own Run" \
+      "$(grep -n 'Run \|Dispatch \|handoffs/' "${TMP}/${key}.prompt" | tr '\n' '|')"
+  fi
+done
+
+# 88. The same Task and Dispatch id, settled in one Run and not in the other.
+#     The handoff filename carries neither Run, so a Dispatch that only stat'd
+#     the path would refuse the second tab; the Run's own directory decides,
+#     and the id has to be named for the guard to be reached at all — an
+#     unnamed id is minted free (88c).
+handoff T-01 "$RB" succeeded verified
+code=0
+dispatch_as tab-b "${TMP}/b.prompt" --task T-01 --dispatch D-01 \
+  --from-plan "${FIXTURES}/plan-ok.md" || code=$?
+if [ "$code" -eq 1 ] && grep -q 'already settled' "${TMP}/err"; then
+  ok "88 a Dispatch already settled under this Run is refused"
+else
+  no "88 a Dispatch already settled under this Run is refused" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+code=0
+dispatch_as tab-a "${TMP}/a.prompt" --task T-01 --dispatch D-01 \
+  --from-plan "${FIXTURES}/plan-ok.md" || code=$?
+if [ "$code" -eq 0 ] && grep -q '^This is Dispatch D-01\.' "${TMP}/a.prompt"; then
+  ok "88b and the other Run's T-01/D-01 is not"
+else
+  no "88b and the other Run's T-01/D-01 is not" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+# 88c. And an unnamed id is not refused: the next Dispatch of a Task is minted
+#      from what this Run's own directory holds, so a settled D-01 makes D-02
+#      rather than a collision.
+code=0
+dispatch_as tab-b "${TMP}/c.prompt" --task T-01 --from-plan "${FIXTURES}/plan-ok.md" || code=$?
+if [ "$code" -eq 0 ] && grep -q '^This is Dispatch D-02\.' "${TMP}/c.prompt" &&
+  grep -q "${RB}/handoffs/T-01-D-02\.md$" "${TMP}/c.prompt"; then
+  ok "88c a settled D-01 makes the next Dispatch D-02, not a refusal"
+else
+  no "88c a settled D-01 makes the next Dispatch D-02, not a refusal" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 89. A Run recovers from the plan path alone: the pointer can be gone — a
+#     compacted context, a dead pane, a fresh shell — and the plan still names
+#     the Run it started.
+PLAN="${TMP}/iso-plan.md"
+cp "${FIXTURES}/plan-ok.md" "$PLAN"
+RC="$(new_run tab-c --plan "$PLAN")"
+rm -f "$(pointer tab-c)"
+if [ -n "$RC" ] && [ "$("${TEAM}" run resolve "$PLAN" 2>"${TMP}/err")" = "$RC" ]; then
+  ok "89 run resolve recovers the Run from the plan after the pointer is gone"
+else
+  no "89 run resolve recovers the Run from the plan after the pointer is gone" \
+    "want ${RC:-<none>}, got: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 89b. A single answer, not the newest of several: a plan that already has a Run
+#      is refused a second one, the id it has goes to stdout, and the key that
+#      asked is left where it was.
+code=0
+out="$(HERDR_TEAM_RUN_KEY=tab-a "${TEAM}" run new --plan "$PLAN" 2>"${TMP}/err")" || code=$?
+if [ "$code" -ne 0 ] && [ "$out" = "$RC" ] && grep -q 'already Run' "${TMP}/err" &&
+  [ "$(cat "$(pointer tab-a)")" = "$RA" ]; then
+  ok "89b a plan that already has a Run is refused a second, naming the one it has"
+else
+  no "89b a plan that already has a Run is refused a second, naming the one it has" \
+    "exit ${code}, stdout ${out:-<none>}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 90-94. `collect --plan` resolves its Run through by-plan — the caller named a
+#      plan, so the plan names the Run — and every exit code it documents
+#      survives that route. The key's pointer is left on Run A, which has
+#      nothing under it: a table that is not empty is the proof the link won.
+handoff T-01 "$RC" succeeded verified
+expect_collect 0 '^T-01 +done +D-01' \
+  "90 collect --plan reads the Run the plan started, not the key's" --plan "$PLAN"
+
+handoff T-01 "$RC" succeeded verified D-02 "$(proven T-01)" '[/abs/path.md]'
+expect_collect 0 '^T-01 +done +D-02 .*artifacts: /abs/path\.md' \
+  "91 artifacts: is accepted, and the path is printed" --plan "$PLAN"
+"${TEAM}" collect "$RC" >"${TMP}/out" 2>"${TMP}/err"
+if grep -q 'artifacts: /abs/path\.md' "${TMP}/out"; then
+  ok "91b and plain collect prints it too"
+else
+  no "91b and plain collect prints it too" "$(tr '\n' '|' <"${TMP}/out")"
+fi
+
+handoff T-02 "$RC" succeeded verified
+expect_collect 3 '^T-02 +done' "92 and it still exits 3 when every Task is done" --plan "$PLAN"
+
+handoff T-02 "$RC" failed tool_error
+expect_collect 2 '^T-02 +failed' \
+  "93 and still exits 2 when nothing is actionable and one failed" --plan "$PLAN"
+
+printf 'not a handoff\n' >"$(handoff_dir "$RC")/broken.md"
+expect_collect 1 '' "94 and still exits 1 on a handoff it cannot read" --plan "$PLAN"
+rm -f "$(handoff_dir "$RC")/broken.md"
+
+# 95. `wait` is scoped to its own Run. Run B has a Dispatch out and Run A has
+#     nothing, so a wait under A returns 3 rather than blocking on B's work —
+#     which is what lets two tabs each watch their own and neither stall on a
+#     neighbour that never settles.
+sent "$RB" T-01 D-02 exec-1
+HERDR_TEAM_RUN_KEY=tab-a wait_on poison 3 "" \
+  "95 wait under a Run with nothing out returns 3 while another Run works"
+HERDR_TEAM_RUN_KEY=tab-b wait_on idle 0 '^exec-1 T-01 settled$' \
+  "95b and the other key's wait watches its own Dispatch"
+
+echo
+echo "the executor cap, and a pane that outlives its Run"
+
+# 96. The cap is global — one DeepSeek key, one Pro login, one machine — so a
+#     third executor is refused whichever Run asks, and the refusal names the
+#     panes to settle. The stub is the whole environment: the refusal is reached
+#     before a worktree or a pane exists, so this case needs no wt_add, and the
+#     `worktree open` answer below is empty on purpose — a regression that got
+#     this far would be rolled back rather than left in the developer's repo.
+mkdir -p "${TMP}/execap"
+cat >"${TMP}/execap/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"${TMP}/herdr-called"
+case "\$1 \$2" in
+  "agent list")
+    printf '{"result":{"agents":['
+    printf '{"name":"exec-1","pane_id":"wX:p1","agent_status":"working"},'
+    printf '{"name":"exec-2","pane_id":"wX:p2","agent_status":"working"}]}}\n'
+    ;;
+  "worktree open") printf '{"result":{}}\n' ;;
+  *) exit 9 ;;
+esac
+SH
+chmod +x "${TMP}/execap/herdr"
+
+HERDR_TEAM_EXEC_CAP=2 spawn_on "${TMP}/execap" 1 \
+  "96 a third executor is refused while two are live" \
+  exec-3 --branch fixture-cap --provider ccd
+if grep -q 'executors already live (exec-1 exec-2)' "${TMP}/err" &&
+  grep -q 'cap is 2' "${TMP}/err"; then
+  ok "96b and the refusal names the live executors, and the cap"
+else
+  no "96b and the refusal names the live executors, and the cap" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -qE 'worktree open|pane run|agent rename' "${TMP}/herdr-called" 2>/dev/null; then
+  no "96c nothing was created for a refused spawn" "$(tr '\n' '|' <"${TMP}/herdr-called")"
+else
+  ok "96c nothing was created for a refused spawn"
+fi
+
+# 97. A pane is not pinned to the Run that spawned it: `spawn` types the state
+#     root into the pane's shell and no Run at all (98 asserts that), so the
+#     Dispatch decides where a handoff goes. The same pane, dispatched under Run
+#     B, writes into Run B's directory — and Run A gets nothing.
+mkdir -p "${TMP}/dispatchable"
+cat >"${TMP}/dispatchable/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list")
+    printf '{"result":{"agents":[{"name":"exec-1","pane_id":"wD:p1","agent_status":"idle"}]}}\n'
+    ;;
+  "agent prompt") printf '%s\n' "\$*" >>"${TMP}/prompted" ;;
+  *) exit 9 ;;
+esac
+exit 0
+SH
+chmod +x "${TMP}/dispatchable/herdr"
+rm -f "${TMP}/prompted"
+code=0
+env PATH="${TMP}/dispatchable:${PATH}" HERDR_TEAM_RUN_KEY=tab-b "${TEAM}" dispatch exec-1 \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md" >/dev/null 2>"${TMP}/err" || code=$?
+row="$(printf '%s\t%s\t%s\t%s' "$RB" T-02 D-01 exec-1)"
+if [ "$code" -eq 0 ] && grep -q "${RB}/handoffs/T-02-D-01\.md" "${TMP}/prompted" &&
+  grep -qxF "$row" "$(handoff_dir "$RB")/.dispatched"; then
+  ok "97 a Dispatch under Run B writes into Run B's directory"
+else
+  no "97 a Dispatch under Run B writes into Run B's directory" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ') $(tr '\n' '|' <"${TMP}/prompted" 2>/dev/null)"
+fi
+if [ -e "$(handoff_dir "$RA")/.dispatched" ]; then
+  no "97b and nothing was written under the Run the pane was opened in" \
+    "$(tr '\n' '|' <"$(handoff_dir "$RA")/.dispatched")"
+else
+  ok "97b and nothing was written under the Run the pane was opened in"
+fi
+
+# 98. The same property where a fixture cannot see it: what `spawn` types into a
+#     pane's shell. A pane carrying one Run's handoff directory would write into
+#     it for the rest of its life, which is the wrong Run the moment a retained
+#     executor is reused — so the root goes in and a Run never does.
+if [ "$(awk '/^cmd_spawn\(\)/,/^}/' "${TEAM}" | grep -c 'HERDR_TEAM_HANDOFFS')" -eq 0 ] &&
+  [ "$(awk '/^cmd_spawn\(\)/,/^}/' "${TEAM}" | grep -c 'HERDR_TEAM_ROOT=')" -eq 1 ]; then
+  ok "98 cmd_spawn exports the state root and no Run"
+else
+  no "98 cmd_spawn exports the state root and no Run" \
+    "$(awk '/^cmd_spawn\(\)/,/^}/' "${TEAM}" |
+      grep -n 'HERDR_TEAM_ROOT\|HERDR_TEAM_HANDOFFS' | tr '\n' '|')"
+fi
+
+# 99. The escape hatch this suite itself used to rest on, kept honest now that
+#     nothing here needs it: HERDR_TEAM_HANDOFFS still answers for one Run, so a
+#     test run can point a single Run at a throwaway directory.
+mkdir -p "${TMP}/override"
+code=0
+out="$(HERDR_TEAM_HANDOFFS="${TMP}/override" "${TEAM}" dispatch exec-1 --run "$RA" --dry-run \
+  --task T-01 --from-plan "${FIXTURES}/plan-ok.md" 2>"${TMP}/err")" || code=$?
+if [ "$code" -eq 0 ] && printf '%s' "$out" | grep -q "${TMP}/override/T-01-D-01\.md"; then
+  ok "99 HERDR_TEAM_HANDOFFS still overrides one Run's handoff directory"
+else
+  no "99 HERDR_TEAM_HANDOFFS still overrides one Run's handoff directory" \
+    "exit ${code}: $(printf '%s' "$out" | grep -n 'handoffs/' | tr '\n' '|')"
+fi
+
+# 100. The redundant half of the scoping, and the reason it stays. A handoff
+#      *placed* in this Run's directory that names another Run — a file moved by
+#      hand, a directory copied, a migration gone wrong — must not unblock
+#      anything: the directory says where a handoff is, and the frontmatter is
+#      the only thing that says which Run it is about.
+mkdir -p "$(handoff_dir "${RUN}")"
+printf -- '---\nrun: %s\ntask: T-01\ndispatch: D-01\noutcome: succeeded\nevidence: verified\n---\n\n## What was done\n\nFixture.\n' \
+  "${OTHER}" >"$(handoff_dir "${RUN}")/T-01-D-01.md"
+expect_exit 3 "100 a handoff naming another Run does not unblock, wherever it sits" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
