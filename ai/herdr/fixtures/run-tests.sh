@@ -413,6 +413,35 @@ SH
 chmod +x "${TMP}/poison/herdr" "${TMP}/idle/herdr" "${TMP}/stuck/herdr" \
   "${TMP}/error/herdr"
 
+# T-06: one pane, one knob. `${TMP}/status` is the state that pane is in, and
+# two agents are always live in it — exec-1, who the journal below knows, and
+# exec-9, who it does not. `agent wait` matches at once and exits 0 whatever
+# the status says, because the real one does: idle, done and blocked share an
+# exit code (T-01), which is exactly why `wait` cannot read the state out of
+# the wait and has to ask the agent. `agent read` records its argv, so a case
+# can see the read it was given and not just the text that came back.
+mkdir -p "${TMP}/panes"
+cat >"${TMP}/panes/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent wait") exit 0 ;;
+  "agent list")
+    st="\$(cat "${TMP}/status")"
+    printf '{"result":{"agents":['
+    printf '{"name":"exec-1","pane_id":"wM:p1","agent_status":"%s"},' "\$st"
+    printf '{"name":"exec-9","pane_id":"wM:p9","agent_status":"%s"}' "\$st"
+    printf ']}}\n'
+    ;;
+  "agent read")
+    printf '%s\n' "\$*" >>"${TMP}/read-called"
+    printf 'Approve running this command? [y/n]\n'
+    ;;
+  *) exit 9 ;;
+esac
+SH
+chmod +x "${TMP}/panes/herdr"
+printf 'idle\n' >"${TMP}/status"
+
 # The window, for case 44: the handoff appears after the journal has been read.
 # python3 is what reads it, so a python3 that runs the real interpreter first
 # and writes the handoff after puts the file in the gap between the read and the
@@ -578,6 +607,36 @@ fi
 # 45. The live case: a real pane, a real agent, a real transition.
 sk "45 a live agent settling returns from wait" \
   "a fixture run has no herdr session — drive it by hand: team.sh wait while a dispatched agent works"
+
+# 45b. Blocked is not settled, and 5 is how the orchestrator learns there is a
+#      question without watching the pane — the manual step this exists to
+#      remove. The stub's `agent wait` exits 0 exactly as it does for a settle,
+#      so this fails if the state is read out of that exit code.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+printf 'blocked\n' >"${TMP}/status"
+wait_on panes 5 '^exec-1 T-01 blocked$' "45b a blocked agent exits 5, not 0" --timeout 5000
+if grep -q 'surface exec-1' "${TMP}/err"; then
+  ok "45c the warning says what to do about it"
+else
+  no "45c the warning says what to do about it" "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 45d. The counterpart, so 5 cannot be a constant: the same stub with the agent
+#      idle is 0 and says settled. A stub that answers no state at all is a
+#      third shape, covered by 34 and 42 — the empty answer has to stay a
+#      settle, or every `idle` case in this section would turn into a 5.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+printf 'idle\n' >"${TMP}/status"
+wait_on panes 0 '^exec-1 T-01 settled$' "45d an idle agent is still exit 0" --timeout 5000
+
+# 45e. And the other terminal state, so the pair the plan names is the pair
+#      this suite holds: the check is "blocked and nothing else", not "idle".
+reset
+sent "${RUN}" T-01 D-01 exec-1
+printf 'done\n' >"${TMP}/status"
+wait_on panes 0 '^exec-1 T-01 settled$' "45e a done agent is still exit 0" --timeout 5000
 
 echo
 echo "verify ↔ commands:"
@@ -814,6 +873,93 @@ handoff T-01 "${RUN}" succeeded verified D-01
 expect_collect 0 '^T-01 +done +D-01 +succeeded/verified' \
   "61 a Dispatch outside the plan still holds its agent" \
   --plan "${FIXTURES}/plan-ok.md"
+
+echo
+echo "surface"
+
+# expect_surface <stub> <want-exit> <stdout-regex> <label> [args...] — wait_on's
+# shape for the verb that shows a pane instead of waiting on one. A `die` lands
+# on stderr, so a case wanting a refusal's wording greps ${TMP}/err itself.
+expect_surface() {
+  local stub="$1" want="$2" re="$3" label="$4" code=0
+  shift 4
+  env PATH="${TMP}/${stub}:${PATH}" "${TEAM}" surface "$@" >"${TMP}/out" 2>"${TMP}/err" ||
+    code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif [ -n "$re" ] && ! grep -qE "$re" "${TMP}/out"; then
+    no "$label" "no /${re}/ in: $(tr '\n' '|' <"${TMP}/out")"
+  else
+    ok "$label"
+  fi
+}
+
+# 62. The question in one block: whose it is, and what the pane says. This is
+#     the other half of exit 5 — a wait that only said "blocked" would send the
+#     orchestrator looking for a screen it has no verb to read.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+printf 'blocked\n' >"${TMP}/status"
+rm -f "${TMP}/read-called"
+expect_surface panes 0 'Approve running this command' \
+  "62 surface prints the pane's visible screen" exec-1
+if grep -q "^Run: ${RUN}\$" "${TMP}/out" && grep -q '^Task: T-01$' "${TMP}/out" &&
+  grep -q '^Dispatch: D-01$' "${TMP}/out"; then
+  ok "62b it names the Run, Task and Dispatch from the journal"
+else
+  no "62b it names the Run, Task and Dispatch from the journal" "$(tr '\n' '|' <"${TMP}/out")"
+fi
+# The read is the protocol's sanctioned diagnostic one (SKILL.md): the visible
+# screen, capped. Neither flag shows in the output, so the argv the stub
+# recorded is the only place a lost one would appear — and a scrollback read of
+# a pane nobody asked about is the mistake that would be.
+if grep -q -e '--source visible.*--lines 80' "${TMP}/read-called"; then
+  ok "62c the screen read is the capped visible one"
+else
+  no "62c the screen read is the capped visible one" \
+    "$(tr '\n' '|' <"${TMP}/read-called" 2>/dev/null)"
+fi
+
+# 63. Live, but this Run's journal has no line for it. The screen is what the
+#     human was asked to come and look at, so it is printed either way; what
+#     changes is that the header says unknown instead of inventing a Task.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+printf 'blocked\n' >"${TMP}/status"
+expect_surface panes 0 'Approve running this command' \
+  "63 an agent with no journal line still prints its screen" exec-9
+if grep -q '^Task: unknown$' "${TMP}/out" && grep -q '^Dispatch: unknown$' "${TMP}/out" &&
+  grep -q 'no journal line' "${TMP}/err"; then
+  ok "63b and says the Task and Dispatch are unknown rather than inventing them"
+else
+  no "63b and says the Task and Dispatch are unknown rather than inventing them" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 64. An agent that is not live is a precondition failure, not an empty screen:
+#     there is no pane to put in front of anyone.
+reset
+expect_surface panes 1 '' "64 surface on an unknown agent exits 1" nosuch
+if grep -q 'no live agent named nosuch' "${TMP}/err"; then
+  ok "64b the refusal names the agent it could not find"
+else
+  no "64b the refusal names the agent it could not find" "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 65. Bare `surface` is the same usage error every other verb missing its
+#     argument is, not a report on whatever pane happens to be around.
+reset
+expect_surface panes 1 'team\.sh surface' "65 surface with no agent prints the usage"
+
+# 66. The no-answer rule, asserted mechanically because it is the one property
+#     here that no output can demonstrate: `surface` reads panes, it does not
+#     type into them. An approval dialog is the human's to answer, so a call
+#     that sends keys added to the body fails this case.
+if [ "$(awk '/^cmd_surface\(\)/,/^}/' "${TEAM}" | grep -c 'send-keys')" -eq 0 ]; then
+  ok "66 cmd_surface sends nothing"
+else
+  no "66 cmd_surface sends nothing" "the body calls a key-sending verb"
+fi
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"

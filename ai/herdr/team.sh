@@ -20,6 +20,7 @@
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
 #   team.sh wait [<run-id>] [--plan <plan.md>] [--timeout <ms>]
+#   team.sh surface <name>
 #   team.sh plan lint <plan.md>
 #   team.sh settle <name> <reuse|retain|release>
 #   team.sh teardown <name> [--force]
@@ -644,6 +645,11 @@ PY
 #   1  no Run, a malformed journal, or a precondition failed
 #   3  nothing outstanding to wait for — the same "nothing to do" as collect
 #   4  --timeout expired with nothing settled
+#   5  an outstanding agent went blocked on a question — `surface` it
+#
+# 5 is not 0 because the orchestrator's next move is not `collect --plan`:
+# a blocked agent has written nothing, so there is nothing new on disk to read.
+# It is `team.sh surface`, which is the whole point of telling 5 apart.
 #
 # 4 is not 3 because a timeout is a checkpoint, not a result (SKILL.md rule 3):
 # absence is never evidence, so "I waited and nothing happened" has to be
@@ -799,13 +805,92 @@ PY
 
   rc="$(cat "${status}/${winner}")"
   rm -rf "${status}"
-  printf '%s %s settled\n' "${w_agent[$winner]}" "${w_task[$winner]}"
   # herdr's exit codes on a match and on an expiry are not documented as
-  # distinguishable (T-01), so a non-zero one is reported rather than acted
-  # on: the caller is going to `collect --plan` either way.
+  # distinguishable (T-01), so a non-zero one is reported rather than acted on.
   [ "$rc" = "0" ] ||
     warn "wait: herdr agent wait for ${w_agent[$winner]} exited ${rc}"
+
+  # Nor is which of the three states it matched, for the same reason: one exit
+  # code covers idle, done and blocked alike. So the winner is asked about its
+  # own status instead of the wait being asked which condition it met.
+  #
+  # A blocked agent is not a settled Dispatch. It is holding a question nobody
+  # in the Run may answer — an approval dialog belongs to the human in that
+  # pane — so the honest answer is 5, and the next move is to put that screen
+  # in front of them. Guessing 0 here is what left the question invisible until
+  # someone happened to look at the pane, which is the manual step this exists
+  # to remove. The lookup is best-effort: an empty answer is not `blocked`, so
+  # a herdr that has gone away reports a settle rather than failing the wait.
+  local state=""
+  state="$(agent_field "${w_agent[$winner]}" agent_status 2>/dev/null || true)"
+  if [ "$state" = "blocked" ]; then
+    printf '%s %s blocked\n' "${w_agent[$winner]}" "${w_task[$winner]}"
+    warn "wait: ${w_agent[$winner]} is blocked on a question — team.sh surface ${w_agent[$winner]}"
+    return 5
+  fi
+
+  printf '%s %s settled\n' "${w_agent[$winner]}" "${w_task[$winner]}"
   return 0
+}
+
+# --- surface ---------------------------------------------------------------
+# The one read in the verb set that is a diagnostic rather than a report, and
+# the answer to `wait`'s exit 5: an outstanding agent's pane says something,
+# and this prints it with enough context to know whose question it is.
+#
+# It never answers. There is no flag here that types into the pane and there
+# must not be one: an approval dialog is surfaced to the human, who answers it
+# in that pane, and a verb that could answer it would be a verb that approves
+# things on their behalf. The screen read is capped and taken from the visible
+# source — the same sanctioned diagnostic read SKILL.md names for a blocked or
+# stalled agent, not a success-path transcript.
+cmd_surface() {
+  local name="${1:-}"
+  shift || true
+  [ -z "${1:-}" ] || die "surface: unexpected argument $1"
+  [ -n "$name" ] || usage
+  valid_name "$name" || die "surface: name must match [a-z][a-z0-9_-]{0,31}: $name"
+  [ -n "$(agent_field "$name" pane_id)" ] || die "surface: no live agent named ${name}"
+
+  # Whose question it is, from the journal. Best-effort: an agent can be live
+  # without a line under this Run (a dispatch from a Run that has since been
+  # replaced, or one journalled somewhere else), and its screen is still worth
+  # showing. The header says unknown rather than naming a Task it cannot know.
+  #
+  # Best-effort is the deliberate difference from `wait`, which refuses a
+  # journal line it cannot read: there, an unreadable line is a Dispatch it
+  # cannot watch, while here the screen is the answer and refusing to print it
+  # would withhold the one thing the human was asked to come and look at.
+  local run="" header=""
+  run="$(current_run)" || run=""
+  header="$(
+    {
+      handoff_py
+      cat <<'PY'
+import sys
+
+handoffs, run, agent = sys.argv[1], sys.argv[2], sys.argv[3]
+rows = sorted((t, r["dispatch"])
+              for t, r in dispatched(handoffs, run).items()
+              if r["agent"] == agent)
+print("Run: %s" % (run or "unknown"))
+for task, dispatch in rows:
+    print("Task: %s" % task)
+    print("Dispatch: %s" % dispatch)
+if not rows:
+    print("Task: unknown")
+    print("Dispatch: unknown")
+    sys.stderr.write("surface: no journal line under %s names %s\n"
+                      % (run or "(no Run)", agent))
+PY
+    } | python3 - "$HANDOFFS" "$run" "$name"
+  )"
+  printf 'Agent: %s\n%s\n' "$name" "$header"
+
+  local screen=""
+  screen="$(herdr agent read "$name" --source visible --lines 80)" ||
+    die "surface: could not read the screen for ${name}"
+  printf '%s\n' "$screen"
 }
 
 # --- run ------------------------------------------------------------------
@@ -1264,6 +1349,7 @@ case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   collect) shift; cmd_collect "$@" ;;
   wait) shift; cmd_wait "$@" ;;
+  surface) shift; cmd_surface "$@" ;;
   plan) shift; cmd_plan "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;
