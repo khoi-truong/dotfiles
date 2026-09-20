@@ -79,6 +79,18 @@ The same reasoning rules out `verify` commands that cannot fail for other
 reasons: `... || true`, a `grep` whose absence of output is the pass condition,
 or a bare `echo done`. The parser cannot catch those. You can.
 
+**This rule is checked now, not just stated.** A task reaches `done` only when
+its winning handoff's `commands:` names the row's own `verify` at `exit: 0` —
+the executor records what it ran, and the table compares. If it does not, the
+row reads `review` with `UNVERIFIED` in the cause column (`UNPARSED` for a value
+nothing can read as JSON, which is what a handoff written before that contract
+looks like), and every dependent of it stays `blocked`. A `verify` that never
+ran therefore costs a review rather than nothing. The match is a substring,
+because the command reaches the handoff through an agent and a `cd` or a quote
+around it is still the same command; the exit code is required alongside it.
+Mechanism: `collect --plan` in `ai/herdr/team.sh`, described in the `herdr-team`
+skill's `references/herdr-adapter.md`.
+
 ## Reviewers are ordinary rows
 
 A review is work, so it gets a row like anything else, with `blocks` naming
