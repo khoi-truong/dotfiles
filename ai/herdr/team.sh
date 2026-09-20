@@ -435,6 +435,26 @@ def handoff_meta(path):
     return meta
 
 
+def artifacts(meta):
+    """The paths under `artifacts:`, in the order the handoff lists them.
+
+    A receipt, not a copy: these name documents a workflow of the agent's own
+    wrote — `/research`, `/plan` — and nothing here opens one. `run gc` will
+    eventually need the list as an exclusion set; every reader until then only
+    prints it.
+
+    Split by hand rather than by json: the line reaches the file through an
+    agent, so quoted and bare paths both have to read, and a field nobody can
+    parse costs a printed path rather than a whole Run — `collect` must not
+    fail over a receipt. Absent is [], which is what the contract says an
+    omitted field means.
+    """
+    raw = (meta.get("artifacts") or "").strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    return [p.strip().strip('"').strip("'") for p in raw.split(",") if p.strip()]
+
+
 def journal_row(line):
     """(task, dispatch, agent) for a journal line this code can read.
 
@@ -532,24 +552,22 @@ cmd_collect() {
   if [ -n "$run" ] || [ -n "${HERDR_TEAM_HANDOFFS:-}" ]; then
     hdir="$(handoffs_dir "$run")"
   fi
-  python3 - "$hdir" "${ROOT}/runs" "$run" <<'PY'
-import glob, os, sys
+  {
+    handoff_py
+    cat <<'PY'
+import glob, sys
 handoffs, runs_root, run = sys.argv[1], sys.argv[2], sys.argv[3]
 # A Run id is R-<date>-<time>: globbing that shape cannot pick up a stray
 # directory under runs/ that is not one.
 dirs = [handoffs] if handoffs else sorted(glob.glob(os.path.join(runs_root, "R-*", "handoffs")))
 rows, bad = [], []
 for path in sorted(p for d in dirs for p in glob.glob(os.path.join(d, "*.md"))):
-    lines = open(path, encoding="utf-8").read().splitlines()
-    if not lines or lines[0].strip() != "---":
+    # Through handoff_meta rather than a second copy of its six lines: this
+    # table and `collect --plan` reading one handoff two ways is the failure
+    # handoff_py exists to make impossible.
+    meta = handoff_meta(path)
+    if meta is None:
         bad.append((os.path.basename(path), "no frontmatter")); continue
-    meta = {}
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta[k.strip()] = v.strip()
     if run and meta.get("run") != run:
         continue
     missing = [k for k in ("run", "task", "dispatch", "outcome", "evidence") if k not in meta]
@@ -559,14 +577,23 @@ for path in sorted(p for d in dirs for p in glob.glob(os.path.join(d, "*.md"))):
 if not rows and not bad:
     print("no handoffs" + (" for run %s" % run if run else "")); sys.exit(0)
 for m in rows:
-    print("%-12s %-6s %-6s %-9s %-9s %s" % (
+    line = "%-12s %-6s %-6s %-9s %-9s %s" % (
         m["run"], m["task"], m["dispatch"], m["outcome"],
-        m.get("evidence", "-"), m.get("cause", "") or ""))
+        m.get("evidence", "-"), m.get("cause", "") or "")
+    # The receipt is appended rather than given a column of its own: a row for
+    # a handoff that names no artifact stays byte-for-byte what it always was,
+    # which is what lets the path be read off the same table as everything else
+    # without anything already reading it having to change.
+    arts = artifacts(m)
+    if arts:
+        line += "  artifacts: %s" % " ".join(arts)
+    print(line)
 for name, why in bad:
     print("MALFORMED %s (%s)" % (name, why))
 # An unreadable handoff is a failed Dispatch, not a missing one.
 sys.exit(1 if bad else 0)
 PY
+  } | python3 - "$hdir" "${ROOT}/runs" "$run"
 }
 
 # cmd_collect_plan <plan> <run> — one row per Task in the plan, not per
@@ -711,6 +738,19 @@ def settled_state(row):
     return "failed", last, detail
 
 
+def receipt(tid):
+    """The Task's newest handoff's `artifacts:`, or [] while it has none.
+
+    The newest Dispatch id, the same fold `settled_state` reads: a retry that
+    names a different receipt is the one that counts. A Task with no handoff
+    yet has written nothing, so there is nothing to name.
+    """
+    hs = seen.get(tid)
+    if not hs:
+        return []
+    return artifacts(hs[max(hs)])
+
+
 states = {}
 for row in parsed["rows"]:
     states[row["task"]] = settled_state(row)
@@ -763,25 +803,30 @@ for row in parsed["rows"]:
             mark = releasable(tid, sent.get(tid, {}).get("agent"))
             if mark:
                 detail = "%s %s" % (mark, detail)
-        out.append((tid, state, dispatch, detail))
+        out.append((tid, state, dispatch, detail, receipt(tid)))
         continue
     blocks = row.get("blocks") or []
     unmet = [b for b in blocks if not states.get(b) or states[b][0] != "done"]
     if unmet:
-        out.append((tid, "blocked", None, "blocked on %s" % " ".join(unmet)))
+        out.append((tid, "blocked", None, "blocked on %s" % " ".join(unmet), []))
     else:
-        out.append((tid, "ready", None, "-"))
+        out.append((tid, "ready", None, "-", []))
 
-for tid, state, dispatch, detail in out:
-    print("%-6s %-8s %-6s %s" % (tid, state, dispatch or "-", detail))
+for tid, state, dispatch, detail, arts in out:
+    line = "%-6s %-8s %-6s %s" % (tid, state, dispatch or "-", detail)
+    # Appended, not its own column, for the reason `collect` gives: a Task with
+    # no artifact to name reads exactly as it did before this existed.
+    if arts:
+        line += "  artifacts: %s" % " ".join(arts)
+    print(line)
 for name, why in bad:
     print("MALFORMED %s (%s)" % (name, why))
 
 if bad:
     sys.exit(1)
-if any(s in ("ready", "review") for _, s, _, _ in out):
+if any(s in ("ready", "review") for _, s, _, _, _ in out):
     sys.exit(0)
-if any(s == "failed" for _, s, _, _ in out):
+if any(s == "failed" for _, s, _, _, _ in out):
     sys.exit(2)
 sys.exit(3)
 PY
@@ -1493,12 +1538,19 @@ outcome: succeeded | failed | blocked
 cause: null | timeout | blocked_on_approval | tool_error | precondition_failed
 evidence: verified | reported | heuristic | asserted
 files_changed: [path, ...]
+artifacts: [path, ...]
 commands: [{"cmd": "...", "exit": 0}]
 ---
 
 ## What was done
 ## What was found
 ## What remains
+
+'artifacts:' is for documents, not edits: if a skill or workflow you invoke
+writes its own artifact — \`/research\` under \`.omc/research/\`, \`/plan\` under
+\`.omc/plans/\` — leave it where that workflow put it and list its absolute
+path under \`artifacts:\`. Do not copy it into the handoff: the handoff is a
+receipt for it, and nothing deletes it.
 
 'evidence: verified' means a command ran and you observed its exit code.
 Anything you have only asserted is 'reported' and will not settle the Task.
