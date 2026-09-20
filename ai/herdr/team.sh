@@ -22,7 +22,7 @@
 #   team.sh wait [<run-id>] [--plan <plan.md>] [--timeout <ms>]
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
-#   team.sh settle <name> <reuse|retain|release>
+#   team.sh settle <name> <reuse|retain|release> [--clear]
 #   team.sh teardown <name> [--force]
 #
 # See ai/shared/skills/herdr-team/ for the protocol these commands implement.
@@ -1303,27 +1303,72 @@ EOF
 # --- settle ----------------------------------------------------------------
 # Reuse, retain or release. There is no fourth option, and no Dispatch is left
 # unsettled.
+#
+# `--clear` belongs to reuse and to nothing else. Clearing is the reuse being
+# carried out, so it belongs to this decision rather than to the next `dispatch`
+# — it happens here, before the next prompt is sent and never after, when the
+# pane has already been given work it will read against a transcript it cannot
+# see. It goes out through the same helper `dispatch` talks to panes with: that
+# is the one sanctioned reason to send keys to an agent (it is not a Dispatch
+# and not an answer to an approval dialog), and herdr refuses a blocked agent
+# before sending anything, which is what keeps it from destroying a question.
 
 cmd_settle() {
-  local name="${1:-}" decision="${2:-}"
+  local name="${1:-}" decision="${2:-}" clear=0
   if [ -z "$name" ] || [ -z "$decision" ]; then usage; fi
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --clear)
+        clear=1
+        shift
+        ;;
+      *) die "settle: unknown option $1" ;;
+    esac
+  done
   valid_name "$name" || die "settle: bad agent name: ${name}"
-  local pane
-  pane="$(agent_field "$name" pane_id)"
-  [ -n "$pane" ] || die "settle: no live agent named ${name}"
   case "$decision" in
     reuse | retain | release) ;;
     *) die "settle: decision must be reuse, retain or release" ;;
   esac
+  if [ "$clear" -eq 1 ] && [ "$decision" != "reuse" ]; then
+    die "settle: --clear is for reuse — ${decision} leaves no pane holding context to clear"
+  fi
+
+  local pane
+  pane="$(agent_field "$name" pane_id)"
+  [ -n "$pane" ] || die "settle: no live agent named ${name}"
+
+  # Clearing first, and refusing before anything is sent. A pane holding a
+  # question is the one case where /clear destroys something that exists
+  # nowhere else, so the blocked agent is refused the way `dispatch` refuses
+  # one: asked, not assumed, and with the remedy named.
+  local cleared=0
+  if [ "$clear" -eq 1 ]; then
+    if [ "$(agent_field "$name" agent_status)" = "blocked" ]; then
+      die "settle: ${name} is blocked on a question — answer it, then team.sh surface ${name}; /clear would destroy the question"
+    fi
+    herdr agent prompt "$name" "/clear" >/dev/null ||
+      die "settle: herdr refused to send /clear to ${name} — read ${name}; nothing was cleared and ${name} is not settled"
+    cleared=1
+  fi
 
   # One source id for the whole team, one token: a pane allows 32 distinct
-  # metadata sources for its lifetime and never releases a slot.
+  # metadata sources for its lifetime and never releases a slot. `cleared` is
+  # in the token because the pane is the one place that outlives the
+  # transcript: a reused agent whose pane was cleared reads as terse, and only
+  # this says terse on purpose rather than lost. It is written after the clear,
+  # so a refusal above leaves no decision recorded for work that did not happen.
   herdr pane report-metadata "$pane" --source herdr-team \
-    --token "settle=${decision}" >/dev/null ||
+    --token "settle=${decision},cleared=${cleared}" >/dev/null ||
     warn "settle: could not label ${pane} (the decision still stands)"
 
   case "$decision" in
-    reuse) ok "${name} settled: reuse (${pane})" ;;
+    reuse)
+      local note=""
+      [ "$cleared" -eq 0 ] || note=", cleared"
+      ok "${name} settled: reuse (${pane}${note})"
+      ;;
     retain) ok "${name} settled: retain for inspection (${pane})" ;;
     release)
       # Release means the pane goes back to the pool, so it runs the same

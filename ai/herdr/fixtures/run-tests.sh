@@ -1152,6 +1152,201 @@ else
   ok "73b no provider label is left to poll for"
 fi
 
+echo "settle: reuse, and the one sanctioned clear"
+
+# T-10. `settle <name> reuse --clear` is the one place team.sh sends keys to an
+# agent that is not a Dispatch and not an answer to an approval dialog, so the
+# cases below pin what it may send — `/clear` through `agent prompt`, the
+# helper `dispatch` itself uses — and what it may not. The stub's `agent prompt`
+# refuses a blocked agent without recording, the way the real one does, so the
+# recordings before that point are what tell "asked and refused" apart from
+# "never asked".
+#
+# The hazard no case here can see is a filesystem one: /clear does not touch
+# the worktree, so uncommitted work survives while the agent's knowledge of why
+# it is there does not, and a pane cleared over a dirty tree can rediscover its
+# own edits and read them as someone else's. The mitigation is the Dispatch
+# prompt's `Files in scope:` line — case 80 asserts it is in the prompt, so the
+# connection is checked rather than left in a comment.
+mkdir -p "${TMP}/settle"
+cat >"${TMP}/settle/herdr" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >>"${TMP}/settle-called"
+case "\$1 \$2" in
+  "agent list")
+    printf '{"result":{"agents":[{"name":"exec-1","pane_id":"wS:p1","agent_status":"%s"}]}}\n' "\$(cat "${TMP}/settle-status")"
+    ;;
+  "agent prompt")
+    printf '%s\n' "\$*" >>"${TMP}/settle-prompt"
+    # herdr agent prompt <TARGET> <TEXT>: the text is the fourth word, and
+    # recording it apart from the argv is what says what was sent.
+    if [ "\$(cat "${TMP}/settle-status")" = "blocked" ] ||
+      [ -e "${TMP}/settle-refuse" ]; then exit 1; fi
+    printf '%s\n' "\$4" >>"${TMP}/settle-sent"
+    ;;
+  "pane report-metadata")
+    printf '%s\n' "\$*" >>"${TMP}/settle-meta"
+    ;;
+  "pane send-keys" | "pane run")
+    printf '%s\n' "\$*" >>"${TMP}/settle-keys"
+    ;;
+  *) exit 9 ;;
+esac
+SH
+chmod +x "${TMP}/settle/herdr"
+
+# settle_on <status> <want-exit> <stdout-regex> <label> [args...] — `settle`
+# against that stub, with the pane's agent in <status>. An empty regex checks
+# the exit code only, which is the shape a refusal takes: `die` writes to stderr
+# and leaves an empty stdout. Every recording is cleared first, so a case sees
+# what this call did and not what an earlier one left behind.
+#
+# `refuse` is an idle pane whose herdr refuses the send: an agent settle's own
+# pre-check cannot see, so the refusal has to come from the helper. That is the
+# case where "the record was written after the clear" is the whole difference.
+settle_on() {
+  local status="$1" want="$2" re="$3" label="$4" code=0
+  shift 4
+  if [ "$status" = "refuse" ]; then
+    printf 'idle\n' >"${TMP}/settle-status"
+    : >"${TMP}/settle-refuse"
+  else
+    printf '%s\n' "$status" >"${TMP}/settle-status"
+    rm -f "${TMP}/settle-refuse"
+  fi
+  rm -f "${TMP}/settle-called" "${TMP}/settle-prompt" "${TMP}/settle-sent" \
+    "${TMP}/settle-meta" "${TMP}/settle-keys"
+  env PATH="${TMP}/settle:${PATH}" "${TEAM}" settle "$@" >"${TMP}/out" 2>"${TMP}/err" ||
+    code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  elif [ -n "$re" ] && ! grep -qE "$re" "${TMP}/out"; then
+    no "$label" "no /${re}/ in: $(tr '\n' '|' <"${TMP}/out")"
+  else
+    ok "$label"
+  fi
+}
+
+# recorded <which> <whole-line-regex> <label> — the call left exactly one line
+# in that recording and it matches. "One line and exactly this" is the only
+# shape that says *what* was sent rather than that something was.
+recorded() {
+  local f="${TMP}/settle-$1" label="$3"
+  if [ -f "$f" ] && [ "$(wc -l <"$f" | tr -d ' ')" -eq 1 ] && grep -qE "$2" "$f"; then
+    ok "$label"
+  else
+    no "$label" "$(if [ -f "$f" ]; then tr '\n' '|' <"$f"; else echo 'nothing recorded'; fi)"
+  fi
+}
+
+# untouched <which> <label> — that recording is absent, not empty: the call
+# never reached that path at all.
+untouched() {
+  local f="${TMP}/settle-$1" label="$2"
+  if [ -e "$f" ]; then
+    no "$label" "recorded: $(tr '\n' '|' <"$f")"
+  else
+    ok "$label"
+  fi
+}
+
+# asked <whole-line-regex> <label> — every herdr call this run made matches, so
+# the stub was reached for what the case allows and nothing else. Vacuously
+# true when herdr was never reached; the calls that matter are pinned by the
+# recordings above.
+asked() {
+  local label="$2"
+  if [ ! -f "${TMP}/settle-called" ] ||
+    ! grep -vqE "$1" "${TMP}/settle-called"; then
+    ok "$label"
+  else
+    no "$label" "herdr called with: $(tr '\n' '|' <"${TMP}/settle-called")"
+  fi
+}
+
+# 74. The whole point of the flag: /clear goes to the pane, through the one
+#     helper, and the record says so.
+settle_on idle 0 'settled: reuse \(wS:p1, cleared\)' \
+  "74 reuse --clear settles and says the pane was cleared" exec-1 reuse --clear
+recorded sent '^/clear$' "74b /clear is all that was sent"
+recorded prompt '^agent prompt exec-1 /clear$' \
+  "74c and it went through the helper dispatch uses, addressed by name"
+untouched keys "74d no send-keys and no pane run"
+recorded meta '^pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=1$' \
+  "74e the record names the decision and the clear"
+
+# 75. Off by default in this Task, and off means nothing leaves the shell.
+settle_on idle 0 'settled: reuse \(wS:p1\)$' "75 reuse without --clear settles" \
+  exec-1 reuse
+untouched prompt "75b and herdr was never asked to send anything"
+recorded meta '^pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=0$' \
+  "75c the record says this pane was not cleared"
+
+# 76. A blocked agent is holding a question that exists nowhere else, so the
+#     clear is refused before herdr is asked to send it.
+settle_on blocked 1 '' "76 --clear refuses a blocked agent" exec-1 reuse --clear
+if grep -q 'blocked on a question' "${TMP}/err" && grep -q 'team.sh surface exec-1' "${TMP}/err"; then
+  ok "76a and the refusal names the reason and the remedy"
+else
+  no "76a and the refusal names the reason and the remedy" "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+untouched prompt "76b nothing was sent"
+untouched meta "76c and no decision was recorded for a reuse that did not happen"
+asked '^agent list$' "76d the only thing asked was who the agent is"
+
+# 77/78. Clearing belongs to the reuse decision. A retain keeps the pane to be
+#     read, and a release runs the teardown guards; neither has a context left
+#     to clear, and neither may be cleared by a stray flag.
+settle_on idle 1 '' "77 --clear is rejected on retain" exec-1 retain --clear
+if grep -q 'clear is for reuse' "${TMP}/err"; then
+  ok "77a and the refusal says which decision it belongs to"
+else
+  no "77a and the refusal says which decision it belongs to" "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+settle_on idle 1 '' "78 --clear is rejected on release" exec-1 release --clear
+untouched called "78b and not one herdr call was made for it"
+
+# 79. The mechanical half: whatever the stub answers, the body may not hold a
+#     second way to a pane beside the one /clear. A settle that grew a
+#     send-keys or a pane run would pass every case above by way of the stub.
+if [ "$(awk '/^cmd_settle\(\)/,/^}/' "${TEAM}" | grep -c 'send-keys\|pane run')" -eq 0 ]; then
+  ok "79 cmd_settle holds no other way to a pane"
+else
+  no "79 cmd_settle holds no other way to a pane" "the body reaches a pane twice"
+fi
+if [ "$(awk '/^cmd_settle\(\)/,/^}/' "${TEAM}" | grep -c 'herdr agent prompt')" -eq 1 ]; then
+  ok "79b and exactly one send to the agent it names"
+else
+  no "79b and exactly one send to the agent it names" \
+    "$(awk '/^cmd_settle\(\)/,/^}/' "${TEAM}" | grep -n 'herdr agent prompt' | tr '\n' '|')"
+fi
+
+# 80. The mitigation the hazard leans on, asserted where the hazard is written
+#     down: a pane reused after a clear gets a Dispatch that names the files it
+#     may touch, which is all that separates it from its own old edits.
+reset
+dispatch --task T-01 --from-plan "${FIXTURES}/plan-ok.md" >"${TMP}/out"
+if grep -q '^Files in scope: ai/setup.sh$' "${TMP}/out"; then
+  ok "80 the Dispatch a reused pane reads names its files in scope"
+else
+  no "80 the Dispatch a reused pane reads names its files in scope" \
+    "$(grep -n 'scope' "${TMP}/out" | tr '\n' '|')"
+fi
+
+# 81. The decisions that were already there, so a flag cannot have moved them:
+#     the non-clear path still settles, and its token still says so.
+settle_on idle 0 'settled: retain for inspection \(wS:p1\)$' \
+  "81 retain settles without --clear" exec-1 retain
+recorded meta '^pane report-metadata wS:p1 --source herdr-team --token settle=retain,cleared=0$' \
+  "81b and its record carries the decision and no clear"
+
+# 82. The refusal that has to come from herdr, which is the one an ordering
+#     mistake would decorate: a clear that did not happen is not a reuse that
+#     was carried out, so the record has to come after the send and not before.
+settle_on refuse 1 '' "82 a send herdr refuses is not a reuse" exec-1 reuse --clear
+untouched sent "82b nothing reached the pane"
+untouched meta "82c and no reuse is recorded for a pane still holding it"
+
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ]
