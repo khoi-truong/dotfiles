@@ -2,8 +2,14 @@
 #
 # DeepSeek is built in (catalog model deepseek/deepseek-flash); this only
 # supplies the key. omp runs the command when a request first needs it and
-# caches the result for the process, so rotate the key in 1Password and
-# restart omp. A --api-key flag overrides it.
+# caches the result for the process, so rotate the key in 1Password, re-run
+# ai/setup.sh, and restart omp. A --api-key flag overrides it.
+#
+# The key comes from the environment, not `op read`: resolving it through op
+# raises a biometric prompt, which an agent pane ai/herdr/team.sh spawned
+# cannot answer. ai/setup.sh exports it from 1Password into ai/env.local.zsh,
+# which ai/aliases.zsh sources. This is omp's own key — Claude Code has a
+# separate one (CLAUDE_CODE_DEEPSEEK_API_KEY) so either can be rotated alone.
 providers:
   deepseek:
-    apiKey: "!op read --account my.1password.com op://cvlkani4a45n37bmnnwzvynboi/wu7wmnnyk2qpmz6lyij5ubrqvi/PI_CODING_AGENT"
+    apiKey: '!printf %s "$PI_CODING_AGENT_DEEPSEEK_API_KEY"'
