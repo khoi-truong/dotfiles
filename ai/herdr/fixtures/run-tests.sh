@@ -962,5 +962,196 @@ else
 fi
 
 echo
+echo "spawn: the provider check"
+
+# The check T-09 repairs. `spawn` used to launch the pane and then poll the
+# visible screen for the provider label's glyph, which nothing renders any
+# more — so every `ccd` spawn failed on a marker and blamed 1Password for it.
+# What it guards is real, and it is asserted here instead: the `key=env:VAR` a
+# provider names has to resolve to something in the pane's own login shell,
+# asked before the pane exists rather than inferred from a glyph after.
+#
+# The stubs answer as a login shell would, so most of these cases are about
+# what spawn does with the answer. The two `realzsh` cases ask a real zsh with
+# the probe team.sh actually sends it: a stub answers in whatever shape the
+# case chose, so a probe and a parser that disagree about the separator would
+# pass every stubbed case here and fail in the field.
+mkdir -p "${TMP}/spawn"
+cat >"${TMP}/spawn/herdr" <<SH
+#!/usr/bin/env bash
+echo "\$*" >>"${TMP}/herdr-called"
+case "\$1 \$2" in
+  "agent list")
+    # Call one is the liveness question spawn asks before anything else, and it
+    # answers empty so the spawn gets past it; call two is the detection loop,
+    # which wants the pane that was just opened.
+    n=\$(cat "${TMP}/list-calls" 2>/dev/null || echo 0)
+    n=\$((n + 1))
+    printf '%s\n' "\$n" >"${TMP}/list-calls"
+    if [ "\$n" -ge 2 ]; then
+      printf '{"result":{"agents":[{"name":"fixture","pane_id":"wT:p1","agent_status":"working"}]}}\n'
+    else
+      printf '{"result":{"agents":[]}}\n'
+    fi
+    ;;
+  "worktree open")
+    printf '{"result":{"workspace":{"workspace_id":"wT:t1","active_tab_id":"wT:t1"},"root_pane":{"pane_id":"wT:p1"},"already_open":false}}\n'
+    ;;
+  "tab rename" | "pane run" | "pane send-keys" | "agent rename") ;;
+  *) exit 9 ;;
+esac
+exit 0
+SH
+chmod +x "${TMP}/spawn/herdr"
+
+# The login shell as the check meets it: the answer from the probe file, or the
+# failure of a shell that cannot give one. What it was asked goes to a record,
+# because "the shell was never asked" is a property of no output.
+cat >"${TMP}/spawn/zsh" <<SH
+#!/usr/bin/env bash
+printf '%s %s\n' "\$3" "\$4" >>"${TMP}/zsh-called"
+[ -f "${TMP}/probe" ] || exit 3
+cat "${TMP}/probe"
+SH
+chmod +x "${TMP}/spawn/zsh"
+
+# The real login shell, with the provider `ccd` names pointed at a ref of the
+# case's choosing: appended last, so it wins the probe's lookup, and injected
+# ahead of the script the probe is handed, so it lands after the rc files have
+# had their say. Whatever this machine's providers.zsh says about ccd, the
+# answer comes from the fixture — which is what lets a case about an empty key
+# run without touching the developer's own.
+REAL_ZSH="$(command -v zsh)"
+mkdir -p "${TMP}/realzsh"
+cat >"${TMP}/realzsh/zsh" <<SH
+#!/usr/bin/env bash
+[ "\$1" = "-ic" ] || exit 9
+exec "${REAL_ZSH}" -ic "_cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
+SH
+chmod +x "${TMP}/realzsh/zsh"
+
+# spawn_on <stub-dirs> <want-exit> <label> <args...> — one spawn against the
+# stubs, with the records of what it called cleared first.
+spawn_on() {
+  local dirs="$1" want="$2" label="$3" code=0
+  shift 3
+  rm -f "${TMP}/list-calls" "${TMP}/herdr-called" "${TMP}/zsh-called"
+  env PATH="${dirs}:${PATH}" "${TEAM}" spawn "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  else
+    ok "$label"
+  fi
+}
+
+# 67. The defect, and the whole of it: an empty key. The refusal has to name the
+#     variable, because "1Password locked" was a guess at a cause and a wrong
+#     one — the variable is what the human has to export. The branch does not
+#     exist and nothing may be created looking for it: the check runs before the
+#     first mutating call, which is the only reason it can be trusted over the
+#     launch it is protecting.
+printf 'env:HERDR_FIXTURE_KEY HERDR_FIXTURE_KEY empty\n' >"${TMP}/probe"
+spawn_on "${TMP}/spawn" 1 "67 an empty key fails the spawn" \
+  exec-7 --branch fixture-t09-absent --provider ccd
+if grep -q 'would launch with HERDR_FIXTURE_KEY empty' "${TMP}/err"; then
+  ok "67b the refusal names the variable that was empty"
+else
+  no "67b the refusal names the variable that was empty" "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if grep -qE 'worktree open|pane run|agent rename' "${TMP}/herdr-called"; then
+  no "67c nothing was created before the check" "$(tr '\n' '|' <"${TMP}/herdr-called")"
+else
+  ok "67c nothing was created before the check"
+fi
+
+if wt_add s; then
+  # 68. A key that is set, so the spawn gets past the check and does its work.
+  printf 'env:HERDR_FIXTURE_KEY HERDR_FIXTURE_KEY set\n' >"${TMP}/probe"
+  spawn_on "${TMP}/spawn" 0 "68 a set key spawns" \
+    exec-7 --branch "${T05_BRANCH}-s" --provider ccd
+  if grep -q 'pane run' "${TMP}/herdr-called" && grep -q 'agent rename' "${TMP}/herdr-called"; then
+    ok "68b the pane was launched and the agent named"
+  else
+    no "68b the pane was launched and the agent named" "$(tr '\n' '|' <"${TMP}/herdr-called")"
+  fi
+  # The old check read the pane. This is the property that says it no longer
+  # does, asserted over the calls the spawn actually made rather than the
+  # source: a `read` that reached the pane by some other name would pass 73.
+  if grep -q 'agent read' "${TMP}/herdr-called"; then
+    no "68c the spawn reads no pane" "$(tr '\n' '|' <"${TMP}/herdr-called")"
+  else
+    ok "68c the spawn reads no pane"
+  fi
+
+  # 69. --skip-provider-check has to skip the question, not answer it: with a
+  #     shell that cannot answer at all, the spawn proceeds and never asks.
+  rm -f "${TMP}/probe"
+  spawn_on "${TMP}/spawn" 0 "69 --skip-provider-check spawns on a shell that cannot answer" \
+    exec-7 --branch "${T05_BRANCH}-s" --provider ccd --skip-provider-check
+  if [ -s "${TMP}/zsh-called" ]; then
+    no "69b the login shell was never asked" "$(tr '\n' '|' <"${TMP}/zsh-called")"
+  else
+    ok "69b the login shell was never asked"
+  fi
+
+  # 70. An op:// ref. Only the launch can resolve it, and it may ask 1Password
+  #     while doing so, so the check cannot assert it — but it does know what it
+  #     is looking at, and says so instead of leaving a pane to wait.
+  printf 'op://Private/Thing/credential\n' >"${TMP}/probe"
+  spawn_on "${TMP}/spawn" 0 "70 an op:// key does not fail the spawn" \
+    exec-7 --branch "${T05_BRANCH}-s" --provider ccd
+  if grep -q 'op:// ref' "${TMP}/err"; then
+    ok "70b and the spawn warns that the pane resolves it itself"
+  else
+    no "70b and the spawn warns that the pane resolves it itself" "$(tr '\n' '|' <"${TMP}/err")"
+  fi
+
+  # 71/72. The acceptance, end to end and with no stub in the middle: a real zsh
+  #     runs the probe team.sh actually sends it, and spawn splits what comes
+  #     back. Empty fails, set succeeds.
+  export HERDR_FIXTURE_PRESENT=fixture-value
+  FIXTURE_REF=env:HERDR_FIXTURE_ABSENT spawn_on "${TMP}/realzsh:${TMP}/spawn" 1 \
+    "71 the real login shell reports the key empty" \
+    exec-7 --branch "${T05_BRANCH}-s" --provider ccd
+  if grep -q 'would launch with HERDR_FIXTURE_ABSENT empty' "${TMP}/err"; then
+    ok "71b and the refusal names the variable the real shell read"
+  else
+    no "71b and the refusal names the variable the real shell read" "$(tr '\n' '|' <"${TMP}/err")"
+  fi
+  FIXTURE_REF=env:HERDR_FIXTURE_PRESENT spawn_on "${TMP}/realzsh:${TMP}/spawn" 0 \
+    "72 the real login shell reports the key set" \
+    exec-7 --branch "${T05_BRANCH}-s" --provider ccd
+  unset HERDR_FIXTURE_PRESENT
+
+  git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null
+  git -C "${DOTFILES}" branch -D "${T05_BRANCH}-s" >/dev/null 2>&1
+else
+  sk "68 a set key spawns" "no throwaway worktree: $(head -1 "${TMP}/err")"
+  sk "69 --skip-provider-check spawns on a shell that cannot answer" "no throwaway worktree"
+  sk "70 an op:// key does not fail the spawn" "no throwaway worktree"
+  sk "71 the real login shell reports the key empty" "no throwaway worktree"
+  sk "72 the real login shell reports the key set" "no throwaway worktree"
+fi
+
+# 73. The mechanical half of the same property, and the one the plan asks for:
+#     with no read of a pane anywhere in cmd_spawn there is no glyph left for a
+#     spawn to be decided by. A body that went back to scraping the screen
+#     would pass every case above by way of the stub and fail this one.
+if [ "$(awk '/^cmd_spawn\(\)/,/^}/' "${TEAM}" | grep -c 'agent read')" -eq 0 ]; then
+  ok "73 cmd_spawn reads no pane"
+else
+  no "73 cmd_spawn reads no pane" "the body calls agent read"
+fi
+
+# 73b. The same for the marker itself. `--skip-provider-check` stays as the
+#      escape hatch, but nothing may still be waiting on a label that is not
+#      rendered: that is the failure this Task exists to remove.
+if grep -q 'CC_PROVIDER_LABEL' "${TEAM}"; then
+  no "73b no provider label is left to poll for" "$(grep -n 'CC_PROVIDER_LABEL' "${TEAM}" | head -2 | tr '\n' '|')"
+else
+  ok "73b no provider label is left to poll for"
+fi
+
+echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ]

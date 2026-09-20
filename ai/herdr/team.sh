@@ -75,6 +75,46 @@ agent_field() {
     "next((a.get('$2','') for a in d['result']['agents'] if a.get('name')=='$1'), '')"
 }
 
+# provider_key <command> — what the login shell says about the key that
+# `<command>` would launch with: either `<ref>` alone (an `op://` ref, which
+# only the launch can resolve), or `<ref> <var> <set|empty>`. Space-separated,
+# because a variable name and the two state words never contain one; a tab
+# would have to be spelled past the single quotes this probe is written in.
+# Non-zero when the shell cannot answer.
+#
+# This is the provider check, and the point of it is that the question is put to
+# the thing that will actually read the key. `ai/claude/providers.zsh` resolves
+# `key=` at launch, in a `zsh -ic` of the pane's own shape; asking the same
+# shell for the same ref cannot disagree with the launch the way a rendered
+# glyph can. The value is never printed or copied — the answer is `set` or
+# `empty` — so the key does not travel through this script.
+# The probe is zsh source quoted into a `zsh -ic`: single quotes are the point,
+# so shellcheck's "this will not expand" is exactly what is wanted here.
+# shellcheck disable=SC2016
+provider_key() {
+  local probe='n=""
+for p in $_cc_prov_names; do
+  if [[ $p == $1 || ${_cc_prov[${p}:short]} == $1 ]]; then n=$p; fi
+done
+[[ -n $n ]] || exit 1
+ref=${_cc_prov[${n}:key]}
+case $ref in
+  env:*)
+    var=${ref#env:}
+    st=empty
+    [[ -n $var && -n ${(P)var} ]] && st=set
+    print -r -- "$ref $var $st"
+    ;;
+  *) print -r -- "$ref" ;;
+esac'
+  local out=""
+  out="$(zsh -ic "$probe" herdr-provider-key "$1" 2>/dev/null)" || return 1
+  # An interactive shell shares its startup output with the probe's, so the
+  # answer is the line that looks like a key ref rather than whichever line
+  # came first.
+  printf '%s\n' "$out" | grep -E '^(env:|op://)' | tail -1
+}
+
 # The worktree checked out on <branch>, or empty. Asked of git rather than
 # rebuilt from the `git wta` layout, so moving that layout cannot silently
 # leave spawn predicting a path nothing is at.
@@ -131,6 +171,33 @@ cmd_spawn() {
   if [ -n "$(agent_field "$name" pane_id)" ]; then
     ok "agent ${name} already live — nothing to do"
     return 0
+  fi
+
+  # The provider check, before anything exists to undo. A `ccd` pane launched
+  # on an empty key shows `empty API key` in place of a session, so the spawn is
+  # a silent failure to everything watching from outside; asserting the launch's
+  # own precondition is the only check that cannot come apart from the launch.
+  #
+  # `cc` is the Pro login and has no key ref to resolve, and omp is a different
+  # agent whose key lives in ai/omp/models.yml: neither has a `cc_provider` to
+  # ask about, so neither is checked here.
+  if [ "$skip_provider_check" -eq 0 ] && [ "$provider" != "cc" ] && [ "$provider" != "omp" ]; then
+    local ref="" var="" state="" probe=""
+    probe="$(provider_key "$provider")" ||
+      die "spawn: could not ask the login shell about ${provider}'s key — pass --skip-provider-check to spawn anyway"
+    IFS=' ' read -r ref var state <<<"$probe"
+    case "$ref" in
+      env:*)
+        if [ "$state" != "set" ]; then
+          warn "spawn: ${provider} would launch with ${var} empty (ai/claude/providers.zsh: key=${ref}),"
+          die "spawn: so the pane would show a key error instead of a session — export ${var} in this login shell, or pass --skip-provider-check."
+        fi
+        ;;
+      op://*)
+        warn "spawn: ${provider}'s key is an op:// ref, which nothing here can resolve ahead of"
+        warn "the launch — the pane reads it itself and may prompt for 1Password."
+        ;;
+    esac
   fi
 
   local dir made_worktree=0
@@ -215,35 +282,10 @@ cmd_spawn() {
   done
   if [ "$waited" -ge "$DETECT_TIMEOUT" ]; then
     spawn_rollback
-    die "spawn: no agent detected in ${pane} after ${DETECT_TIMEOUT}s (1Password locked?)"
+    die "spawn: no agent detected in ${pane} after ${DETECT_TIMEOUT}s — read the pane"
   fi
 
   herdr agent rename "$pane" "$name" >/dev/null
-
-  # A fallback to the Pro login is silent and expensive, so it is fatal by
-  # default. The marker is the status-line prefix cc_provider sets via
-  # CC_PROVIDER_LABEL (ai/claude/providers.zsh) — only Claude Code wrappers
-  # render one, so omp is exempt. It appears a beat after detection, and only
-  # on the visible screen: the default `recent` source returns the scrollback
-  # from before the launch.
-  if [ "$provider" = "ccd" ] && [ "$skip_provider_check" -eq 0 ]; then
-    local marker="DS·" found=0 tries=0
-    while [ "$tries" -lt 20 ]; do
-      if herdr agent read "$name" --source visible --lines 60 2>/dev/null |
-        grep -qF "$marker"; then
-        found=1
-        break
-      fi
-      sleep 1
-      tries=$((tries + 1))
-    done
-    if [ "$found" -eq 0 ]; then
-      spawn_rollback
-      warn "${name} never showed the '${marker}' status-line marker — it may have"
-      warn "fallen back to the Pro login. Unlock 1Password and retry, or pass"
-      die "--skip-provider-check if you know the marker is absent by design."
-    fi
-  fi
 
   ok "${name} → ${pane} (${provider}) in ${dir}"
 }
