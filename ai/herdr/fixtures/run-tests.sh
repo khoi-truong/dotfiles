@@ -1184,6 +1184,14 @@ case "\$1 \$2" in
       [ -e "${TMP}/settle-refuse" ]; then exit 1; fi
     printf '%s\n' "\$4" >>"${TMP}/settle-sent"
     ;;
+  "agent rename")
+    # The stub has no terminal title, so it cannot lose a name the way a real
+    # pane does. What it can do is record the call — which is the only thing a
+    # case can assert about a fix whose defect is invisible here — and refuse
+    # one when the case asks it to.
+    printf '%s\n' "\$*" >>"${TMP}/settle-rename"
+    [ ! -e "${TMP}/settle-rename-fail" ] || exit 1
+    ;;
   "pane report-metadata")
     printf '%s\n' "\$*" >>"${TMP}/settle-meta"
     ;;
@@ -1204,18 +1212,27 @@ chmod +x "${TMP}/settle/herdr"
 # `refuse` is an idle pane whose herdr refuses the send: an agent settle's own
 # pre-check cannot see, so the refusal has to come from the helper. That is the
 # case where "the record was written after the clear" is the whole difference.
+# `norename` is its counterpart one call later — the send lands and the name
+# will not come back.
 settle_on() {
   local status="$1" want="$2" re="$3" label="$4" code=0
   shift 4
-  if [ "$status" = "refuse" ]; then
-    printf 'idle\n' >"${TMP}/settle-status"
-    : >"${TMP}/settle-refuse"
-  else
-    printf '%s\n' "$status" >"${TMP}/settle-status"
-    rm -f "${TMP}/settle-refuse"
-  fi
+  rm -f "${TMP}/settle-refuse" "${TMP}/settle-rename-fail"
+  case "$status" in
+    refuse)
+      printf 'idle\n' >"${TMP}/settle-status"
+      : >"${TMP}/settle-refuse"
+      ;;
+    norename)
+      printf 'idle\n' >"${TMP}/settle-status"
+      : >"${TMP}/settle-rename-fail"
+      ;;
+    *)
+      printf '%s\n' "$status" >"${TMP}/settle-status"
+      ;;
+  esac
   rm -f "${TMP}/settle-called" "${TMP}/settle-prompt" "${TMP}/settle-sent" \
-    "${TMP}/settle-meta" "${TMP}/settle-keys"
+    "${TMP}/settle-meta" "${TMP}/settle-keys" "${TMP}/settle-rename"
   env PATH="${TMP}/settle:${PATH}" "${TEAM}" settle "$@" >"${TMP}/out" 2>"${TMP}/err" ||
     code=$?
   if [ "$code" -ne "$want" ]; then
@@ -1346,6 +1363,54 @@ recorded meta '^pane report-metadata wS:p1 --source herdr-team --token settle=re
 settle_on refuse 1 '' "82 a send herdr refuses is not a reuse" exec-1 reuse --clear
 untouched sent "82b nothing reached the pane"
 untouched meta "82c and no reuse is recorded for a pane still holding it"
+
+# T-11. /clear resets the pane's terminal title, and the title is what carries
+# the `agent rename` `spawn` bound — so the clear unbound it, the pane stayed
+# alive and idle with no name, and the next `dispatch exec-1` died with "no live
+# agent named exec-1" until the rename was typed by hand. The stub has no title
+# to lose, which is exactly why nothing here caught it: the case below asserts
+# the *call*, the same shape T-09's provider check uses for a fact no fixture
+# can observe. Order is asserted too, because a rename issued before the send
+# would be undone by the very thing it is meant to survive.
+
+# 83. The fix, and the only property a fixture can hold on to.
+settle_on idle 0 'settled: reuse \(wS:p1, cleared\)' \
+  "83 reuse --clear settles with the name put back" exec-1 reuse --clear
+recorded rename '^agent rename wS:p1 exec-1$' "83b the name is re-asserted on the pane"
+if [ "$(awk '/^agent prompt exec-1 \/clear$/ { p=NR } /^agent rename wS:p1 exec-1$/ { r=NR }
+              END { print (p && r && p < r) ? "after" : "wrong" }' "${TMP}/settle-called")" = "after" ]; then
+  ok "83c and it follows the clear rather than preceding it"
+else
+  no "83c and it follows the clear rather than preceding it" \
+    "$(tr '\n' '|' <"${TMP}/settle-called")"
+fi
+asked '^(agent list|agent prompt exec-1 /clear|agent rename wS:p1 exec-1|pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=1)$' \
+  "83d and the clear, the rename and the record are all it did"
+
+# 84. The rename belongs to the clear and not to reuse: a pane whose transcript
+#     is intact keeps the name it already has, untouched.
+settle_on idle 0 'settled: reuse \(wS:p1\)$' "84 reuse without --clear still settles" exec-1 reuse
+untouched rename "84b and asks herdr to rename nothing"
+
+# 85. The state T-11 is about, reached the other way: the pane was cleared and
+#     the name did not come back. Nothing is recorded — not `cleared=1`, which
+#     would say a nameless pane is ready for the next Dispatch, and not the
+#     decision either, because the reuse was not carried out.
+settle_on norename 1 '' "85 a rename herdr refuses is not a reuse" exec-1 reuse --clear
+if grep -q 'take the name back' "${TMP}/err" &&
+  grep -q 'agent rename wS:p1 exec-1' "${TMP}/err"; then
+  ok "85b and the refusal says which pane, and the command that fixes it"
+else
+  no "85b and the refusal says which pane, and the command that fixes it" \
+    "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -q 'cleared=1' "${TMP}/settle-meta" 2>/dev/null; then
+  no "85c no cleared=1 is recorded" "$(tr '\n' '|' <"${TMP}/settle-meta")"
+else
+  ok "85c no cleared=1 is recorded"
+fi
+untouched meta "85d and no decision at all, for a pane that lost its name"
+recorded sent '^/clear$' "85e the clear itself did go out first"
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"

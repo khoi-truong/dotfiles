@@ -1312,6 +1312,11 @@ EOF
 # is the one sanctioned reason to send keys to an agent (it is not a Dispatch
 # and not an answer to an approval dialog), and herdr refuses a blocked agent
 # before sending anything, which is what keeps it from destroying a question.
+#
+# A clear also costs the pane its name, which is why the rename follows the
+# send rather than living in `spawn` alone: /clear resets the terminal title,
+# the title carries the name, and a reused pane without a name is a pane the
+# next `dispatch` cannot address at all.
 
 cmd_settle() {
   local name="${1:-}" decision="${2:-}" clear=0
@@ -1350,6 +1355,16 @@ cmd_settle() {
     fi
     herdr agent prompt "$name" "/clear" >/dev/null ||
       die "settle: herdr refused to send /clear to ${name} — read ${name}; nothing was cleared and ${name} is not settled"
+    # The name comes back after the clear, never before: /clear resets the
+    # pane's terminal title and the title is what carries the `agent rename`
+    # `spawn` bound, so clearing unbinds it. Measured live on the first real use
+    # of the flag — the pane stayed alive and idle with no name, and the next
+    # `dispatch exec-1` died with "no live agent named exec-1" until a rename
+    # was typed by hand. A clear that loses the name has not finished clearing,
+    # so a rename herdr refuses dies here rather than recording a decision that
+    # says a nameless pane is ready for the next Dispatch.
+    herdr agent rename "$pane" "$name" >/dev/null ||
+      die "settle: ${name} was cleared but herdr would not take the name back on ${pane} — rename it by hand: herdr agent rename ${pane} ${name}"
     cleared=1
   fi
 
