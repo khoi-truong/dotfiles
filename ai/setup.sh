@@ -183,15 +183,19 @@ elif ! op_json="$(op item get "$OP_ITEM" --vault "$OP_VAULT" \
   warn "could not read the 1Password item — unlock 1Password and re-run."
   warn "ai/env.secrets.zsh left as-is."
 else
-  # Concealed fields only: passwords and API keys, not usernames or notes. A
-  # label that cannot be a shell identifier is reported, not silently dropped.
+  # Concealed fields only: passwords and API keys, not usernames or notes.
+  # The field label becomes the variable name verbatim — the item is the place
+  # names are decided, so renaming a field there is the whole edit. A label
+  # that is not a shell identifier is reported, not quietly mangled into one.
   op_exports="$(printf '%s' "$op_json" | jq -r '
     .fields[]
-    | select(.type == "CONCEALED" and (.value // "") != "")
-    | (.label // .id | gsub("[^A-Za-z0-9_]"; "_") | ascii_upcase) as $name
-    | if $name | test("^[A-Za-z_][A-Za-z0-9_]*$")
-      then "export \($name)=\(.value | @sh)"
-      else "# skipped unusable label: \($name)"
+    | select((.value // "") != "" and .id != "notesPlain")
+    | (.label // .id) as $name
+    | if .type != "CONCEALED"
+      then "# skipped: \($name) is a plain-text field, not a password field"
+      elif ($name | test("^[A-Za-z_][A-Za-z0-9_]*$") | not)
+      then "# skipped: \($name) is not a usable variable name"
+      else "export \($name)=\(.value | @sh)"
       end')"
 
   # umask before create: the file must never exist world-readable, not even
@@ -209,8 +213,8 @@ else
   )
   mv -f "${SECRETS}.tmp" "$SECRETS"
   ok "wrote ai/env.secrets.zsh ($(grep -c '^export ' "$SECRETS") keys, mode 600)"
-  printf '%s\n' "$op_exports" | grep '^# skipped' | while read -r line; do
-    warn "${line#\# }"
+  printf '%s\n' "$op_exports" | grep '^# skipped: ' | while read -r line; do
+    warn "${line#\# skipped: }"
   done
 fi
 unset op_json op_exports

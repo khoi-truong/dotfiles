@@ -107,13 +107,13 @@ function cc-providers {
 # key in ~/.omp/agent/agent.db, which is also why `omp` panes start and `ccd`
 # panes did not.
 #
-# PI_CODING_AGENT is the 1Password field label, kept verbatim: ai/setup.sh
-# dumps that item to ai/env.secrets.zsh as one export per field, so renaming
-# here would mean maintaining a translation table. 1Password stays the place
-# the key is *kept*; this is only about how it is *read* at launch.
+# DEEPSEEK_API_KEY is the 1Password field label: ai/setup.sh dumps that item
+# to ai/env.secrets.zsh as one export per field, under the label verbatim. The
+# item is where the name is decided. 1Password stays the place the key is
+# *kept*; this is only about how it is *read* at launch.
 cc_provider deepseek \
   url=https://api.deepseek.com/anthropic \
-  key=env:PI_CODING_AGENT \
+  key=env:DEEPSEEK_API_KEY \
   model=deepseek-flash \
   label=DS \
   short=ccd
