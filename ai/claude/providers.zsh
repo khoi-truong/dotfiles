@@ -98,9 +98,21 @@ function cc-providers {
 
 # DeepSeek: key shared with omp (ai/omp/models.yml). Every model id,
 # Opus included, is served by Flash.
+#
+# `env:` rather than `op://`, because _cc_run resolves the key on every launch
+# and an `op read` puts a biometric prompt in front of it. A human at a
+# terminal can answer that; an agent pane ai/herdr/team.sh spawned cannot, so
+# the prompt is indistinguishable from a hung spawn and the whole unattended
+# workflow stops there. omp never had the problem — it keeps its copy of this
+# key in ~/.omp/agent/agent.db, which is also why `omp` panes start and `ccd`
+# panes did not.
+#
+# Set DEEPSEEK_API_KEY in ai/env.local.zsh (gitignored, sourced by
+# ai/aliases.zsh). 1Password stays the place the key is *kept*; this is only
+# about how it is *read* at launch.
 cc_provider deepseek \
   url=https://api.deepseek.com/anthropic \
-  key=op://cvlkani4a45n37bmnnwzvynboi/wu7wmnnyk2qpmz6lyij5ubrqvi/PI_CODING_AGENT \
+  key=env:DEEPSEEK_API_KEY \
   model=deepseek-flash \
   label=DS \
   short=ccd

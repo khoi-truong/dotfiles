@@ -164,8 +164,17 @@ cmd_spawn() {
   #
   # `pane run` types the command; it does NOT submit it. Without the Enter the
   # spawn hangs forever and looks exactly like a slow start.
+  # omp's config.yml prompts on the `eval` tool, and a per-tool override is
+  # honoured in every approval mode — `yolo` does not lift it. An agent this
+  # script spawned has nobody at its pane to answer, so it would block on its
+  # first probe. ai/omp/executor.yml lifts exactly that one prompt; every other
+  # approval rule is inherited, so a `prompt` still blocks and gets surfaced.
+  local launch="$provider"
+  [ "$provider" != "omp" ] ||
+    launch="omp --config ${DOTFILES}/ai/omp/executor.yml"
+
   herdr pane run "$pane" \
-    "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_HANDOFFS=${HANDOFFS}; zsh -ic ${provider}" \
+    "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_HANDOFFS=${HANDOFFS}; zsh -ic '${launch}'" \
     >/dev/null
   herdr pane send-keys "$pane" enter >/dev/null
 

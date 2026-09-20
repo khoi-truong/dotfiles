@@ -1,0 +1,24 @@
+# ai/omp/executor.yml — the approval policy for an omp agent that team.sh
+# spawned, layered over config.yml with `omp --config`.
+#
+# It is NOT linked into ~/.omp/agent: an interactive omp session keeps
+# config.yml's policy, and only a pane started by ai/herdr/team.sh gets this.
+#
+# One override, and it is the whole point. config.yml sets `eval: prompt`,
+# which an unattended executor cannot answer — the pane blocks and the Task
+# never settles. `yolo` does not cover it: omp honours per-tool overrides in
+# every approval mode, so the prompt has to be lifted explicitly.
+#
+# The cost is real and accepted deliberately: `eval` runs arbitrary python, so
+# it can reach past the bash.patterns deny list in config.yml. The compensating
+# control is the protocol's, not a human at the pane — an executor's work is
+# reviewed after it reports, and it may not push, open a PR or answer an
+# approval dialog.
+#
+# The bash.patterns from config.yml are inherited unchanged. The `prompt` rules
+# there stay prompts on purpose: an executor that tries `brew bundle` or
+# `git reset --hard` should block, which the orchestrator surfaces. Surfacing
+# is the protocol's answer to an approval; auto-answering one is forbidden.
+tools:
+  approval:
+    eval: allow
