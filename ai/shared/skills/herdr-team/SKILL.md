@@ -66,12 +66,16 @@ cap exists because auth is contended: one DeepSeek key, one Pro login.
 
 ## Prohibitions
 
-- Never auto-answer an approval dialog. Surface it.
+- Never auto-answer an approval dialog. `team.sh surface <name>` puts it in
+  front of the human with the Run, Task and Dispatch attached; answering happens
+  in that pane, by the human, and no verb here can do it.
 - Never read a transcript on the success path. Results travel by file; reads
   are a diagnostic for blocked or stalled agents, capped at ~80 lines.
 - Never put two agents in one directory. The substrate gives no isolation.
 - Never poll. Subscribe to `pane.agent_status_changed`, and subscribe *before*
-  dispatching — subscriptions do not replay.
+  dispatching — subscriptions do not replay. Blocking is `team.sh wait`: one
+  herdr wait per outstanding Dispatch, returning on the first settle, not a
+  question asked on a timer.
 - Never let a plugin start an agent or pick its provider.
 
 ## Cost
@@ -83,9 +87,9 @@ judge, so it is never the most expensive thing running. Details in
 
 ## Tooling
 
-`ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `plan`,
-`settle`, `teardown`. `prefix+alt+t` shows the status table. The script owns
-topology; this skill owns the protocol.
+`ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `wait`,
+`surface`, `plan`, `settle`, `teardown`. `prefix+alt+t` shows the status table.
+The script owns topology; this skill owns the protocol.
 
 Only `team.sh` starts an agent. It is the only place that knows `cc` and `ccd`
 are shell functions rather than binaries, which is what keeps work off the
@@ -106,11 +110,13 @@ Three things the table does not say for you:
   agent you started by hand in another workspace appears in the roster exactly
   like a team pane. Match on the Run's own names before reading a row as a
   dispatch target.
-- **`release` cannot run before the work is pushed.** It delegates to
-  `teardown`, which refuses a worktree holding unpushed commits — correctly, as
-  releasing would destroy them. The order is `settle <name> retain`, push, then
-  `settle <name> release`. Settlement is still immediate and exactly once; the
-  retain is the recorded decision, and the release is the teardown it licenses.
+- **`release` refuses a worktree holding work that exists nowhere else.** It
+  delegates to `teardown`, which measures the branch against its upstream — or,
+  with no upstream, against the default branch — and refuses what is ahead of
+  it, correctly, since releasing would destroy it. A branch with nothing ahead
+  tears down cleanly. When there is real work the order is `settle <name>
+  retain`, push, then `settle <name> release`; settlement is still immediate and
+  exactly once, and the retain is the recorded decision the release licenses.
 - **The Run id lives in a file**, `.omc/state/team-run`, not in the transcript.
   `team.sh run new` mints one and every later `dispatch` reads it. Start a Run
   before dispatching; a compaction or a dead pane then costs nothing.
@@ -123,6 +129,16 @@ actionable and a task failed, **3** nothing to do. That is the alternative to
 diffing `collect` against the plan by hand every turn, which is the pattern
 `references/cost.md` calls the configuration to avoid. It reports and never
 decides: nothing it does writes state or blocks a dispatch.
+
+**The loop is dispatch → `wait` → `collect --plan` → dispatch what is `ready`,
+and it needs no one watching a pane.** `team.sh wait` blocks until one
+outstanding Dispatch under the Run reaches a terminal agent state, prints which
+agent and Task settled, and reports nothing about the outcome — the table is
+what reports that. Then `collect --plan` says what the next move is. The exit
+codes are stated once, in `references/herdr-adapter.md`; the two that shape the
+loop are that a `--timeout` expiry is not the same answer as "nothing to wait
+for", and that an agent which went `blocked` is a different move again — no
+table to read, so `surface` it instead.
 
 The format it reads is the `dispatchable-plan` skill's, and `team.sh plan lint
 <plan.md>` checks a plan against it before anything is spawned.

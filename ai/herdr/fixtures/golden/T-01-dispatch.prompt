@@ -28,7 +28,7 @@ outcome: succeeded | failed | blocked
 cause: null | timeout | blocked_on_approval | tool_error | precondition_failed
 evidence: verified | reported | heuristic | asserted
 files_changed: [path, ...]
-commands: [{cmd: "...", exit: 0}, ...]
+commands: [{"cmd": "...", "exit": 0}]
 ---
 
 ## What was done

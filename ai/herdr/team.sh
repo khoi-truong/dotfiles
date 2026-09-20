@@ -19,8 +19,10 @@
 #   team.sh run [new]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
+#   team.sh wait [<run-id>] [--plan <plan.md>] [--timeout <ms>]
+#   team.sh surface <name>
 #   team.sh plan lint <plan.md>
-#   team.sh settle <name> <reuse|retain|release>
+#   team.sh settle <name> <reuse|retain|release> [--clear]
 #   team.sh teardown <name> [--force]
 #
 # See ai/shared/skills/herdr-team/ for the protocol these commands implement.
@@ -38,9 +40,12 @@ HANDOFFS="${HERDR_TEAM_HANDOFFS:-${DOTFILES}/.omc/handoffs}"
 # Overridable for the same reason HANDOFFS is: a test that read the developer's
 # live Run would report on whatever they happen to be working on.
 RUN_FILE="${HERDR_TEAM_RUN_FILE:-${DOTFILES}/.omc/state/team-run}"
-# Every real dispatch is journalled here, one `run<TAB>task<TAB>dispatch` line.
-# It is the only durable evidence that a Task was sent out, which is what tells
-# `running` apart from `ready`. The dot keeps it out of the `*.md` handoff glob.
+# Every real dispatch is journalled here, one `run<TAB>task<TAB>dispatch<TAB>agent`
+# line. It is the only durable evidence that a Task was sent out, which is what
+# tells `running` apart from `ready`, and the agent column is what `wait` blocks
+# on — a Task id cannot be resolved back to a pane. The dot keeps it out of the
+# `*.md` handoff glob. A line with three columns was written before the agent
+# column existed: still `running`, merely un-waitable.
 DISPATCHED="${HANDOFFS}/.dispatched"
 # Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
 DETECT_TIMEOUT=60
@@ -70,12 +75,76 @@ agent_field() {
     "next((a.get('$2','') for a in d['result']['agents'] if a.get('name')=='$1'), '')"
 }
 
+# provider_key <command> — what the login shell says about the key that
+# `<command>` would launch with: either `<ref>` alone (an `op://` ref, which
+# only the launch can resolve), or `<ref> <var> <set|empty>`. Space-separated,
+# because a variable name and the two state words never contain one; a tab
+# would have to be spelled past the single quotes this probe is written in.
+# Non-zero when the shell cannot answer.
+#
+# This is the provider check, and the point of it is that the question is put to
+# the thing that will actually read the key. `ai/claude/providers.zsh` resolves
+# `key=` at launch, in a `zsh -ic` of the pane's own shape; asking the same
+# shell for the same ref cannot disagree with the launch the way a rendered
+# glyph can. The value is never printed or copied — the answer is `set` or
+# `empty` — so the key does not travel through this script.
+# The probe is zsh source quoted into a `zsh -ic`: single quotes are the point,
+# so shellcheck's "this will not expand" is exactly what is wanted here.
+# shellcheck disable=SC2016
+provider_key() {
+  local probe='n=""
+for p in $_cc_prov_names; do
+  if [[ $p == $1 || ${_cc_prov[${p}:short]} == $1 ]]; then n=$p; fi
+done
+[[ -n $n ]] || exit 1
+ref=${_cc_prov[${n}:key]}
+case $ref in
+  env:*)
+    var=${ref#env:}
+    st=empty
+    [[ -n $var && -n ${(P)var} ]] && st=set
+    print -r -- "$ref $var $st"
+    ;;
+  *) print -r -- "$ref" ;;
+esac'
+  local out=""
+  out="$(zsh -ic "$probe" herdr-provider-key "$1" 2>/dev/null)" || return 1
+  # An interactive shell shares its startup output with the probe's, so the
+  # answer is the line that looks like a key ref rather than whichever line
+  # came first.
+  printf '%s\n' "$out" | grep -E '^(env:|op://)' | tail -1
+}
+
 # The worktree checked out on <branch>, or empty. Asked of git rather than
 # rebuilt from the `git wta` layout, so moving that layout cannot silently
 # leave spawn predicting a path nothing is at.
 worktree_path() {
   git -C "${DOTFILES}" worktree list --porcelain |
     awk -v b="refs/heads/$1" '/^worktree /{p=substr($0,10)} /^branch /{if($2==b){print p;exit}}'
+}
+
+# default_ref <dir> — the ref a branch with no upstream is measured against, as
+# a ref this repo actually has, or empty when it names none.
+#
+# The local default branch first, because that is what a worktree branch was cut
+# from: level with it means no work of this branch's own. Origin's tip is the
+# fallback for a checkout that has no local main, and origin/HEAD is asked
+# rather than assumed so a repo whose default is neither main nor master still
+# answers. A repo that names none is unmeasurable, and unmeasurable refuses —
+# the guard exists so a release cannot destroy unpushed work, so "cannot show
+# there is none" is a refusal, not a licence.
+default_ref() {
+  local dir="$1" ref="" remote=""
+  remote="$(git -C "$dir" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)"
+  for ref in refs/heads/main refs/heads/master "$remote" \
+    refs/remotes/origin/main refs/remotes/origin/master; do
+    [ -n "$ref" ] || continue
+    if git -C "$dir" rev-parse --verify --quiet "${ref}^{commit}" >/dev/null; then
+      printf '%s\n' "$ref"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # --- spawn -----------------------------------------------------------------
@@ -102,6 +171,33 @@ cmd_spawn() {
   if [ -n "$(agent_field "$name" pane_id)" ]; then
     ok "agent ${name} already live — nothing to do"
     return 0
+  fi
+
+  # The provider check, before anything exists to undo. A `ccd` pane launched
+  # on an empty key shows `empty API key` in place of a session, so the spawn is
+  # a silent failure to everything watching from outside; asserting the launch's
+  # own precondition is the only check that cannot come apart from the launch.
+  #
+  # `cc` is the Pro login and has no key ref to resolve, and omp is a different
+  # agent whose key lives in ai/omp/models.yml: neither has a `cc_provider` to
+  # ask about, so neither is checked here.
+  if [ "$skip_provider_check" -eq 0 ] && [ "$provider" != "cc" ] && [ "$provider" != "omp" ]; then
+    local ref="" var="" state="" probe=""
+    probe="$(provider_key "$provider")" ||
+      die "spawn: could not ask the login shell about ${provider}'s key — pass --skip-provider-check to spawn anyway"
+    IFS=' ' read -r ref var state <<<"$probe"
+    case "$ref" in
+      env:*)
+        if [ "$state" != "set" ]; then
+          warn "spawn: ${provider} would launch with ${var} empty (ai/claude/providers.zsh: key=${ref}),"
+          die "spawn: so the pane would show a key error instead of a session — export ${var} in this login shell, or pass --skip-provider-check."
+        fi
+        ;;
+      op://*)
+        warn "spawn: ${provider}'s key is an op:// ref, which nothing here can resolve ahead of"
+        warn "the launch — the pane reads it itself and may prompt for 1Password."
+        ;;
+    esac
   fi
 
   local dir made_worktree=0
@@ -186,35 +282,10 @@ cmd_spawn() {
   done
   if [ "$waited" -ge "$DETECT_TIMEOUT" ]; then
     spawn_rollback
-    die "spawn: no agent detected in ${pane} after ${DETECT_TIMEOUT}s (1Password locked?)"
+    die "spawn: no agent detected in ${pane} after ${DETECT_TIMEOUT}s — read the pane"
   fi
 
   herdr agent rename "$pane" "$name" >/dev/null
-
-  # A fallback to the Pro login is silent and expensive, so it is fatal by
-  # default. The marker is the status-line prefix cc_provider sets via
-  # CC_PROVIDER_LABEL (ai/claude/providers.zsh) — only Claude Code wrappers
-  # render one, so omp is exempt. It appears a beat after detection, and only
-  # on the visible screen: the default `recent` source returns the scrollback
-  # from before the launch.
-  if [ "$provider" = "ccd" ] && [ "$skip_provider_check" -eq 0 ]; then
-    local marker="DS·" found=0 tries=0
-    while [ "$tries" -lt 20 ]; do
-      if herdr agent read "$name" --source visible --lines 60 2>/dev/null |
-        grep -qF "$marker"; then
-        found=1
-        break
-      fi
-      sleep 1
-      tries=$((tries + 1))
-    done
-    if [ "$found" -eq 0 ]; then
-      spawn_rollback
-      warn "${name} never showed the '${marker}' status-line marker — it may have"
-      warn "fallen back to the Pro login. Unlock 1Password and retry, or pass"
-      die "--skip-provider-check if you know the marker is absent by design."
-    fi
-  fi
 
   ok "${name} → ${pane} (${provider}) in ${dir}"
 }
@@ -271,8 +342,25 @@ def handoff_meta(path):
     return meta
 
 
+def journal_row(line):
+    """(task, dispatch, agent) for a journal line this code can read.
+
+    Three columns is the shape written before `wait` needed a pane to block
+    on: it yields agent None, so a journal from before that change keeps
+    counting as `running` and is merely un-waitable. Four is the current
+    shape. Anything else is None — `dispatched` skips it so one bad line
+    cannot hide a whole Run, and `wait` refuses on it instead.
+    """
+    parts = line.split("\t")
+    if len(parts) == 3:
+        return parts[1], parts[2], None
+    if len(parts) == 4:
+        return parts[1], parts[2], parts[3].strip() or None
+    return None
+
+
 def dispatched(handoffs, run):
-    """The highest Dispatch id sent per Task under `run`, from the journal.
+    """The highest Dispatch id sent per Task under `run`, with its agent.
 
     A Task with a record here and no handoff for it is still out with an
     agent. Nothing else on disk distinguishes that from never dispatched.
@@ -284,13 +372,34 @@ def dispatched(handoffs, run):
     except OSError:
         return sent
     for line in text.splitlines():
-        parts = line.split("\t")
-        if len(parts) != 3 or parts[0] != run:
+        if not line.strip() or line.split("\t")[0] != run:
             continue
-        task, dispatch = parts[1], parts[2]
-        if dispatch > sent.get(task, ""):
-            sent[task] = dispatch
+        row = journal_row(line)
+        if row is None:
+            continue
+        task, dispatch, agent = row
+        if dispatch > sent.get(task, {}).get("dispatch", ""):
+            sent[task] = {"dispatch": dispatch, "agent": agent}
     return sent
+
+
+def journal_malformed(handoffs, run):
+    """Journal lines under `run` that are neither three nor four columns.
+
+    A line this code cannot read is a Dispatch it cannot wait for, so `wait`
+    names them rather than blocking on the rest: silently waiting for a
+    subset is how an orchestrator loop stalls with work outstanding.
+    """
+    bad = []
+    path = os.path.join(handoffs, ".dispatched")
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return bad
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.strip() and line.split("\t")[0] == run and journal_row(line) is None:
+            bad.append((n, line))
+    return bad
 PY
 }
 
@@ -361,15 +470,30 @@ PY
 #   3  nothing to do: the Run is finished, or every remaining Task is out
 #      with an agent. Not an error, and not a reason to dispatch.
 #
+# `done` is a claim the handoff can prove. A Task whose `succeeded`/`verified`
+# handoff does not name the row's own `verify` at exit 0 in its `commands:`
+# reads `review` with UNVERIFIED (or UNPARSED, for a shape nobody can read) in
+# the cause column instead, so the orchestrator sends a reviewer rather than
+# building on it. That changes what this shows and never blocks a dispatch: a
+# false positive from a substring match must not be able to wedge a Run.
+#
+# A `done` Task's cause column also names its agent `releasable` when that agent
+# has no other outstanding Dispatch under the Run — the pane is finished and
+# nothing else needs it, so the orchestrator can see what is closeable from the
+# same table it reads everything else from. Also reporting only: nothing here
+# settles anything, because release destroys a worktree and a table is not the
+# place to make that call.
+#
 # 3 exists so a loop can tell "nothing to dispatch" from "dispatch this"
 # without reading the table back. It is not an invitation to poll: the table
-# says which of the two cases it is, and there is still no `wait` verb.
+# says which of the two cases it is, and `wait` is how an orchestrator blocks
+# until there is a table to read.
 cmd_collect_plan() {
   {
     plan_parser_py
     handoff_py
     cat <<'PY'
-import glob, sys
+import glob, json, sys
 
 plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 plan = os.path.abspath(plan)
@@ -399,15 +523,56 @@ for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
 sent = dispatched(handoffs, run)
 
 
-def settled_state(tid):
+def unproven(meta, verify):
+    """The cause to report instead of `done`, or None when the handoff proves it.
+
+    A handoff's `commands:` is one JSON object per command the agent ran — the
+    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
+    be one of those commands at exit 0, or the handoff is claiming a check
+    nobody can see; `settled_state` says so rather than showing `done`.
+
+    Substring, not equality: the verify reaches the handoff through an agent,
+    so a `cd` or a quote around it is still the same command. Loose on purpose —
+    a false positive here must not be able to wedge a Run (see the header) — and
+    the exit code is required alongside the command, never instead of it.
+
+    An empty `verify` is the planner saying no command settles this Task. There
+    is nothing to check, so `done` stands.
+    """
+    if not verify:
+        return None
+    raw = meta.get("commands")
+    if raw is None or not raw.strip():
+        # No commands recorded: absent, or present with nothing after the colon.
+        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
+        # rather than UNPARSED — and absence is never evidence.
+        return "UNVERIFIED"
+    try:
+        entries = json.loads(raw)
+    except ValueError:
+        # A handoff written before this contract existed. A human has to be
+        # able to tell a shape they cannot read from a claim that does not hold.
+        return "UNPARSED"
+    if not isinstance(entries, list):
+        return "UNVERIFIED"
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
+            return None
+    return "UNVERIFIED"
+
+
+def settled_state(row):
     """State from this Task's own handoffs, or None when it has none.
 
     The highest Dispatch id wins. Without that fold a Task that failed at
     D-01 and was retried to success at D-02 reads `failed` forever, and an
     orchestrator loop can never terminate.
     """
+    tid = row["task"]
     hs = seen.get(tid)
-    last_sent = sent.get(tid)
+    last_sent = sent.get(tid, {}).get("dispatch")
     if not hs:
         return ("running", last_sent, "dispatched, no handoff yet") if last_sent else None
     last = max(hs)
@@ -418,7 +583,15 @@ def settled_state(tid):
     if m["outcome"] == "succeeded":
         # Verified is the only evidence that settles a Task; a claim is work
         # to dispatch a reviewer at, not a result.
-        return ("done" if m.get("evidence") == "verified" else "review"), last, detail
+        if m.get("evidence") != "verified":
+            return "review", last, detail
+        why = unproven(m, row.get("verify") or "")
+        if why:
+            # Not `done` — the row's own verify is not in the handoff — but not
+            # a failure either. `review` is what sends a reviewer at it, and a
+            # dependent stays `blocked` on it rather than building on a claim.
+            return "review", last, "%s %s" % (why, detail)
+        return "done", last, detail
     # An agent that reports `blocked` needs a human exactly as a failure does.
     # The `blocked` state name is already spoken for by the dependency sense.
     cause = m.get("cause") or ""
@@ -429,14 +602,57 @@ def settled_state(tid):
 
 states = {}
 for row in parsed["rows"]:
-    states[row["task"]] = settled_state(row["task"])
+    states[row["task"]] = settled_state(row)
+
+
+def outstanding(tid):
+    """True when this Task still has a Dispatch out with an agent.
+
+    The fold `wait` blocks on and `running` already means here: the journal
+    sent it, no handoff has landed. A Task the plan does not list counts as
+    outstanding too — the journal is the Run's record, and a Dispatch in it is
+    out whether or not a row mentions it.
+    """
+    if tid not in states:
+        return True
+    known = states[tid]
+    return bool(known) and known[0] == "running"
+
+
+def releasable(tid, agent):
+    """`releasable <agent>` for a done Task whose agent owes nothing else.
+
+    Reporting only: `collect` names the agent and settles nothing. Settlement
+    stays an explicit `settle` call, because it is a decision with three
+    answers and picking one silently is how a worktree someone wanted to keep
+    gets destroyed.
+
+    An agent still needed elsewhere is not named. Release destroys a worktree,
+    so the marker has to mean done with the Run rather than done with this
+    Task — an agent holding a second outstanding Task is still working away on
+    it, and settling the pane it is working in would throw that work away.
+    """
+    if not agent:
+        # A journal line written before the agent column existed: no name to
+        # settle, so nothing to name.
+        return None
+    for other in sent:
+        if other != tid and sent[other].get("agent") == agent and outstanding(other):
+            return None
+    return "releasable %s" % agent
+
 
 out = []
 for row in parsed["rows"]:
     tid = row["task"]
     known = states[tid]
     if known:
-        out.append((tid,) + known)
+        state, dispatch, detail = known
+        if state == "done":
+            mark = releasable(tid, sent.get(tid, {}).get("agent"))
+            if mark:
+                detail = "%s %s" % (mark, detail)
+        out.append((tid, state, dispatch, detail))
         continue
     blocks = row.get("blocks") or []
     unmet = [b for b in blocks if not states.get(b) or states[b][0] != "done"]
@@ -459,6 +675,264 @@ if any(s == "failed" for _, s, _, _ in out):
 sys.exit(3)
 PY
   } | python3 - "$1" "$2" "$HANDOFFS"
+}
+
+# --- wait ------------------------------------------------------------------
+# The "something happens" step of the orchestrator loop: block until one
+# outstanding Dispatch under this Run reaches a terminal agent state, then
+# return. It reports nothing about an outcome — `collect --plan` reads the
+# table afterwards, and deciding is its job, not this one's.
+#
+#   0  an agent reached a terminal state, or a handoff appeared — collect
+#   1  no Run, a malformed journal, or a precondition failed
+#   3  nothing outstanding to wait for — the same "nothing to do" as collect
+#   4  --timeout expired with nothing settled
+#   5  an outstanding agent went blocked on a question — `surface` it
+#
+# 5 is not 0 because the orchestrator's next move is not `collect --plan`:
+# a blocked agent has written nothing, so there is nothing new on disk to read.
+# It is `team.sh surface`, which is the whole point of telling 5 apart.
+#
+# 4 is not 3 because a timeout is a checkpoint, not a result (SKILL.md rule 3):
+# absence is never evidence, so "I waited and nothing happened" has to be
+# tellable apart from "there was nothing to wait for".
+#
+# Outstanding is the fold `running` already uses in cmd_collect_plan — the
+# highest Dispatch sent per Task with no handoff file yet — read through
+# dispatched(), so the two verbs cannot come to disagree about what is out.
+cmd_wait() {
+  local run="" timeout=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      # Accepted and dropped: blocking is a question about the Run, not about
+      # the plan. Taken at all so `wait` and `collect --plan` read alike in a
+      # loop.
+      --plan) [ $# -ge 2 ] || die "wait: --plan needs a plan file"; shift 2 ;;
+      --timeout)
+        [ $# -ge 2 ] || die "wait: --timeout needs milliseconds"
+        timeout="$2"
+        shift 2
+        ;;
+      --) shift; break ;;
+      -*) die "wait: unknown option $1" ;;
+      *) run="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$run" ] || run="$(current_run)" ||
+    die "wait: no Run started — team.sh run new"
+  if [ -n "$timeout" ]; then
+    printf '%s' "$timeout" | grep -qE '^[0-9]+$' ||
+      die "wait: --timeout takes milliseconds, got: ${timeout}"
+  fi
+
+  # A journal line this code cannot read is a Dispatch it cannot watch, so it
+  # is named and refused rather than skipped: waiting out the readable half of
+  # a journal is how an orchestrator stalls with work still outstanding.
+  local rows
+  rows="$(
+    {
+      handoff_py
+      cat <<'PY'
+import os, sys
+
+handoffs, run = sys.argv[1], sys.argv[2]
+
+bad = journal_malformed(handoffs, run)
+for line_no, text in bad:
+    sys.stderr.write("wait: journal line %d is not 3 or 4 columns: %s\n"
+                      % (line_no, text))
+if bad:
+    sys.exit(1)
+
+for task, rec in sorted(dispatched(handoffs, run).items()):
+    path = os.path.join(handoffs, "%s-%s.md" % (task, rec["dispatch"]))
+    if not os.path.exists(path):
+        print("%s\t%s\t%s" % (task, rec["dispatch"], rec["agent"] or ""))
+PY
+    } | python3 - "$HANDOFFS" "$run"
+  )" || exit $?
+
+  if [ -z "$rows" ]; then
+    warn "wait: nothing outstanding under ${run} — collect --plan reads the table"
+    return 3
+  fi
+
+  # One look at each handoff before blocking. A herdr subscription does not
+  # replay (SKILL.md), so a wait started after the agent it names is already
+  # terminal is the one way this verb could hang forever — an executor that
+  # finished while the journal above was being read has its handoff on disk
+  # already, and that is evidence enough to return on. Could not observe which
+  # way herdr behaves here: a fixture run has no live pane, so the guard stays
+  # and is correct under either answer. run-tests.sh case 44 stages this window
+  # (a python3 that writes the handoff after reading the journal) and fails if
+  # the guard goes away, which is what keeps it from being dead code.
+  local task dispatch agent
+  local -a w_task=() w_agent=()
+  while IFS=$'\t' read -r task dispatch agent; do
+    [ -n "$task" ] || continue
+    if [ -e "${HANDOFFS}/${task}-${dispatch}.md" ]; then
+      printf '%s %s settled\n' "${agent:--}" "$task"
+      return 0
+    fi
+    if [ -z "$agent" ]; then
+      warn "wait: ${task}/${dispatch} has no agent in the journal — skipped"
+      continue
+    fi
+    w_task+=("$task")
+    w_agent+=("$agent")
+  done <<<"$rows"
+
+  # Bash 3.2 is what this repo runs (/bin/bash), and it has no `wait -n`, so
+  # the first finisher is found by polling a status file. An empty array
+  # expands to nothing here anyway: every remaining row is un-waitable.
+  if [ "${#w_agent[@]}" -eq 0 ]; then
+    warn "wait: nothing waitable under ${run} — collect --plan still reports them"
+    return 3
+  fi
+
+  # The fan-in: one `herdr agent wait` per outstanding agent, first to finish
+  # wins and the rest are killed. A Run has up to three Dispatch out at once,
+  # and the caller is waiting for one of them, not for all of them.
+  #
+  # The subshell is there to record the exit status, and the status file is
+  # what the poll below reads. `|| rc=$?` rather than a bare call: under
+  # `set -e` a herdr that fails would take the subshell with it and leave no
+  # status behind, which is a wait that never returns. The stderr redirect on
+  # the subshell is for the kill path below, where bash reports a job it had
+  # to kill and there is nothing useful in that report.
+  local status
+  status="$(mktemp -d)"
+  local -a pids=()
+  local i
+  for i in "${!w_agent[@]}"; do
+    (
+      rc=0
+      herdr agent wait "${w_agent[$i]}" --until "idle" --until "done" --until "blocked" \
+        >/dev/null 2>&1 || rc=$?
+      printf '%s\n' "$rc" >"${status}/${i}"
+    ) 2>/dev/null &
+    pids+=("$!")
+  done
+
+  local winner="" tick=0 rc=""
+  while :; do
+    for i in "${!pids[@]}"; do
+      if [ -e "${status}/${i}" ]; then
+        winner="$i"
+        break
+      fi
+    done
+    if [ -n "$winner" ]; then break; fi
+    if [ -n "$timeout" ] && [ "$tick" -ge "$timeout" ]; then break; fi
+    sleep 0.2
+    tick=$((tick + 200))
+  done
+
+  # Whatever is still waiting is killed: one settled Dispatch is what was
+  # asked for. The herdr wait goes first — killing the subshell around it
+  # would orphan a live subscription with nobody left to read it — and the
+  # `wait` reaps the job, which is what keeps bash from announcing the kill.
+  for i in "${!pids[@]}"; do
+    pkill -P "${pids[$i]}" 2>/dev/null || true
+    kill "${pids[$i]}" 2>/dev/null || true
+    wait "${pids[$i]}" 2>/dev/null || true
+  done
+
+  if [ -z "$winner" ]; then
+    rm -rf "${status}"
+    warn "wait: --timeout ${timeout}ms expired with nothing settled under ${run}"
+    return 4
+  fi
+
+  rc="$(cat "${status}/${winner}")"
+  rm -rf "${status}"
+  # herdr's exit codes on a match and on an expiry are not documented as
+  # distinguishable (T-01), so a non-zero one is reported rather than acted on.
+  [ "$rc" = "0" ] ||
+    warn "wait: herdr agent wait for ${w_agent[$winner]} exited ${rc}"
+
+  # Nor is which of the three states it matched, for the same reason: one exit
+  # code covers idle, done and blocked alike. So the winner is asked about its
+  # own status instead of the wait being asked which condition it met.
+  #
+  # A blocked agent is not a settled Dispatch. It is holding a question nobody
+  # in the Run may answer — an approval dialog belongs to the human in that
+  # pane — so the honest answer is 5, and the next move is to put that screen
+  # in front of them. Guessing 0 here is what left the question invisible until
+  # someone happened to look at the pane, which is the manual step this exists
+  # to remove. The lookup is best-effort: an empty answer is not `blocked`, so
+  # a herdr that has gone away reports a settle rather than failing the wait.
+  local state=""
+  state="$(agent_field "${w_agent[$winner]}" agent_status 2>/dev/null || true)"
+  if [ "$state" = "blocked" ]; then
+    printf '%s %s blocked\n' "${w_agent[$winner]}" "${w_task[$winner]}"
+    warn "wait: ${w_agent[$winner]} is blocked on a question — team.sh surface ${w_agent[$winner]}"
+    return 5
+  fi
+
+  printf '%s %s settled\n' "${w_agent[$winner]}" "${w_task[$winner]}"
+  return 0
+}
+
+# --- surface ---------------------------------------------------------------
+# The one read in the verb set that is a diagnostic rather than a report, and
+# the answer to `wait`'s exit 5: an outstanding agent's pane says something,
+# and this prints it with enough context to know whose question it is.
+#
+# It never answers. There is no flag here that types into the pane and there
+# must not be one: an approval dialog is surfaced to the human, who answers it
+# in that pane, and a verb that could answer it would be a verb that approves
+# things on their behalf. The screen read is capped and taken from the visible
+# source — the same sanctioned diagnostic read SKILL.md names for a blocked or
+# stalled agent, not a success-path transcript.
+cmd_surface() {
+  local name="${1:-}"
+  shift || true
+  [ -z "${1:-}" ] || die "surface: unexpected argument $1"
+  [ -n "$name" ] || usage
+  valid_name "$name" || die "surface: name must match [a-z][a-z0-9_-]{0,31}: $name"
+  [ -n "$(agent_field "$name" pane_id)" ] || die "surface: no live agent named ${name}"
+
+  # Whose question it is, from the journal. Best-effort: an agent can be live
+  # without a line under this Run (a dispatch from a Run that has since been
+  # replaced, or one journalled somewhere else), and its screen is still worth
+  # showing. The header says unknown rather than naming a Task it cannot know.
+  #
+  # Best-effort is the deliberate difference from `wait`, which refuses a
+  # journal line it cannot read: there, an unreadable line is a Dispatch it
+  # cannot watch, while here the screen is the answer and refusing to print it
+  # would withhold the one thing the human was asked to come and look at.
+  local run="" header=""
+  run="$(current_run)" || run=""
+  header="$(
+    {
+      handoff_py
+      cat <<'PY'
+import sys
+
+handoffs, run, agent = sys.argv[1], sys.argv[2], sys.argv[3]
+rows = sorted((t, r["dispatch"])
+              for t, r in dispatched(handoffs, run).items()
+              if r["agent"] == agent)
+print("Run: %s" % (run or "unknown"))
+for task, dispatch in rows:
+    print("Task: %s" % task)
+    print("Dispatch: %s" % dispatch)
+if not rows:
+    print("Task: unknown")
+    print("Dispatch: unknown")
+    sys.stderr.write("surface: no journal line under %s names %s\n"
+                      % (run or "(no Run)", agent))
+PY
+    } | python3 - "$HANDOFFS" "$run" "$name"
+  )"
+  printf 'Agent: %s\n%s\n' "$name" "$header"
+
+  local screen=""
+  screen="$(herdr agent read "$name" --source visible --lines 80)" ||
+    die "surface: could not read the screen for ${name}"
+  printf '%s\n' "$screen"
 }
 
 # --- run ------------------------------------------------------------------
@@ -798,7 +1272,7 @@ outcome: succeeded | failed | blocked
 cause: null | timeout | blocked_on_approval | tool_error | precondition_failed
 evidence: verified | reported | heuristic | asserted
 files_changed: [path, ...]
-commands: [{cmd: "...", exit: 0}, ...]
+commands: [{"cmd": "...", "exit": 0}]
 ---
 
 ## What was done
@@ -820,34 +1294,96 @@ EOF
     die "dispatch: herdr refused the prompt (agent blocked?) — read ${name} and retry by hand"
   # Journalled only once the prompt is away: a refused dispatch never happened,
   # and recording it would leave `collect --plan` reporting `running` forever.
-  printf '%s\t%s\t%s\n' "$run" "$task" "$dispatch" >>"${DISPATCHED}"
+  # The agent goes in as the fourth column so `wait` knows which pane this
+  # Dispatch is on.
+  printf '%s\t%s\t%s\t%s\n' "$run" "$task" "$dispatch" "$name" >>"${DISPATCHED}"
   ok "${run} ${task}/${dispatch} → ${name}; expects ${handoff}"
 }
 
 # --- settle ----------------------------------------------------------------
 # Reuse, retain or release. There is no fourth option, and no Dispatch is left
 # unsettled.
+#
+# `--clear` belongs to reuse and to nothing else. Clearing is the reuse being
+# carried out, so it belongs to this decision rather than to the next `dispatch`
+# — it happens here, before the next prompt is sent and never after, when the
+# pane has already been given work it will read against a transcript it cannot
+# see. It goes out through the same helper `dispatch` talks to panes with: that
+# is the one sanctioned reason to send keys to an agent (it is not a Dispatch
+# and not an answer to an approval dialog), and herdr refuses a blocked agent
+# before sending anything, which is what keeps it from destroying a question.
+#
+# A clear also costs the pane its name, which is why the rename follows the
+# send rather than living in `spawn` alone: /clear resets the terminal title,
+# the title carries the name, and a reused pane without a name is a pane the
+# next `dispatch` cannot address at all.
 
 cmd_settle() {
-  local name="${1:-}" decision="${2:-}"
+  local name="${1:-}" decision="${2:-}" clear=0
   if [ -z "$name" ] || [ -z "$decision" ]; then usage; fi
+  shift 2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --clear)
+        clear=1
+        shift
+        ;;
+      *) die "settle: unknown option $1" ;;
+    esac
+  done
   valid_name "$name" || die "settle: bad agent name: ${name}"
-  local pane
-  pane="$(agent_field "$name" pane_id)"
-  [ -n "$pane" ] || die "settle: no live agent named ${name}"
   case "$decision" in
     reuse | retain | release) ;;
     *) die "settle: decision must be reuse, retain or release" ;;
   esac
+  if [ "$clear" -eq 1 ] && [ "$decision" != "reuse" ]; then
+    die "settle: --clear is for reuse — ${decision} leaves no pane holding context to clear"
+  fi
+
+  local pane
+  pane="$(agent_field "$name" pane_id)"
+  [ -n "$pane" ] || die "settle: no live agent named ${name}"
+
+  # Clearing first, and refusing before anything is sent. A pane holding a
+  # question is the one case where /clear destroys something that exists
+  # nowhere else, so the blocked agent is refused the way `dispatch` refuses
+  # one: asked, not assumed, and with the remedy named.
+  local cleared=0
+  if [ "$clear" -eq 1 ]; then
+    if [ "$(agent_field "$name" agent_status)" = "blocked" ]; then
+      die "settle: ${name} is blocked on a question — answer it, then team.sh surface ${name}; /clear would destroy the question"
+    fi
+    herdr agent prompt "$name" "/clear" >/dev/null ||
+      die "settle: herdr refused to send /clear to ${name} — read ${name}; nothing was cleared and ${name} is not settled"
+    # The name comes back after the clear, never before: /clear resets the
+    # pane's terminal title and the title is what carries the `agent rename`
+    # `spawn` bound, so clearing unbinds it. Measured live on the first real use
+    # of the flag — the pane stayed alive and idle with no name, and the next
+    # `dispatch exec-1` died with "no live agent named exec-1" until a rename
+    # was typed by hand. A clear that loses the name has not finished clearing,
+    # so a rename herdr refuses dies here rather than recording a decision that
+    # says a nameless pane is ready for the next Dispatch.
+    herdr agent rename "$pane" "$name" >/dev/null ||
+      die "settle: ${name} was cleared but herdr would not take the name back on ${pane} — rename it by hand: herdr agent rename ${pane} ${name}"
+    cleared=1
+  fi
 
   # One source id for the whole team, one token: a pane allows 32 distinct
-  # metadata sources for its lifetime and never releases a slot.
+  # metadata sources for its lifetime and never releases a slot. `cleared` is
+  # in the token because the pane is the one place that outlives the
+  # transcript: a reused agent whose pane was cleared reads as terse, and only
+  # this says terse on purpose rather than lost. It is written after the clear,
+  # so a refusal above leaves no decision recorded for work that did not happen.
   herdr pane report-metadata "$pane" --source herdr-team \
-    --token "settle=${decision}" >/dev/null ||
+    --token "settle=${decision},cleared=${cleared}" >/dev/null ||
     warn "settle: could not label ${pane} (the decision still stands)"
 
   case "$decision" in
-    reuse) ok "${name} settled: reuse (${pane})" ;;
+    reuse)
+      local note=""
+      [ "$cleared" -eq 0 ] || note=", cleared"
+      ok "${name} settled: reuse (${pane}${note})"
+      ;;
     retain) ok "${name} settled: retain for inspection (${pane})" ;;
     release)
       # Release means the pane goes back to the pool, so it runs the same
@@ -859,6 +1395,13 @@ cmd_settle() {
 }
 
 # --- teardown --------------------------------------------------------------
+# Nothing here is about the pane: teardown answers one question, whether there
+# is work in this worktree that exists nowhere else, and refuses when there is.
+# A branch with an upstream is measured against it. A branch without one is
+# measured against the default branch, so a branch that has not diverged from
+# where it was cut tears down cleanly — refusing there taught the orchestrator
+# to reach for --force on a guard that was right to fire, which is how the
+# guard stops being read at all.
 
 cmd_teardown() {
   local name="${1:-}" force=0
@@ -875,12 +1418,14 @@ cmd_teardown() {
   if [ "$force" -eq 0 ] && [ -n "$cwd" ] && [ -d "$cwd" ]; then
     [ -z "$(git -C "$cwd" status --porcelain)" ] ||
       die "teardown: ${cwd} has uncommitted changes — commit them or pass --force"
-    if git -C "$cwd" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-      [ -z "$(git -C "$cwd" log --oneline '@{u}..HEAD')" ] ||
-        die "teardown: ${cwd} has unpushed commits — push them or pass --force"
-    else
-      die "teardown: ${cwd} has no upstream — push the branch or pass --force"
-    fi
+    # One rule, two bases: commits not reachable from where this branch will
+    # land. `--force` keeps its meaning for the case the guard is right about.
+    local base='@{u}'
+    git -C "$cwd" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 ||
+      base="$(default_ref "$cwd")" ||
+      die "teardown: ${cwd} has no upstream and no default branch to measure against — pass --force"
+    [ -z "$(git -C "$cwd" log --oneline "${base}..HEAD")" ] ||
+      die "teardown: ${cwd} has unpushed commits — push them or pass --force"
   fi
 
   herdr workspace close "$ws" >/dev/null
@@ -905,6 +1450,8 @@ case "${1:-}" in
   run) shift; cmd_run "$@" ;;
   status) shift; cmd_status "$@" ;;
   collect) shift; cmd_collect "$@" ;;
+  wait) shift; cmd_wait "$@" ;;
+  surface) shift; cmd_surface "$@" ;;
   plan) shift; cmd_plan "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;

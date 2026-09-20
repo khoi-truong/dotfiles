@@ -10,7 +10,8 @@ this file states intent. Verified against herdr 0.9.1.
 | create a worker terminal | `workspace create --cwd … --no-focus` then `pane run` |
 | submit the command | `pane send-keys <pane> enter` — **`pane run` does not submit** |
 | dispatch | `agent prompt` (no `--wait`) |
-| block on settlement | `agent wait --until <exact state>` |
+| block on one agent | `agent wait <agent> --until <exact state>` |
+| block on a Run | one `agent wait` per outstanding agent, first exit wins |
 | settlement notification | `events.subscribe` on `pane.agent_status_changed` |
 | one-shot wait | `events.wait` |
 | status / progress bus | `pane report-metadata --source <id> --token NAME=VALUE` |
@@ -123,11 +124,87 @@ highest `D-nn` wins, so a task retried to success stops reading `failed`.
 
 A task that was dispatched and has not answered reads `running`, which the
 handoff files alone cannot show. `dispatch` therefore journals every real
-dispatch to `.omc/handoffs/.dispatched`, one `run<TAB>task<TAB>dispatch` line,
-written only once `herdr agent prompt` has accepted it.
+dispatch to `.omc/handoffs/.dispatched`, one
+`run<TAB>task<TAB>dispatch<TAB>agent` line, written only once
+`herdr agent prompt` has accepted it. The fourth column is `wait`'s — see below.
 
 `ai/herdr/fixtures/run-tests.sh` covers all of this. `shellcheck` and `bash -n`
 do not see inside the embedded python, so it is the only check the parser has.
+
+## The `wait` verb
+
+`team.sh wait` blocks until one outstanding Dispatch under the Run settles,
+where outstanding is the fold `running` already means above: the highest
+Dispatch sent per Task with no handoff file yet. A Run has up to three out at
+once and the caller wants the first, so the verb is a **fan-in**: one
+`herdr agent wait <agent> --until idle --until done --until blocked` per
+outstanding Dispatch, in the background, first to exit wins and the rest are
+killed. All three states are named because `idle` and `done` both mean ready —
+a wait on `idle` alone hangs on an agent that settled in `done` (see Hazards).
+
+**The journal's fourth column exists for this.** `wait` cannot resolve a pane
+from a Task id, so `dispatch` writes the agent name. `dispatched()` tolerates
+both widths: a three-column line predates the column, still counts as `running`,
+and is merely un-waitable — skipped with a warning, never fatal. Any other width
+is refused (exit 1) rather than skipped, because waiting out the readable half
+of a journal is how a loop stalls with work still outstanding. The code that
+cannot be seen by `shellcheck` is covered by `run-tests.sh`; a legacy line has a
+case on each side.
+
+**Replay: settled.** If a target is *already* in one of the requested states,
+`agent wait` returns at once rather than blocking for the next transition into
+it. Two independent doc pages (`agent-automation.mdx`, `cli-reference.mdx`) say
+so, and it was probed on 0.9.1: `--until idle` against an idle pane returned in
+15 ms, while the same session's control — `--until idle` against a working agent
+— blocked for the full 3 s timeout. So a fast executor that finished before
+`wait` started is not missed by herdr itself. Note that `events.subscribe` does
+*not* replay; `agent wait` does not inherit that gap because it evaluates
+current state rather than consuming a buffered event.
+
+**Unsettled, and what the code assumes.** What an outstanding wait does when its
+pinned agent *exits in place* — no pane move, no replacement — is not stated
+anywhere. The one related sentence covers a pane moved to another workspace,
+which ends the wait with `agent_not_running`; a process exit is a different case
+and was not probed, since closing a live agent means killing a pane in the
+user's session. The code assumes it **may** block until `--timeout`, so before
+blocking it looks once at each outstanding Dispatch's handoff file and returns
+immediately if one has appeared since the journal was read. One `stat` per
+Dispatch, correct under either answer, and `run-tests.sh` case 44 stages that
+window — a `python3` that writes the handoff after reading the journal — so the
+guard cannot quietly become dead code. What it does not cover is an agent that
+dies without ever writing a handoff: the loop's only recovery there is the
+caller's own `--timeout`.
+
+**Exit codes**, alongside `collect --plan`'s:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | an agent reached a terminal state, or a handoff appeared — call `collect --plan` |
+| 1 | no Run, a malformed journal, or a precondition failed |
+| 3 | nothing outstanding to wait for — the same "nothing to do" as `collect` |
+| 4 | `--timeout` expired with nothing settled |
+| 5 | an outstanding agent went `blocked` — `team.sh surface <name>` |
+
+4 is not 3 because a timeout is a **checkpoint, not a result** (`SKILL.md` rule
+3): absence is never evidence, so "I waited and nothing happened" has to be
+tellable apart from "there was nothing to wait for". 5 is not 0 because the next
+move differs — a blocked agent has written nothing, so there is no new table to
+read; the move is `surface`.
+
+Which of the three states matched is **not** in the exit code. One 0 covers
+`idle`, `done` and `blocked` alike, and herdr's 1 covers a timeout and every
+other server error without distinguishing them — `error.code` in the stderr
+payload is the only split, and the vocabulary is not enumerated anywhere. So
+`wait` reads the winner's own `agent_status` rather than asking the wait which
+condition it met, and reports a non-zero herdr exit on stderr instead of acting
+on it.
+
+`surface <name>` is the one read in the verb set: the Run, Task and Dispatch
+from the journal, then `agent read --source visible --lines 80`. It has no flag
+that sends keys and must not grow one — an approval dialog is surfaced to the
+human, who answers it in the pane. It is deliberately best-effort about a
+journal line it cannot read, where `wait` refuses one: there the screen is the
+answer, and refusing to print it withholds the one thing the human came to see.
 
 ## Naming
 

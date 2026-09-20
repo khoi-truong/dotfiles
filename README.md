@@ -377,6 +377,8 @@ ai/herdr/team.sh dispatch exec-1 --task T-01 --from-plan .omc/plans/x.md
 ai/herdr/team.sh status                         # roster and pending handoffs
 ai/herdr/team.sh collect [<run-id>]             # outcomes from the handoffs
 ai/herdr/team.sh collect --plan .omc/plans/x.md # per-task state, exit says what next
+ai/herdr/team.sh wait [--timeout <ms>]          # block until one dispatch settles
+ai/herdr/team.sh surface exec-1                 # what a blocked agent is asking
 ai/herdr/team.sh plan lint .omc/plans/x.md      # check a plan before dispatching
 ai/herdr/team.sh settle <name> reuse|retain|release
 ai/herdr/team.sh teardown <name> [--force]
@@ -439,6 +441,16 @@ task failed, **3** nothing to do. Where a task has several handoffs the highest
 `running` means dispatched and unanswered, which no handoff file can show, so
 `dispatch` journals each real dispatch to `.omc/handoffs/.dispatched`. Plain
 `collect` is unchanged, including naming no Run meaning every Run.
+
+`wait` is the other half of that loop — **dispatch → `wait` → `collect --plan` →
+dispatch what is `ready`** — so nobody has to watch a pane for the middle step.
+It blocks until one outstanding dispatch under the Run settles, prints which
+agent and task settled, and deliberately reports nothing about the outcome: the
+table is what does that, and `collect --plan` on the next line reads it. Its
+exit codes are stated once, in `ai/shared/skills/herdr-team/references/herdr-adapter.md`.
+The one that changes the loop's shape is a blocked agent: no handoff means no new
+table, and the next move is `surface <name>`, which prints its screen for the
+human to answer in the pane — that answer is never typed by the script.
 
 ## tmux
 
