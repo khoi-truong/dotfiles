@@ -86,41 +86,20 @@ What herdr does get right for us: `agent wait` pins the resolved pane
 occupant, so a replacement cannot satisfy the wait — the substrate already
 enforces the identity rule.
 
-## Dispatching from a plan
+## Plans
 
-`team.sh dispatch <name> --task T-nn --from-plan <plan.md>` builds the body
-from the plan instead of from something the orchestrator retypes. The plan
-carries a `## Tasks` heading followed by one fenced `json` block:
+The `## Tasks` block `--from-plan` reads is specified once, in the
+`dispatchable-plan` skill — a skill rather than a page here because a planning
+session never says "herdr", so this skill's triggers never fire and the format
+would never reach the session that has to produce it.
 
-```json
-[
-  {"task": "T-01", "provider": "ccd", "files": ["ai/setup.sh"],
-   "verify": "shellcheck -x ai/setup.sh", "blocks": []},
-  {"task": "T-02", "provider": "cc", "files": ["README.md"],
-   "verify": "set -o pipefail; npx markdownlint-cli2 README.md | tail -1",
-   "blocks": ["T-01"]}
-]
-```
-
-**A `verify` that contains a pipe must lead with `set -o pipefail`.** A
-pipeline's exit status is the last command's, so `cmd | tail -1` exits 0
-however `cmd` exited. The executor observes 0, claims `evidence: verified`, and
-the blocker gate unblocks the next task — turning the top of the evidence
-ordering into a rubber stamp.
-
-JSON rather than a markdown table because a `verify` command contains pipes,
-and rather than YAML because `python3` has no YAML in its standard library and
-this script takes no new runtime dependency. Every row needs a matching
-`### T-nn` prose section; the parser refuses a plan where the two disagree in
-either direction.
-
-**The body is a pointer.** It tells the executor to read that section out of
-the plan file at an absolute path, names the files in scope, and names the
-`verify` command as the thing that must run before it may claim
-`evidence: verified`. Nothing is copied. The plan lives in the main checkout,
-which outlives any worktree, so the path stays readable from every pane —
-which is also why `--from-plan` is resolved by the orchestrator and not by the
-agent.
+What belongs here is only what this adapter does with a row. `dispatch
+--from-plan` builds the body as a **pointer**: the plan's absolute path, the
+section id, the files in scope, and the `verify` command named as the thing
+that must run before the executor may claim `evidence: verified`. Nothing is
+copied. The plan lives in the main checkout, which outlives any worktree, so
+the path stays readable from every pane — which is also why `--from-plan` is
+resolved by the orchestrator and never by the agent.
 
 `blocks` is enforced at dispatch: exit **3** and the unmet ids on stderr unless
 every one of them has a `succeeded` + `verified` handoff **under the current
@@ -128,13 +107,24 @@ Run**. `--force` overrides with a warning, because retry is human-gated and a
 gate with no key is a trap.
 
 `provider` is advisory metadata for whoever chooses the target agent. The
-script does not check it: an agent's provider is fixed when it spawns, the
-only live evidence of it is on the pane's visible screen, and reading a pane
-is not passive.
+script does not check it: an agent's provider is fixed when it spawns, the only
+live evidence of it is on the pane's visible screen, and reading a pane is not
+passive.
 
 Body precedence is argv, then `--from-plan`, then stdin — and stdin only when
 it is not a terminal. Reading a terminal here would hang with no prompt and
 look exactly like a slow dispatch.
+
+`collect --plan <plan.md>` reports the other direction: one row per task in the
+plan rather than one per handoff, with the exit code saying what to do next —
+**0** dispatch something, **1** a human must look, **2** nothing actionable and
+something failed, **3** nothing to do. Where a task has several handoffs the
+highest `D-nn` wins, so a task retried to success stops reading `failed`.
+
+A task that was dispatched and has not answered reads `running`, which the
+handoff files alone cannot show. `dispatch` therefore journals every real
+dispatch to `.omc/handoffs/.dispatched`, one `run<TAB>task<TAB>dispatch` line,
+written only once `herdr agent prompt` has accepted it.
 
 `ai/herdr/fixtures/run-tests.sh` covers all of this. `shellcheck` and `bash -n`
 do not see inside the embedded python, so it is the only check the parser has.
