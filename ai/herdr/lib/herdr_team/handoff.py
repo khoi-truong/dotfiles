@@ -11,11 +11,20 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from typing import TypeAlias
 
 # One handoff's frontmatter: key -> value, both strings. A value that arrived
 # as a block list carries its newlines; see `handoff_meta`.
-Meta = dict[str, str]
+#
+# Declared `TypeAlias` because Pylance, unlike the pyright CLI, can read the
+# bare assignment as the `dict` class itself, and then every `m["task"]` in an
+# importer is a type subscript naming an undefined `task`. The import is under
+# TYPE_CHECKING and the annotation is never evaluated, so 3.9 — which has no
+# `typing.TypeAlias` — still imports this module.
+Meta: TypeAlias = dict[str, str]
 
 __all__ = [
     "REQUIRED_FIELDS",
