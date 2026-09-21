@@ -4532,9 +4532,9 @@ profile it names, so the pair is the warning and nothing else.
 ```json
 [
   {"task": "T-01", "provider": "cc", "files": ["README.md"],
-   "verify": "npx markdownlint-cli2 README.md", "blocks": []},
+    "verify": "npx markdownlint-cli2 README.md", "blocks": []},
   {"task": "T-02", "provider": "mid", "files": ["ai/herdr/team.sh"],
-   "verify": "bash ai/herdr/tests/run.sh", "blocks": []}
+    "verify": "bash ai/herdr/tests/run.sh", "blocks": []}
 ]
 ```
 

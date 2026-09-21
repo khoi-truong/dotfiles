@@ -8,11 +8,11 @@ their `credential` field and never restate one, so a key moves in one place.
 
 Three readers, none of which parses TOML itself:
 
-  * `herdr_team.config` — lint and doctor, which check a profile's
+- `herdr_team.config` — lint and doctor, which check a profile's
     `credential` resolves and that the ceiling is a number
-  * ai/claude/providers.zsh — through a cache regenerated from here, because a
+- ai/claude/providers.zsh — through a cache regenerated from here, because a
     shell start may not spend a subprocess on parsing
-  * `team.sh` — never directly; `config env` and `config resolve` are the only
+- `team.sh` — never directly; `config env` and `config resolve` are the only
     shapes it reads
 
 `read_toml` is shared with `herdr_team.config` rather than duplicated, so a

@@ -120,6 +120,7 @@ def test_the_generated_text_says_where_it_came_from() -> None:
     assert not text.endswith("\n\n")
 
 
+@needs_shell
 def test_the_emitted_call_is_the_argv_cc_provider_takes(tmp_path: Path) -> None:
     # Not a string comparison: the emitted line is sourced by providers.zsh, so
     # what matters is the argv `cc_provider` receives. A label with a space is
