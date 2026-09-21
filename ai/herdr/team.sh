@@ -617,18 +617,95 @@ import json, os
 
 
 def handoff_meta(path):
-    """One handoff's frontmatter, or None when it has none."""
+    """One handoff's frontmatter, or None when it has none.
+
+    A field's value is everything under its key, not just the rest of the key's
+    own line: the frontmatter is a YAML document, and the shape its own style
+    invites for a list is a block list —
+
+      commands:
+        - cmd: "..."
+          exit: 0
+
+    — which arrives as three lines and is one value. Joining them here, at the
+    one reader every caller goes through, is what keeps `commands:` from
+    reaching a caller as nothing at all.
+    """
     lines = open(path, encoding="utf-8").read().splitlines()
     if not lines or lines[0].strip() != "---":
         return None
-    meta = {}
+    meta, key = {}, None
     for line in lines[1:]:
         if line.strip() == "---":
             break
+        if not line.strip():
+            continue
+        # Indented under the key, or a sequence entry at its own column: YAML
+        # allows the second, and a frontmatter key here never starts with `-`.
+        # The indentation is kept, not stripped: it is what says which item of
+        # a block list a line belongs to.
+        if key is not None and (line[:1] in " \t" or line.lstrip().startswith("-")):
+            meta[key] = meta[key] + "\n" + line.rstrip()
+            continue
         if ":" in line:
             k, v = line.split(":", 1)
-            meta[k.strip()] = v.strip()
+            key = k.strip()
+            meta[key] = v.strip()
     return meta
+
+
+def yaml_block(raw):
+    """A block list's items, each item its own chunk of lines, or None.
+
+    `- ` opens an item and a line indented under it belongs to that item, so
+    `- cmd: …` with `exit: …` beneath it is one item of two lines. None when
+    the text opens no item, or holds a line that is neither an item nor part of
+    one: a caller's way of telling "an empty list" from "a shape I cannot
+    read", which are UNVERIFIED and UNPARSED respectively.
+    """
+    items, cur = [], None
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        s = line.strip()
+        if s.startswith("- "):
+            cur = [s[2:].strip()]
+            items.append(cur)
+        elif s == "-":
+            cur = [""]
+            items.append(cur)
+        elif cur is not None and line[:1] in " \t":
+            cur.append(s)
+        else:
+            return None
+    if not items or not any(item[0] for item in items):
+        return None
+    return items
+
+
+def path_list(raw):
+    """The paths in a `files_changed:` or `artifacts:` value, in order.
+
+    Two shapes, and the one a handoff carries without being taught is the YAML
+    block list: the frontmatter is a YAML document, and a list in it is written
+    that way. The comma-separated line the contract block shows is the other.
+
+    Split by hand rather than by json: the value reaches the file through an
+    agent, so quoted and bare paths both have to read, and a field nobody can
+    parse costs a printed path rather than a whole Run — `collect` must not
+    fail over a receipt. Absent is [], which is what the contract says an
+    omitted field means.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    if raw.lstrip().startswith("-"):
+        items = yaml_block(raw)
+        if items is not None:
+            return [item[0].strip().strip('"').strip("'") for item in items if item[0].strip()]
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    return [p.strip().strip('"').strip("'") for p in raw.split(",") if p.strip()]
 
 
 def artifacts(meta):
@@ -638,17 +715,75 @@ def artifacts(meta):
     wrote — `/research`, `/plan` — and nothing here opens one. `run gc` will
     eventually need the list as an exclusion set; every reader until then only
     prints it.
-
-    Split by hand rather than by json: the line reaches the file through an
-    agent, so quoted and bare paths both have to read, and a field nobody can
-    parse costs a printed path rather than a whole Run — `collect` must not
-    fail over a receipt. Absent is [], which is what the contract says an
-    omitted field means.
     """
-    raw = (meta.get("artifacts") or "").strip()
-    if raw.startswith("[") and raw.endswith("]"):
-        raw = raw[1:-1]
-    return [p.strip().strip('"').strip("'") for p in raw.split(",") if p.strip()]
+    return path_list(meta.get("artifacts"))
+
+
+def command_entries(raw):
+    """The `commands:` entries, or None for a shape this file cannot read.
+
+    Two shapes, the same data: the inline JSON the contract block shows, and
+    the YAML block list the frontmatter's own style invites. Accepting the
+    second does not weaken the first — an entry still needs `cmd` and `exit`,
+    an entry that is not a mapping is skipped the way a non-dict JSON entry
+    already was, and a value that is neither shape still reads UNPARSED.
+    """
+    text = raw.strip()
+    if text.startswith("[") or text.startswith("{"):
+        try:
+            entries = json.loads(text)
+        except ValueError:
+            return None
+        return entries if isinstance(entries, list) else []
+    items = yaml_block(raw)
+    if items is None:
+        return None
+    entries = []
+    for item in items:
+        entry = {}
+        for line in item:
+            if ":" not in line:
+                return None
+            k, v = line.split(":", 1)
+            k, v = k.strip(), v.strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                v = v[1:-1]
+            if k == "exit":
+                try:
+                    v = int(v)
+                except ValueError:
+                    pass
+            entry[k] = v
+        if not entry:
+            return None
+        entries.append(entry)
+    return entries
+
+
+def same_cmd(verify, cmd):
+    """True when `cmd` is the verify the plan named, as an agent ran it.
+
+    Substring, not equality, because the command reaches the handoff through an
+    agent: a `cd`, a quote or a `set -o pipefail;` prefix around it is still the
+    same command. Word by word as a second pass, because one argument may be
+    spelled from the root where the plan spelled it relative — which is exactly
+    what the first handoff written against this contract did, the plan's path
+    being `.omc/plans/…` in the plan and absolute in the pane, since `.omc/` is
+    not in the worktree the agent was working in. Both spellings run the same
+    check, so both prove it. A token only extends the verify's token; a
+    different path does not match.
+
+    Loose on purpose — a false positive here must not be able to wedge a Run
+    (see the header) — and the exit code is required alongside the command,
+    never instead of it.
+    """
+    if verify in cmd:
+        return True
+    want, got = verify.split(), cmd.split()
+    for start in range(len(got) - len(want) + 1):
+        if all(g == w or g.endswith(w) for w, g in zip(want, got[start:start + len(want)])):
+            return True
+    return False
 
 
 def journal_row(line):
@@ -731,15 +866,11 @@ def journal_malformed(handoffs, run):
 def unproven(meta, verify):
     """The cause to report instead of `done`, or None when the handoff proves it.
 
-    A handoff's `commands:` is one JSON object per command the agent ran — the
-    shape the dispatch prompt asks for. `done` needs the row's own `verify` to
-    be one of those commands at exit 0, or the handoff is claiming a check
-    nobody can see; `settled_state` says so rather than showing `done`.
-
-    Substring, not equality: the verify reaches the handoff through an agent,
-    so a `cd` or a quote around it is still the same command. Loose on purpose —
-    a false positive here must not be able to wedge a Run (see the header) — and
-    the exit code is required alongside the command, never instead of it.
+    A handoff's `commands:` is one object per command the agent ran, in either
+    of the shapes the dispatch prompt's contract block now states. `done` needs
+    the row's own `verify` to be one of those commands at exit 0, or the handoff
+    is claiming a check nobody can see; `settled_state` says so rather than
+    showing `done`.
 
     An empty `verify` is the planner saying no command settles this Task. There
     is nothing to check, so `done` stands.
@@ -753,22 +884,19 @@ def unproven(meta, verify):
         return None
     raw = meta.get("commands")
     if raw is None or not raw.strip():
-        # No commands recorded: absent, or present with nothing after the colon.
-        # That is absence, not a shape nobody can read, so it reads UNVERIFIED
+        # No commands recorded: absent, or present with nothing under it. That
+        # is absence, not a shape nobody can read, so it reads UNVERIFIED
         # rather than UNPARSED — and absence is never evidence.
         return "UNVERIFIED"
-    try:
-        entries = json.loads(raw)
-    except ValueError:
-        # A handoff written before this contract existed. A human has to be
-        # able to tell a shape they cannot read from a claim that does not hold.
+    entries = command_entries(raw)
+    if entries is None:
+        # Neither shape. A human has to be able to tell a shape they cannot
+        # read from a claim that does not hold.
         return "UNPARSED"
-    if not isinstance(entries, list):
-        return "UNVERIFIED"
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        if verify in str(entry.get("cmd", "")) and entry.get("exit") == 0:
+        if same_cmd(verify, str(entry.get("cmd", ""))) and entry.get("exit") == 0:
             return None
     return "UNVERIFIED"
 PY
@@ -2783,6 +2911,18 @@ commands: [{"cmd": "...", "exit": 0}]
 ## What was done
 ## What was found
 ## What remains
+
+The list fields — \`commands:\`, \`files_changed:\`, \`artifacts:\` — take either
+the inline shape above or a YAML block list, and both read the same:
+
+  commands:
+    - cmd: "..."
+      exit: 0
+  files_changed:
+    - path
+
+An entry with no \`exit\` proves nothing, and a shape that is neither of these
+reads UNPARSED: both send a reviewer at the Task rather than counting it done.
 
 'artifacts:' is for documents, not edits: if a skill or workflow you invoke
 writes its own artifact — \`/research\` under \`.omc/research/\`, \`/plan\` under
