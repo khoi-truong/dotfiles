@@ -31,9 +31,29 @@
 # See ai/shared/skills/herdr-team/ for the protocol these commands implement.
 set -euo pipefail
 
+# This file's own path, with the symlinks in it resolved before the `..` below
+# walks up from it. A team.sh reached through a link — a shim on PATH, a pane
+# opened from a linked worktree — would otherwise take `dirname` of the link,
+# which names the directory the link sits in and not the checkout, and source a
+# lib/common.sh that is not there. `readlink -f` is the whole of it where it
+# exists; macOS's readlink has not always had `-f`, so the chain is walked by
+# hand where it does not.
+_self="$(readlink -f "$0" 2>/dev/null)" || _self=""
+if [ -z "${_self}" ]; then
+  _self="$0"
+  while [ -L "${_self}" ]; do
+    _hop="$(readlink "${_self}")"
+    case "${_hop}" in
+      /*) ;;
+      *) _hop="$(cd "$(dirname "${_self}")" && pwd)/${_hop}" ;;
+    esac
+    _self="${_hop}"
+  done
+fi
+
 # Two levels up, not one: this file lives in ai/herdr/, so `/..` would name ai/
 # and the source below would look for a lib/common.sh that is not there.
-DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/../.." && pwd)}"
+DOTFILES="${DOTFILES:-$(cd "$(dirname "${_self}")/../.." && pwd)}"
 . "${DOTFILES}/lib/common.sh"
 require_macos
 
