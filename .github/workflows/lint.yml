@@ -62,7 +62,14 @@ jobs:
         run: |
           files=()
           while IFS= read -r file; do files+=("$file"); done < <(git ls-files '*.zsh' zsh/zshrc zsh/zshenv)
-          zsh -n "${files[@]}"
+          # `zsh -n a b` parses only `a` and treats `b` as a positional
+          # parameter, so each file needs its own invocation. Run them all and
+          # keep going so one failed run names every unparseable file.
+          rc=0
+          for file in "${files[@]}"; do
+            zsh -n "$file" || rc=1
+          done
+          exit "$rc"
 
   docs-and-config:
     name: Lint docs and config files
