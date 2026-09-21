@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(./setup.sh:*)",
+      "Bash(*/setup.sh:*)",
+      "Bash(brew bundle:*)",
+      "Bash(mise use -g:*)",
+      "Bash(mise install:*)",
+      "Bash(defaults write:*)"
+    ]
+  }
+}

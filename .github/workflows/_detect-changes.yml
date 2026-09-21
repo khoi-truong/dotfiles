@@ -30,8 +30,13 @@ jobs:
           filters: |
             macos:
               - 'zsh/**'
-              - 'ai/aliases.zsh'
-              - 'ai/claude/providers.zsh'
+              # ai/ and git/ are the modules smoke.yml's setup re-run step
+              # exercises — the two whose setup.sh only writes under $HOME — so
+              # a change to what they link changes that step's result. This
+              # subsumes the narrower ai/aliases.zsh and ai/claude/providers.zsh
+              # that used to be listed here.
+              - 'ai/**'
+              - 'git/**'
               - 'setup.sh'
               - 'lib/**'
               - '**.plist'

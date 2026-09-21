@@ -85,3 +85,84 @@ jobs:
             echo "::error title=Shell startup::${best} ms is over ${MAX_STARTUP_MS} ms"
             exit 1
           fi
+
+      # setup.sh is the other half of "this config works on a new machine": it
+      # is what a fresh machine runs, so running it again has to be safe. Only
+      # modules audited to write nothing outside $HOME run here — git/ and ai/,
+      # the two whose setup.sh does nothing but link files under $HOME and
+      # shell out to a tool it checks for first. misc/ was dropped because it
+      # reaches misc/stats/setup.sh, which runs `defaults import`; brew/,
+      # mise/, macos/, iterm/ and terminal/ drive brew, mise, sudo or
+      # `defaults write`. setup.sh's own prelude still runs — brew detection,
+      # the sudo keep-alive and the six shell links are all no-ops on a runner
+      # that has brew, passwordless sudo and a $HOME this step owns.
+      #
+      # The snapshot is paths, link targets and file bytes, deliberately not
+      # mtimes: `git config` rewrites gitconfig.local on every run, so an
+      # mtime-aware snapshot would call a correct re-run a change.
+      - name: Set up the safe modules twice under the throwaway home
+        run: |
+          snapshot() {
+            python3 -c '
+          import hashlib, os, sys
+
+          root = sys.argv[1]
+          rows = []
+          for dirpath, dirnames, filenames in os.walk(root):
+              dirnames.sort()
+              for name in sorted(dirnames + filenames):
+                  path = os.path.join(dirpath, name)
+                  rel = os.path.relpath(path, root)
+                  if os.path.islink(path):
+                      rows.append("l %s -> %s" % (rel, os.readlink(path)))
+                  elif os.path.isdir(path):
+                      rows.append("d %s" % rel)
+                  else:
+                      with open(path, "rb") as handle:
+                          rows.append("f %s %s" % (
+                              rel, hashlib.sha256(handle.read()).hexdigest()))
+          for row in sorted(rows):
+              print(row)
+          ' "$SMOKE_HOME" >"$1"
+          }
+
+          HOME="$SMOKE_HOME" ./setup.sh git ai
+          snapshot "$RUNNER_TEMP/home.1"
+          HOME="$SMOKE_HOME" ./setup.sh git ai
+          snapshot "$RUNNER_TEMP/home.2"
+
+      - name: Verify the second run left the throwaway home unchanged
+        run: |
+          # diff first: a red build has to name what the second run changed.
+          if diff -u "$RUNNER_TEMP/home.1" "$RUNNER_TEMP/home.2" >"$RUNNER_TEMP/home.diff"; then
+            echo "The two runs produced an identical throwaway home."
+          else
+            head -40 "$RUNNER_TEMP/home.diff"
+            echo "::error title=setup.sh is not idempotent::the second run changed the throwaway home; see the diff above"
+            exit 1
+          fi
+
+          # Never follow a symlink: $SMOKE_HOME links to the checkout, and
+          # walking it would test the repository instead of what setup linked.
+          python3 -c '
+          import os, sys
+
+          home, workspace = sys.argv[1], os.path.realpath(sys.argv[2])
+          bad = []
+          for dirpath, dirnames, filenames in os.walk(home):
+              dirnames.sort()
+              for name in sorted(dirnames + filenames):
+                  path = os.path.join(dirpath, name)
+                  if not os.path.islink(path):
+                      continue
+                  real = os.path.realpath(path)
+                  if real != workspace and not real.startswith(workspace + os.sep):
+                      bad.append("%s -> %s" % (os.path.relpath(path, home), real))
+          if bad:
+              print("These symlinks under the throwaway home do not resolve into")
+              print("the checkout, so they would dangle on a real machine:")
+              for row in bad:
+                  print("  " + row)
+              sys.exit(1)
+          print("Every symlink under the throwaway home resolves into the checkout.")
+          ' "$SMOKE_HOME" "$GITHUB_WORKSPACE"
