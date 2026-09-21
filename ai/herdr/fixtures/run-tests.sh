@@ -490,7 +490,8 @@ echo "wait"
 # `wait` blocks on a live pane, which a fixture run does not have, so herdr is
 # stubbed on PATH. One stub per behaviour a real pane can have, and each case
 # picks the one that makes its claim falsifiable rather than merely true.
-mkdir -p "${TMP}/poison" "${TMP}/idle" "${TMP}/stuck" "${TMP}/error"
+mkdir -p "${TMP}/poison" "${TMP}/idle" "${TMP}/stuck" "${TMP}/error" \
+  "${TMP}/ghost" "${TMP}/vanish"
 # Fails and records the call, so a `wait` that reaches herdr when it must not
 # fails loudly instead of quietly passing.
 cat >"${TMP}/poison/herdr" <<SH
@@ -498,24 +499,75 @@ cat >"${TMP}/poison/herdr" <<SH
 printf '%s\n' "\$*" >>"${TMP}/herdr-called"
 exit 1
 SH
+# `wait` looks every outstanding agent up before it blocks on one (T-01), so a
+# stub that does not answer the listing is a precondition failure rather than
+# the behaviour its case is named for. idle, stuck and error therefore share
+# this answer — the journal's two agents, both live — and differ only in what
+# `agent wait` does, which is the axis those cases are about.
+LIVE='{"result":{"agents":[{"name":"exec-1","pane_id":"wM:p1","agent_status":"idle"},{"name":"exec-2","pane_id":"wM:p2","agent_status":"idle"}]}}'
 # Returns at once, the way a pane that just reached a terminal state does.
-cat >"${TMP}/idle/herdr" <<'SH'
+cat >"${TMP}/idle/herdr" <<SH
 #!/usr/bin/env bash
-exit 0
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  *) exit 0 ;;
+esac
 SH
 # Never returns: an agent that has not settled while the caller is watching.
-cat >"${TMP}/stuck/herdr" <<'SH'
+# The listing still answers, so the case measures the clock and not the lookup.
+cat >"${TMP}/stuck/herdr" <<SH
 #!/usr/bin/env bash
-exec sleep 300
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  *) exec sleep 300 ;;
+esac
 SH
-# Fails at once without matching, the shape of a herdr that cannot find the
-# agent the journal names.
-cat >"${TMP}/error/herdr" <<'SH'
+# Fails at once without matching, and the agent is live all the same: herdr's
+# exit code is not a report on the pane's state, which is why `wait` asks the
+# agent rather than reading the settle out of the wait. Case 41 is the point of
+# the split — non-zero wait, readable status, settled.
+cat >"${TMP}/error/herdr" <<SH
 #!/usr/bin/env bash
-exit 3
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  *) exit 3 ;;
+esac
+SH
+# The precondition, from the other side: a journal naming an agent herdr has
+# never heard of. exec-7 is not in the listing, so the outstanding Dispatch
+# cannot be watched at all — and `agent wait` records the call, so a `wait`
+# that blocks on the agent anyway is a failure here rather than a hang.
+cat >"${TMP}/ghost/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list") printf '%s\n' '$LIVE' ;;
+  "agent wait") printf '%s\n' "\$*" >>"${TMP}/ghost-waited"; exit 1 ;;
+  *) exit 9 ;;
+esac
+SH
+# The race the empty-status check exists for: the agent resolves when `wait`
+# looks the outstanding Dispatch up, and is gone by the time the winner is
+# asked how it ended. Staged off the wait rather than by counting listings, so
+# the marker lands after the precondition however many times that reads.
+cat >"${TMP}/vanish/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list")
+    if [ -e "${TMP}/vanish-seen" ]; then
+      printf '{"result":{"agents":[]}}\n'
+    else
+      printf '%s\n' '$LIVE'
+    fi
+    ;;
+  "agent wait")
+    : >"${TMP}/vanish-seen"
+    exit 1
+    ;;
+  *) exit 9 ;;
+esac
 SH
 chmod +x "${TMP}/poison/herdr" "${TMP}/idle/herdr" "${TMP}/stuck/herdr" \
-  "${TMP}/error/herdr"
+  "${TMP}/error/herdr" "${TMP}/ghost/herdr" "${TMP}/vanish/herdr"
 
 # T-06: one pane, one knob. `${TMP}/status` is the state that pane is in, and
 # two agents are always live in it — exec-1, who the journal below knows, and
@@ -660,7 +712,11 @@ sent "${RUN}" T-01 D-01 exec-1
 wait_on stuck 4 "" "40 --timeout with nothing settled exits 4, not 3" --timeout 400
 
 # 41. herdr exiting non-zero is reported rather than acted on — its exit codes
-#     on a match and on an expiry are not documented as distinguishable.
+#     on a match and on an expiry are not documented as distinguishable. The
+#     stub's listing names the agent and says idle, so this is also T-01's
+#     decision pinned rather than its bug: a failing wait over a readable
+#     `idle` status is exit 0 and a settle, because the status is what decides
+#     and the exit code is not.
 reset
 sent "${RUN}" T-01 D-01 exec-1
 wait_on error 0 '^exec-1 T-01 settled$' "41 a non-zero herdr still settles and is reported" \
@@ -727,9 +783,10 @@ else
 fi
 
 # 45d. The counterpart, so 5 cannot be a constant: the same stub with the agent
-#      idle is 0 and says settled. A stub that answers no state at all is a
-#      third shape, covered by 34 and 42 — the empty answer has to stay a
-#      settle, or every `idle` case in this section would turn into a 5.
+#      idle is 0 and says settled. A stub that answers *no* status is a third
+#      shape, and since T-01 it is a third answer too: 45f and 45i cover it as
+#      an exit 1, so the empty answer no longer stands in for a settle here —
+#      every stub in this section answers a listing now.
 reset
 sent "${RUN}" T-01 D-01 exec-1
 printf 'idle\n' >"${TMP}/status"
@@ -741,6 +798,42 @@ reset
 sent "${RUN}" T-01 D-01 exec-1
 printf 'done\n' >"${TMP}/status"
 wait_on panes 0 '^exec-1 T-01 settled$' "45e a done agent is still exit 0" --timeout 5000
+
+# 45f. A journal naming an agent herdr has never heard of: the Dispatch cannot
+#      be watched at all, and that is a precondition failure, not a settle and
+#      not a quiet 3. `collect --plan` counts the row because the journal says
+#      so, so the two verbs would disagree about what is out until someone read
+#      the table — which is why the refusal names that reader.
+reset
+sent "${RUN}" T-01 D-01 exec-7
+rm -f "${TMP}/ghost-waited"
+wait_on ghost 1 "" "45f an agent herdr does not know exits 1" --timeout 5000
+if grep -qE 'exec-7' "${TMP}/err" && grep -q 'collect --plan' "${TMP}/err"; then
+  ok "45g the refusal names the agent and the reader that still reports it"
+else
+  no "45g the refusal names the agent and the reader that still reports it" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if [ ! -e "${TMP}/ghost-waited" ]; then
+  ok "45h herdr was never blocked on the unresolved agent"
+else
+  no "45h herdr was never blocked on the unresolved agent" \
+    "agent wait called with: $(tr '\n' '|' <"${TMP}/ghost-waited")"
+fi
+
+# 45i. The race the empty-status check exists for: the agent resolves when the
+#      outstanding Dispatch is looked up and is gone by the time the winner is
+#      asked how it ended. Nothing on disk says how the Dispatch ended, so the
+#      honest answer is 1 — the settle this used to print is the defect.
+reset
+sent "${RUN}" T-01 D-01 exec-1
+wait_on vanish 1 "" "45i an agent that is gone when it is asked exits 1, not 0" --timeout 5000
+if grep -q 'undecided' "${TMP}/err" && [ "$(grep -c 'settled' "${TMP}/out")" -eq 0 ]; then
+  ok "45j the undecided Dispatch says so and prints no settle"
+else
+  no "45j the undecided Dispatch says so and prints no settle" \
+    "err: $(tr '\n' '|' <"${TMP}/err") out: $(tr '\n' '|' <"${TMP}/out")"
+fi
 
 echo
 echo "verify ↔ commands:"
@@ -929,6 +1022,64 @@ reset
 } >"$(handoff_dir "${RUN}")/T-01-D-01.md"
 expect_collect 0 '^T-01 +done +D-01 .*artifacts: \.omc/research/one\.md' \
   "53c every list field as a block list reads done" --plan "${FIXTURES}/plan-ok.md"
+
+echo
+echo "one handoff, one verdict"
+
+# 53b-53g. The block-list shape, and the verdict both readers have to reach.
+# `commands:` and `artifacts:` empty on their own line, one `- ` item per value:
+# what an agent writes once a value stops fitting on one line. The parser
+# normalises it into the inline form every reader below already takes, so the
+# two spellings are one handoff — and the gate and `collect --plan`, which read
+# one file, cannot answer differently about it.
+INLINE_CMDS='[{"cmd": "shellcheck -x ai/setup.sh", "exit": 0}, {"cmd": "git status --short", "exit": 0}]'
+BLOCK_CMDS=$'\n  - {"cmd": "shellcheck -x ai/setup.sh", "exit": 0}\n  - {"cmd": "git status --short", "exit": 0}'
+BLOCK_ARTS=$'\n  - /abs/path.md'
+
+# 53b. The block list proves the row's verify, and its receipt prints.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$BLOCK_CMDS" "$BLOCK_ARTS"
+expect_collect 0 '^T-01 +done +D-01 .*artifacts: /abs/path\.md' \
+  "53b a block-list commands: proves the verify to collect --plan" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 53c. And the same handoff releases the dependent, through the gate.
+expect_exit 0 "53c and the same handoff releases the dependent in dispatch" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
+
+# 53d. Same two commands, written inline, read the same — the normalisation
+#      joins the items in order, so a second item is a second entry and not a
+#      lost one.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$INLINE_CMDS"
+expect_collect 0 '^T-01 +done +D-01' "53d and the inline spelling of the same list agrees" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 53e. Leniency, because the line arrives through an agent: a deeper indent and
+#      a quoted item are the same list. A parser holding to the template's exact
+#      shape would read this as UNVERIFIED and hold a Task that did its check.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 \
+  "$(printf '\n    -  %s' "'{\"cmd\": \"shellcheck -x ai/setup.sh\", \"exit\": 0}'")"
+expect_collect 0 '^T-01 +done +D-01' "53e an indented, quoted block list reads the same" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 53f. The defect this section exists for: a handoff whose commands do not carry
+#      the row's verify. The table has always called that `review`; the gate asked
+#      only for `succeeded`/`verified` and released the dependent on the agent's
+#      word — two readers, one file, opposite verdicts.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "$OTHER_CMD"
+expect_collect 0 '^T-01 +review +D-01 +UNVERIFIED' \
+  "53f an unproven handoff reads review in collect --plan" \
+  --plan "${FIXTURES}/plan-ok.md"
+expect_exit 3 "53g and the gate refuses the dependent too" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
+
+# 53h. The escape hatch survives the stricter gate: --force is still the
+#      human-gated way past a blocker the table will not call done.
+expect_exit 0 "53h --force still dispatches over an unproven blocker" \
+  --task T-02 --from-plan "${FIXTURES}/plan-ok.md" --force
 
 echo
 echo "teardown"
@@ -1386,7 +1537,15 @@ cat >"${TMP}/settle/herdr" <<SH
 printf '%s\n' "\$*" >>"${TMP}/settle-called"
 case "\$1 \$2" in
   "agent list")
-    printf '{"result":{"agents":[{"name":"exec-1","pane_id":"wS:p1","agent_status":"%s"}]}}\n' "\$(cat "${TMP}/settle-status")"
+    # A pane that lost its name is not in the list at all: that is what
+    # agent_field reads as empty, and what the settle-lose-name marker arms. The
+    # resolve of the pane happens before any rename, so a case that arms it
+    # still gets a pane to clear.
+    if [ -e "${TMP}/settle-nameless" ]; then
+      printf '{"result":{"agents":[]}}\n'
+    else
+      printf '{"result":{"agents":[{"name":"exec-1","pane_id":"wS:p1","agent_status":"%s"}]}}\n' "\$(cat "${TMP}/settle-status")"
+    fi
     ;;
   "agent prompt")
     printf '%s\n' "\$*" >>"${TMP}/settle-prompt"
@@ -1403,6 +1562,10 @@ case "\$1 \$2" in
     # one when the case asks it to.
     printf '%s\n' "\$*" >>"${TMP}/settle-rename"
     [ ! -e "${TMP}/settle-rename-fail" ] || exit 1
+    # The settle-lose-name marker is the race itself: the rename is accepted,
+    # and the title reset it is racing lands right after it, so the pane drops
+    # out of agent list and stays out however many times it is renamed.
+    if [ -e "${TMP}/settle-lose-name" ]; then : >"${TMP}/settle-nameless"; fi
     ;;
   "pane report-metadata")
     printf '%s\n' "\$*" >>"${TMP}/settle-meta"
@@ -1425,11 +1588,18 @@ chmod +x "${TMP}/settle/herdr"
 # pre-check cannot see, so the refusal has to come from the helper. That is the
 # case where "the record was written after the clear" is the whole difference.
 # `norename` is its counterpart one call later — the send lands and the name
-# will not come back.
+# will not come back. `lose` is the race itself: the rename is taken and the
+# title reset undoes it, so the pane goes nameless and stays that way.
+#
+# A case may shorten the confirmation's deadline for its own run by prefixing
+# the call — `HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT=2 settle_on lose ...` — the way
+# case 96 raises the executor cap. The default is 15s, so the one case that
+# reaches it would otherwise spend that long failing on purpose.
 settle_on() {
   local status="$1" want="$2" re="$3" label="$4" code=0
   shift 4
-  rm -f "${TMP}/settle-refuse" "${TMP}/settle-rename-fail"
+  rm -f "${TMP}/settle-refuse" "${TMP}/settle-rename-fail" \
+    "${TMP}/settle-lose-name" "${TMP}/settle-nameless"
   case "$status" in
     refuse)
       printf 'idle\n' >"${TMP}/settle-status"
@@ -1438,6 +1608,10 @@ settle_on() {
     norename)
       printf 'idle\n' >"${TMP}/settle-status"
       : >"${TMP}/settle-rename-fail"
+      ;;
+    lose)
+      printf 'idle\n' >"${TMP}/settle-status"
+      : >"${TMP}/settle-lose-name"
       ;;
     *)
       printf '%s\n' "$status" >"${TMP}/settle-status"
@@ -1598,6 +1772,20 @@ else
 fi
 asked '^(agent list|agent prompt exec-1 /clear|agent rename wS:p1 exec-1|pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=1)$' \
   "83d and the clear, the rename and the record are all it did"
+# 83e. The confirmation, which is the half of 83 the recordings cannot see: the
+#      pane is read back twice *after* the rename. A settle that assumed the
+#      binding — or confirmed it before renaming — leaves four reads without
+#      that ordering, and the count is what separates the exit code, which is 0
+#      either way, from the work. Four is the two reads a clear already makes
+#      (who the agent is, whether it is blocked) plus the confirming pair.
+if [ "$(grep -c '^agent list$' "${TMP}/settle-called")" -eq 4 ] &&
+  [ "$(awk '/^agent rename wS:p1 exec-1$/ { r=NR } /^agent list$/ { l=NR }
+              END { print (r && l > r) ? "after" : "wrong" }' "${TMP}/settle-called")" = "after" ]; then
+  ok "83e and the pane is read back twice after the rename"
+else
+  no "83e and the pane is read back twice after the rename" \
+    "$(tr '\n' '|' <"${TMP}/settle-called")"
+fi
 
 # 84. The rename belongs to the clear and not to reuse: a pane whose transcript
 #     is intact keeps the name it already has, untouched.
@@ -1623,6 +1811,57 @@ else
 fi
 untouched meta "85d and no decision at all, for a pane that lost its name"
 recorded sent '^/clear$' "85e the clear itself did go out first"
+
+# T-02. The race 85 cannot reach, because 85's stub refuses the rename: here
+# herdr *takes* it and the title reset the clear already put in flight undoes it
+# a beat later. That is the shape the live failure had — the rename returned 0,
+# the pane went nameless, and the next `dispatch` died on the name. Nothing
+# orders the two processes, so the answer is to read the binding back, and the
+# only interesting question is what happens when the read says no.
+#
+# The deadline is shortened for the case: reaching it is the point, and 15s of
+# waiting to reach a failure whose shape is known buys nothing. What the case
+# asserts is the shape — non-zero, nothing recorded, a remedy named — not how
+# long the pane was given to prove itself.
+
+# 85f. The name does not hold, so the reuse did not happen.
+HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT=2 settle_on lose 1 '' \
+  "85f a name that does not hold is not a reuse" exec-1 reuse --clear
+if grep -q 'would not hold' "${TMP}/err" &&
+  grep -q 'agent rename wS:p1 exec-1' "${TMP}/err"; then
+  ok "85g and the refusal says which pane, and the command that fixes it"
+else
+  no "85g and the refusal says which pane, and the command that fixes it" \
+    "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -q 'settled' "${TMP}/out"; then
+  no "85h no settle is printed for a pane it could not bind" "$(tr '\n' '|' <"${TMP}/out")"
+else
+  ok "85h no settle is printed for a pane it could not bind"
+fi
+untouched meta "85i and no decision, and no cleared=1, is recorded for it"
+# 85j. The retry, which is what separates a confirmed binding from a rename that
+#      happened to return 0: a failed pair re-renames and re-reads rather than
+#      giving up on the first read.
+if [ -f "${TMP}/settle-rename" ] &&
+  [ "$(grep -c '^agent rename wS:p1 exec-1$' "${TMP}/settle-rename")" -ge 2 ]; then
+  ok "85j and the rename goes out again when a pair fails"
+else
+  no "85j and the rename goes out again when a pair fails" \
+    "$(if [ -f "${TMP}/settle-rename" ]; then tr '\n' '|' <"${TMP}/settle-rename"; else echo 'nothing recorded'; fi)"
+fi
+# 85k. And the deadline is the source's to set, which is what lets this case run
+#      at all: the constant is the default, the environment is the override. Two
+#      greps rather than one pattern, so the dollar sign of the expansion never
+#      has to sit inside a single-quoted string where shellcheck reads it as a
+#      mistake rather than as the literal being matched.
+if grep -q '^CLEAR_CONFIRM_TIMEOUT=' "${TEAM}" &&
+  grep -q 'HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15' "${TEAM}"; then
+  ok "85k the confirmation deadline defaults to 15s and is overridable"
+else
+  no "85k the confirmation deadline defaults to 15s and is overridable" \
+    "$(grep -n 'CLEAR_CONFIRM_TIMEOUT=' "${TEAM}" | tr '\n' '|')"
+fi
 
 echo
 echo "the state root: one Run per key"
@@ -2830,7 +3069,7 @@ if [ "$(pane_field exec-b1 provider)" = cc ] && [ "$(pane_field exec-b1 run)" = 
   ok "125c the pane was recorded with its provider and the Run that drew it"
 else
   no "125c the pane was recorded with its provider and the Run that drew it" \
-    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null | tr '\t' ':')"
+    "record: $(tr '\t' ':' < "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
 fi
 
 # 126. The record's other end. It is written where the pane is made, because the
@@ -2845,7 +3084,7 @@ if [ "$(pane_field exec-b1 worktree)" = "${TMP}/loop-wt/feat/cap-b" ] &&
   ok "126 the record carries the worktree the pane was opened on, and a stamp"
 else
   no "126 the record carries the worktree the pane was opened on, and a stamp" \
-    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null | tr '\t' ':')"
+    "record: $(tr '\t' ':' < "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
 fi
 loop_cmd 0 "126b settle retain keeps the record" settle exec-b1 retain
 if [ -f "${HERDR_TEAM_ROOT}/state/panes/exec-b1" ]; then
