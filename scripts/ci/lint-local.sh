@@ -1,22 +1,45 @@
 #!/usr/bin/env bash
 #
-# Runs, on demand, the three checks `.github/workflows/lint.yml` runs — so a
-# push costs twenty seconds to learn what CI would report twenty minutes later.
+# Runs, on demand, `.github/workflows/lint.yml` — so a push costs twenty
+# seconds to learn what CI would report twenty minutes later.
 #
-# Three of that workflow's checks and only these three: shellcheck over
-# `scripts/ci/list-shell-scripts.sh`, `zsh -n` over the workflow's own file set,
-# and editorconfig-checker with the workflow's exclude pattern. The rest of the
-# workflow needs node, docker and pipx; these are the ones that fail on the
-# edits that actually happen in this repo.
+#   scripts/ci/lint-local.sh            every check in the workflow
+#   scripts/ci/lint-local.sh --quick    the three that need no download
+#
+# `--quick` is shellcheck over `scripts/ci/list-shell-scripts.sh`, `zsh -n`
+# over the workflow's own file set, and editorconfig-checker: the three that
+# fail on the edits that actually happen in this repo. The full run adds
+# markdownlint-cli2, actionlint, zizmor and the two repo-rule scripts, and
+# needs node and uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
 # rather than being skipped quietly. A check that cannot fail is worse than no
 # check, and a local run that is green while CI is red is worse than either.
 #
 # Where it differs from CI it is stricter, never looser: editorconfig-checker
-# also sees untracked files you have not committed yet. Ignored paths (.omc/,
-# .herdr/) are skipped exactly as a clean checkout skips them.
+# also sees untracked files, and the rule scripts read the working tree rather
+# than the last commit — check-rules.sh over tracked files plus untracked ones
+# that are not gitignored (its credential rule is index-only by design), and
+# check-brewfile.sh over the file on disk — so an edit you have not committed is
+# checked here and is not in a CI run of a commit that predates it. Ignored
+# paths (.omc/, .herdr/) are skipped exactly as a clean checkout skips them.
+#
+# Every pin below is the one lint.yml uses, and this file's steps mirror that
+# file's steps. Bump them together — the two files are the only places these
+# tools are named, and a version that disagrees is a green local run that CI
+# then fails.
 set -euo pipefail
+
+# Mirrors the pins in .github/workflows/lint.yml.
+MARKDOWNLINT_CLI2_VERSION=0.23.2
+# Upstream actionlint 1.7.12, which lint.yml runs from the digest-pinned
+# `rhysd/actionlint:1.7.12` image. actionlint itself is not on PyPI — `uvx
+# actionlint@1.7.12` does not resolve — so this is the wrapper package that
+# carries the release binary, whose version is the upstream one plus the
+# wrapper's own release number. `--from` is required because the package and
+# the executable it provides are named differently.
+ACTIONLINT_PY_VERSION=1.7.12.24
+ZIZMOR_VERSION=1.30.1
 
 EC_VERSION=v4.0.1
 EC_BASE_URL="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/${EC_VERSION}"
@@ -134,6 +157,64 @@ ensure_ec() {
   printf '%s\n' "$binary"
 }
 
+# A tool that is absent is a failure, not a skip — see the header. `$1` is the
+# binary, `$2` names the check in the message.
+require_tool() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    printf 'lint-local: %s is not installed, so the %s check did not run\n' \
+      "$1" "$2" >&2
+    return 1
+  fi
+}
+
+# The two repo-rule scripts are bash, so they are run rather than reimplemented.
+# A missing script fails the same way a missing binary does: bash exits 127.
+check_rules() {
+  bash scripts/ci/check-rules.sh
+}
+
+check_brewfile() {
+  bash scripts/ci/check-brewfile.sh
+}
+
+check_markdown() {
+  local -a files=()
+  local file
+  # The workflow's file set, and the same pinned version.
+  while IFS= read -r file; do
+    files+=("$file")
+  done < <(git ls-files '*.md')
+
+  if [ "${#files[@]}" -eq 0 ]; then
+    printf 'lint-local: no markdown files found to check\n'
+    return 0
+  fi
+  require_tool npx markdownlint || return 1
+  npx --yes "markdownlint-cli2@${MARKDOWNLINT_CLI2_VERSION}" "${files[@]}"
+}
+
+check_actionlint() {
+  require_tool uvx actionlint || return 1
+  # actionlint-py ships actionlint but not shellcheck. With none on PATH,
+  # actionlint skips that pass silently; CI's `docker://rhysd/actionlint` image
+  # always has one, so the skip would make this run looser than CI — the one
+  # thing this script promises not to be. Refusing is the only safe answer: the
+  # findings it would have produced are invisible either way.
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    printf 'lint-local: actionlint needs shellcheck on PATH, or it silently\n' >&2
+    printf 'lint-local: skips its shellcheck pass and reports less than CI does\n' >&2
+    return 1
+  fi
+  # No path argument, so actionlint finds .github/workflows from the repository
+  # root — the same thing the `docker://rhysd/actionlint` step does in CI.
+  uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color
+}
+
+check_zizmor() {
+  require_tool uvx zizmor || return 1
+  uvx "zizmor@${ZIZMOR_VERSION}" --persona=regular .github/workflows
+}
+
 check_shellcheck() {
   local -a files=()
   while IFS= read -r file; do
@@ -197,9 +278,26 @@ check_editorconfig() {
 }
 
 main() {
-  local -a failed=()
+  local -a checks=() failed=()
   local name
-  for name in shellcheck zsh editorconfig; do
+
+  case "${1:-}" in
+    --quick)
+      checks=(shellcheck zsh editorconfig)
+      ;;
+    '')
+      # Cheapest first, so a rule violation does not wait on three downloads;
+      # the order matches lint.yml's step order within each job.
+      checks=(rules brewfile shellcheck zsh editorconfig markdown actionlint zizmor)
+      ;;
+    *)
+      printf 'lint-local: unknown option: %s\n' "$1" >&2
+      printf 'usage: lint-local.sh [--quick]\n' >&2
+      return 2
+      ;;
+  esac
+
+  for name in "${checks[@]}"; do
     printf '\n==> %s\n' "$name"
     if ! "check_$name"; then
       failed+=("$name")
