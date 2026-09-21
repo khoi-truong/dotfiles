@@ -8,7 +8,7 @@ create`, which those helpers would not see.
 
 This **diverges from every comparable system** — OMC uses `.omc/worktrees/`,
 the orcas `.orca/…` — deliberately: those helpers are worth more than
-conformity, and it is recorded so it reads as a choice, not an oversight.
+conformity.
 
 ## Seeding
 
@@ -26,8 +26,13 @@ ambiguous cause. `team.sh spawn` refuses an already-dirty tree.
 ## At teardown: an explicit finish decision
 
 Merge, open a PR, keep, or discard — never implicit. `team.sh teardown` refuses
-on a dirty tree or unpushed commits unless forced, prompts for the decision,
-then closes the workspace and runs `git worktree remove` then `git tidy`.
+a dirty tree or unlanded work unless forced, prompts for the decision, then
+closes the workspace and runs `git worktree remove` then `git tidy`.
+
+Landed means nothing ahead of `@{u}` or, with no upstream, a merge into the
+default branch changing nothing. Not a count: the forge deletes the head
+branch on merge and a squash strands its commits, so counting refused every
+merged worktree and taught `--force` on a guard that was right.
 
 ## State that must outlive the worktree
 
