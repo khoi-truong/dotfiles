@@ -7,16 +7,18 @@
 # manager, and credentials never land in the repo. Each is one pattern away
 # from being enforced, so it is enforced here rather than left to review.
 #
-# Scope is `*.sh` and `*.zsh`, which is what those rules name. A mention of
-# /opt/homebrew in README.md or a skill reference is prose, not a hardcoded
-# prefix. Full-line comments are skipped for the same reason: a comment
-# explaining one of these rules has to be able to name a prefix.
+# Scope is the shell files, not the whole tree. A mention of /opt/homebrew in
+# README.md or a skill reference is prose, not a hardcoded prefix. Full-line
+# comments are skipped for the same reason: a comment explaining one of these
+# rules has to be able to name a prefix.
 #
-# The file list is tracked files *plus* untracked files that are not
-# gitignored, so a violation written but not yet committed is caught before it
-# reaches a commit, and a scratch file can prove the check can fail. CI runs
-# on a clean checkout, where the two lists are the same, so this is stricter
-# than CI and never looser.
+# The file list comes from `shell_files` below. A `*.sh`/`*.zsh` glob was not
+# enough: it walked past zsh/zshrc, zsh/zshenv and the extensionless hooks in
+# git/template/, and zsh/zshrc is read on every shell start — the one place a
+# hardcoded prefix would hurt most.
+#
+# Files are read from the working tree, so an edit that is not committed yet is
+# still checked. CI runs on a clean checkout, where the two are the same.
 #
 # Run by .github/workflows/lint.yml and scripts/ci/lint-local.sh; both files
 # name the other, so a change here lands in both.
@@ -59,6 +61,20 @@ all_files() {
   git ls-files -z --cached --others --exclude-standard
 }
 
+# Every shell file the Homebrew-prefix rule is about, taken from the same source
+# CI's shellcheck step reads — scripts/ci/list-shell-scripts.sh finds every
+# tracked `*.sh` and every tracked extensionless file whose shebang names bash
+# or sh.
+# That script leaves zsh to `zsh -n`, so the zsh files are named here — those
+# two extensionless ones included, since they are what a shell reads. `sort -u`
+# so a path cannot be listed twice and reported twice.
+shell_files() {
+  {
+    scripts/ci/list-shell-scripts.sh
+    git ls-files '*.zsh' zsh/zshrc zsh/zshenv
+  } | sort -u
+}
+
 # A line whose first non-blank character is `#` is a comment. `$1` is the text
 # after "file:line:" from `grep -n`.
 is_comment() {
@@ -78,16 +94,13 @@ grep_text() {
 check_homebrew_prefix() {
   local -a files=() found=()
   local path hit
-  while IFS= read -r -d '' path; do
-    case "$path" in
-      *.sh | *.zsh) ;;
-      *) continue ;;
-    esac
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
     case " ${HOMEBREW_ALLOWLIST[*]} " in
       *" ${path} "*) continue ;;
     esac
     files+=("$path")
-  done < <(all_files)
+  done < <(shell_files)
 
   [ "${#files[@]}" -gt 0 ] || return 0
 

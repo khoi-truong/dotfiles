@@ -17,9 +17,10 @@
 # check, and a local run that is green while CI is red is worse than either.
 #
 # Where it differs from CI it is stricter, never looser: editorconfig-checker
-# and the two rule scripts also see untracked files you have not committed yet.
-# Ignored paths (.omc/, .herdr/) are skipped exactly as a clean checkout skips
-# them.
+# also sees untracked files, and the two rule scripts read the working tree
+# rather than the last commit, so an edit you have not committed is checked
+# here and is not in a CI run of a commit that predates it. Ignored paths
+# (.omc/, .herdr/) are skipped exactly as a clean checkout skips them.
 #
 # Every pin below is the one lint.yml uses, and this file's steps mirror that
 # file's steps. Bump them together — the two files are the only places these
@@ -192,6 +193,16 @@ check_markdown() {
 
 check_actionlint() {
   require_tool uvx actionlint || return 1
+  # actionlint-py ships actionlint but not shellcheck. With none on PATH,
+  # actionlint skips that pass silently; CI's `docker://rhysd/actionlint` image
+  # always has one, so the skip would make this run looser than CI — the one
+  # thing this script promises not to be. Refusing is the only safe answer: the
+  # findings it would have produced are invisible either way.
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    printf 'lint-local: actionlint needs shellcheck on PATH, or it silently\n' >&2
+    printf 'lint-local: skips its shellcheck pass and reports less than CI does\n' >&2
+    return 1
+  fi
   # No path argument, so actionlint finds .github/workflows from the repository
   # root — the same thing the `docker://rhysd/actionlint` step does in CI.
   uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color

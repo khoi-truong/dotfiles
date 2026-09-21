@@ -3,10 +3,17 @@
     "deny": [
       "Bash(./setup.sh:*)",
       "Bash(*/setup.sh:*)",
+      "Bash(bash setup.sh:*)",
+      "Bash(bash ./setup.sh:*)",
+      "Bash(bash */setup.sh:*)",
+      "Bash(sh setup.sh:*)",
+      "Bash(sh ./setup.sh:*)",
+      "Bash(sh */setup.sh:*)",
       "Bash(brew bundle:*)",
       "Bash(mise use -g:*)",
       "Bash(mise install:*)",
-      "Bash(defaults write:*)"
+      "Bash(defaults write:*)",
+      "Bash(sudo:*)"
     ]
   }
 }

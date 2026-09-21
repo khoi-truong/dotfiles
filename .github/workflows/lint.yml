@@ -146,10 +146,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          # "type name" per entry, comments dropped, in a stable order — the
-          # same pair check-brewfile.sh validates.
+          # "type name" per entry, quotes removed, in a stable order. The same
+          # two parse rules as scripts/ci/check-brewfile.sh — an entry may be
+          # indented, and a name may be quoted either way — so the two agree on
+          # what an entry is. Validating the line is that script's job, and it
+          # runs earlier in this job, so a malformed one never reaches here.
           pairs() {
-            sed -nE 's/^[[:space:]]*(tap|brew|cask|mas|vscode|whalebrew)[[:space:]]+"([^"]+)".*/\1 \2/p' \
+            sed -nE \
+              -e "s/^[[:space:]]*(tap|brew|cask|mas|vscode|whalebrew)[[:space:]]+\"([^\"]*)\".*/\1 \2/p" \
+              -e "s/^[[:space:]]*(tap|brew|cask|mas|vscode|whalebrew)[[:space:]]+'([^']*)'.*/\1 \2/p" \
               | sort -u
           }
 
