@@ -26,7 +26,7 @@
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
 #   team.sh settle <name> <reuse|retain|release> [--clear]
-#   team.sh teardown <name> [--force]
+#   team.sh teardown <name> [--force | --abandon-only]
 #
 # See ai/shared/skills/herdr-team/ for the protocol these commands implement.
 set -euo pipefail
@@ -420,6 +420,12 @@ esac'
 #   status line since; the number is from before whatever this machine has been
 #   doing.
 #
+# The age is a span with two ends, and both are checked. A `cached_at` ahead of
+# now is not a fresh cache — it is a clock nobody can read, and read as an age
+# it is negative, which is under every threshold there is. Freshness is `0 <=
+# now - cached <= max_age`, which is the same rule as `quota-advice.sh`'s but
+# stated as a rule rather than as one comparison that happens to hold.
+#
 # The absence of a number is not headroom, so nothing here guesses one: no
 # cache, an unreadable cache and a stale one all answer "unknown", and the one
 # caller refuses to fall back on unknown.
@@ -428,7 +434,13 @@ pro_window_used() {
   python3 - "${PRO_QUOTA_CACHE}" "${PRO_QUOTA_MAX_AGE}" <<'PY' 2>/dev/null || true
 import json, sys, time
 
-path, max_age = sys.argv[1], int(sys.argv[2])
+try:
+    path, max_age = sys.argv[1], int(sys.argv[2])
+except ValueError:
+    # A limit that is not a number is not a limit. `spawn` gates on this before
+    # it gets here; answering "unknown" is the same refusal from the other side,
+    # and the only one this reader can make on its own.
+    raise SystemExit(0)
 try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
@@ -439,10 +451,26 @@ try:
 except (OSError, ValueError, KeyError, TypeError):
     raise SystemExit(0)
 now = time.time()
-if reset <= now or now - cached > max_age:
+age = now - cached
+if reset <= now or age < 0 or age > max_age:
     raise SystemExit(0)
 print(int(used))
 PY
+}
+
+# bad_knob <name> <value> — `NAME=value` when the value is not a whole number,
+# and nothing when it is. The fallback is decided by two numbers that arrive
+# from the environment unparsed, and both are read with a comparison rather than
+# with a parse: `[ "$used" -ge "$PRO_FALLBACK_MAX" ]` answers "no" — not an
+# error, and not under `set -e` either, since a test is a condition — for a
+# string it cannot compare an integer against. So a limit nobody can read would
+# be a limit nobody set, and the fallback it exists to bound would be taken.
+# Unknown is not headroom, said of a setting as much as of a cache; the only
+# difference is which of the two the message names.
+bad_knob() {
+  case "$2" in
+    '' | *[!0-9]*) printf '%s=%s' "$1" "$2" ;;
+  esac
 }
 
 # The worktree checked out on <branch>, or empty. Asked of git rather than
@@ -584,7 +612,7 @@ cmd_spawn() {
   # below, which spends the Pro login instead. It is bounded, and it is recorded
   # — an unrecorded one is the silent Pro spend cost.md's checklist forbids.
   if [ "$skip_provider_check" -eq 0 ] && [ "$provider" != "cc" ] && [ "$provider" != "omp" ]; then
-    local ref="" var="" state="" probe="" why="" used=""
+    local ref="" var="" state="" probe="" why="" used="" knob=""
     if ! probe="$(provider_key "$provider")"; then
       why="could not ask the login shell about ${provider}'s key"
     else
@@ -615,6 +643,15 @@ cmd_spawn() {
       # should be the one to spend. Unknown and over-the-line answer the same
       # way for the reason `quota-advice.sh` states — absence of data is not
       # evidence of headroom.
+      # Both limits, before either is read, and both of them: a malformed one is
+      # a gate rather than a default, because a fallback decided under a
+      # threshold nobody can read is the same silent Pro spend as one decided
+      # from a cache nobody can read.
+      knob="$(bad_knob HERDR_TEAM_PRO_FALLBACK_MAX "$PRO_FALLBACK_MAX")"
+      [ -n "$knob" ] || knob="$(bad_knob HERDR_TEAM_PRO_QUOTA_MAX_AGE "$PRO_QUOTA_MAX_AGE")"
+      if [ -n "$knob" ]; then
+        gate "spawn: ${knob} is not a whole number, and a limit nobody can read is not a limit — a fallback decided under it is the silent Pro spend cost.md's checklist forbids. Fix the setting, pass --skip-provider-check to launch ${provider} anyway, or fix the key."
+      fi
       used="$(pro_window_used)"
       if [ -z "$used" ]; then
         gate "spawn: the Pro 5h window is unknown — ${PRO_QUOTA_CACHE} is missing, stale, or names a window that has already reset — and a fallback decided from a cache nobody can read is the silent Pro spend cost.md's checklist forbids. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or let a Pro session render its status line to refresh that cache."
@@ -1530,6 +1567,38 @@ def recorded_field(name, index):
     except OSError:
         return ""
 
+
+def bound_provider(task, dispatch):
+    """(provider, fell back from) that Dispatch was sent on, or None.
+
+    From the Run's own `.providers`, not from the pane record, and preferred
+    over it: a record is what a *live* pane holds, and `settle … release` and
+    `teardown` both delete it — so a fallback read from there is a fallback
+    that vanishes exactly when the pane it explains does, and the report bills
+    a Run that ran a substitution as if it had run `ccd`. `dispatch` writes it
+    down at the moment the Task is bound to the pane, which is the last moment
+    the record is certainly there, so a Run with either one tells the same
+    story about itself a month later.
+
+    None — not ("", "") — for a Dispatch with no note, which is every Dispatch
+    of a Run that predates the file: the caller falls back to the record and
+    then to the plan row, which is what it did before there was a file at all.
+    """
+    return bound.get((task, dispatch))
+
+
+bound = {}
+try:
+    prov_lines = open(os.path.join(handoffs, ".providers"),
+                      encoding="utf-8").read().splitlines()
+except OSError:
+    prov_lines = []
+for line in prov_lines:
+    parts = line.split("\t")
+    if len(parts) < 6 or parts[0] != run:
+        continue
+    bound[(parts[1], parts[2])] = (parts[4], parts[5])
+
 # --- the plan, when this Run has one ---------------------------------------
 # The path `run new --plan` wrote down, not the plan this shell happens to be
 # standing next to: a report is about that Run, and a Run knows its own plan
@@ -1631,23 +1700,28 @@ for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
         outcome, evidence, lines, verify = "running", "-", "-", "-"
     else:
         winner, outcome, evidence, lines, verify = "-", "-", "-", "-", "-"
-    # The provider `spawn` recorded for the pane the winning Dispatch went to,
-    # and the plan's own row only when there is no record — a pane from before
-    # records existed, or one nobody here started. It cannot be inferred: the
+    # The provider the winning Dispatch was sent on, and the plan's own row only
+    # when nothing wrote one down — a Run from before `.providers` or before
+    # records existed, or a pane nobody here started. It cannot be inferred: the
     # journal has no provider in it, an agent name is `exec-<run>-N`, and
     # reading the pane is not passive (herdr-adapter.md). The two sources
-    # disagreeing is itself worth seeing: the record is what was launched, the
-    # row is what was asked for, and a Run that quietly ran on the wrong
-    # credential is what a report is for.
-    provider = recorded_field(sent_agent.get(tid, ""), 1) or row.get("provider") or "-"
+    # disagreeing is itself worth seeing: the note is what was launched, the row
+    # is what was asked for, and a Run that quietly ran on the wrong credential
+    # is what a report is for.
+    note = bound_provider(tid, winner)
+    if note is not None:
+        provider = note[0] or row.get("provider") or "-"
+        fell_back = note[1]
+    else:
+        provider = recorded_field(sent_agent.get(tid, ""), 1) or row.get("provider") or "-"
+        fell_back = recorded_field(sent_agent.get(tid, ""), 5)
     if provider != "-":
         providers.add(provider)
-    # The provider this pane fell back from, when `spawn` had to substitute one.
+    # The provider that pane fell back from, when `spawn` had to substitute one.
     # Its own line below rather than a wider provider column: the column is on
     # one line of a table whose readers match a row by shape, and a fallback is
     # a fact about the Run worth reading in a sentence, not a fifth glyph in a
     # cell. `cc` alone would report a substitution as a choice.
-    fell_back = recorded_field(sent_agent.get(tid, ""), 5)
     if fell_back:
         fallbacks.append((tid, fell_back, provider))
     if verify == "ok":
@@ -2136,7 +2210,13 @@ for line in table.splitlines():
     if len(parts) < 2 or parts[1] != "ready":
         continue
     row = rows.get(parts[0]) or {}
-    provider = row.get("provider") or ""
+    # `-` rather than an empty field, because the wave reads this line with
+    # `IFS=$'\t' read` and a tab is IFS whitespace there: two in a row collapse
+    # into one delimiter, so a row with no provider but a `tier_reason` would
+    # hand the reason over as the provider and spawn the pane on `cc` with the
+    # row's own sentence as its `--tier-reason`. The placeholder is read back to
+    # empty at the one place that decides a tier.
+    provider = row.get("provider") or "-"
     # Whitespace-collapsed: this is one tab-separated field on a line the wave
     # splits on tabs, and a reason written as two lines in the plan would
     # otherwise arrive as extra columns and be read as a lane or a provider.
@@ -2258,6 +2338,10 @@ loop_wave() {
 
   local -a seats=() waiting=()
   local ei=0 ri=0 tid lane provider reason seat
+  # `-` is `loop_routes`' placeholder for a row that names no provider, and it
+  # travels with the route rather than being turned back here: both lines below
+  # rebuild a tab-separated record out of these fields, and a real empty one
+  # would collapse in the reader the same way it did on the way in.
   while IFS=$'\t' read -r tid lane provider reason; do
     [ -n "$tid" ] || continue
     if [ "$lane" = rev ] && [ "$ri" -lt "${#free_rev[@]}" ]; then
@@ -2296,6 +2380,11 @@ loop_wave() {
     live_exec="$(printf '%s\n' "$held" | count_lines)"
     for i in "${!waiting[@]}"; do
       IFS=$'\t' read -r lane tid provider reason <<<"${waiting[$i]}"
+      # Back to empty for the one reader that decides a tier, so `${provider:-
+      # ccd}` below means the same thing here as it does everywhere else: the
+      # row named no provider, so the default stands. `-` would be a provider
+      # name nothing knows, and `spawn` would refuse it.
+      if [ "$provider" = "-" ]; then provider=""; fi
       # An unattended loop never takes a provider's last seat. The ceiling is a
       # credential shared with every other tab on the machine, and a loop that
       # spends down to it holds what it took for the Run's life — it never
@@ -2329,12 +2418,19 @@ loop_wave() {
         live_exec=$((live_exec + 1))
       fi
       src=0
+      # In a subshell, and that is the whole point: `spawn` refuses through
+      # `die` and `gate`, which are `exit`s inside the shell they run in, and
+      # this is the same shell — so a bare `cmd_spawn … || src=$?` never runs
+      # the `||` at all. The refusal would leave this wave as a 1 and take the
+      # `report` at the end of `loop` with it, and the gate below would be code
+      # nothing reaches. Wrapped, the exit becomes a status the wave can read.
+      #
       # `--tier-reason` always, even empty: the flag is what `spawn` asks for a
       # `cc` row, and the row is where the answer lives. An empty one on a `cc`
       # row is a plan that did not state its reason, which `spawn` refuses —
       # below, as the gate it is.
-      cmd_spawn "$name" --branch "$branch" --provider "${provider:-ccd}" \
-        --tier-reason "$reason" || src=$?
+      ( cmd_spawn "$name" --branch "$branch" --provider "${provider:-ccd}" \
+        --tier-reason "$reason" ) || src=$?
       if [ "$src" -ne 0 ]; then
         # A refusal is not a full pool, and it is not a row to leave for the
         # next wave either: `spawn` refuses for reasons a loop must not paper
@@ -2793,6 +2889,26 @@ PY
 # `herdr agent prompt` refuses a blocked agent before sending anything, so an
 # approval dialog is never answered by accident.
 
+# journal_has <run> <task> <dispatch> — is that Dispatch id already spent?
+#
+# One reader, because both callers are asking the same question and a second
+# reading of the journal is how they come to disagree. `next_dispatch` asks it
+# to pick an id and `dispatch` asks it to accept one a caller named; an id
+# minted against one answer and checked against another is the never-reuse rule
+# (protocol.md) broken by the two verbs that exist to enforce it.
+journal_has() {
+  local run="$1" task="$2" dispatch="$3" hdir="" j_run j_task j_dispatch j_agent
+  hdir="$(handoffs_dir "$run")"
+  [ -r "${hdir}/.dispatched" ] || return 1
+  while IFS=$'\t' read -r j_run j_task j_dispatch j_agent; do
+    if [ "$j_run" = "$run" ] && [ "$j_task" = "$task" ] &&
+      [ "$j_dispatch" = "$dispatch" ]; then
+      return 0
+    fi
+  done <"${hdir}/.dispatched"
+  return 1
+}
+
 # next_dispatch <run> <task> — the lowest D-nn that has neither a handoff file
 # nor a journal line under that Run. A settled id is never reused, so an
 # existing file means that attempt already happened.
@@ -2804,21 +2920,14 @@ PY
 # which is not a numbering nit, it is the never-reuse rule (protocol.md) broken
 # by the one verb that is supposed to enforce it.
 next_dispatch() {
-  local run="$1" task="$2" hdir="" n=1 id journal="" have j_run j_task j_dispatch j_agent
+  local run="$1" task="$2" hdir="" n=1 id
   hdir="$(handoffs_dir "$run")"
-  [ -r "${hdir}/.dispatched" ] && journal="$(cat "${hdir}/.dispatched")"
   while [ "$n" -lt 100 ]; do
     id="$(printf 'D-%02d' "$n")"
-    if [ ! -e "${hdir}/${task}-${id}.md" ]; then
-      have=""
-      while IFS=$'\t' read -r j_run j_task j_dispatch j_agent; do
-        if [ "$j_run" = "$run" ] && [ "$j_task" = "$task" ] &&
-          [ "$j_dispatch" = "$id" ]; then
-          have=1
-          break
-        fi
-      done <<<"$journal"
-      [ -n "$have" ] || { printf '%s' "$id"; return 0; }
+    if [ ! -e "${hdir}/${task}-${id}.md" ] &&
+      ! journal_has "$run" "$task" "$id"; then
+      printf '%s' "$id"
+      return 0
     fi
     n=$((n + 1))
   done
@@ -3301,6 +3410,16 @@ cmd_dispatch() {
   local handoff="${hdir}/${task}-${dispatch}.md"
   [ ! -e "$handoff" ] ||
     die "dispatch: ${task}/${dispatch} already settled (${handoff}) — use a new Dispatch id"
+  # The other half of "is this id spent", and the half a handoff file cannot
+  # answer: a Dispatch torn down before it could write one left a journal line
+  # and no file, so an explicit `--dispatch D-01` used to be accepted here and
+  # land a second agent's work under an id that is already spent. An id `dispatch`
+  # minted itself never trips this — `next_dispatch` reads the same journal
+  # through the same matcher — which is why the check is not a duplicate of it,
+  # it is the case a named id opens.
+  if journal_has "$run" "$task" "$dispatch"; then
+    die "dispatch: ${task}/${dispatch} is already in this Run's journal — the Dispatch happened whether or not it was answered, and sending it again puts two agents' work under one id; use a new Dispatch id"
+  fi
 
   # Body, in precedence order: the command line, else the plan, else stdin —
   # and stdin only when something is actually piped in. Reading a terminal
@@ -3390,6 +3509,21 @@ EOF
   # The agent goes in as the fourth column so `wait` knows which pane this
   # Dispatch is on.
   printf '%s\t%s\t%s\t%s\n' "$run" "$task" "$dispatch" "$name" >>"${hdir}/.dispatched"
+  # And which provider that pane is on, into the Run rather than left on the
+  # pane's own record. The record is the *live* answer and `settle … release`
+  # and `teardown` both delete it, so a fallback read from there disappears
+  # exactly when the pane it explains does: `report` would bill a Run that ran
+  # a substitution as if it had run `ccd`, with a count of zero to match, and
+  # the one reader who could have noticed is looking at a pane that is gone.
+  #
+  # Taken here rather than at spawn because this is the moment the Task is
+  # bound to the pane, and the last moment the record is certainly there. Read
+  # through `pane_record_field` and written even when it answers empty: a pane
+  # nobody here started has no record, and an empty provider is a fact the
+  # reader already knows how to fall back from — the plan row's own.
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$run" "$task" "$dispatch" "$name" \
+    "$(pane_record_field "$name" provider)" \
+    "$(pane_record_field "$name" fallback)" >>"${hdir}/.providers"
   ok "${run} ${task}/${dispatch} → ${name}; expects ${handoff}"
 }
 
@@ -3535,51 +3669,81 @@ cmd_settle() {
 # there taught the orchestrator to reach for --force on a guard that was right
 # to fire, which is how the guard stops being read at all.
 
-# abandon_outstanding <name> <run> — record that this pane's unanswered
-# Dispatches will never be answered.
+# abandon_outstanding <name> — record that this pane's unanswered Dispatches will
+# never be answered.
 #
-# The pane is the thing that was going to answer them, so a teardown is the
-# moment a journal line stops meaning "out with an agent" and starts meaning
-# "given up on". Only the lines with no handoff file: one that already landed
-# is an answer, and the pane leaving does not unsay it. Written here, before the
-# record goes, because the record is where the Run is known — `teardown` is
-# called with an agent name and nothing else, and a pane spawned before its Run
-# existed has no Run to attribute anything to.
+# The pane is the thing that was going to answer them, so the moment it goes is
+# the moment a journal line stops meaning "out with an agent" and starts meaning
+# "given up on". Only the lines with no handoff file: one that already landed is
+# an answer, and the pane leaving does not unsay it.
 #
 # Nothing is removed from the journal. The Dispatch did happen and `report`
 # counts it; what changes is that `dispatched()` no longer folds it down as
 # outstanding, which is what `wait` blocks on and `collect --plan` calls
-# `running`. Appended rather than rewritten, like the journal itself.
+# `running`. Appended rather than rewritten, like the journal itself, and
+# appended to each Run's own `.abandoned` rather than one Run's.
 abandon_outstanding() {
-  local name="$1" run="$2" hdir="" j_run j_task j_dispatch j_agent
-  [ -n "$run" ] && [ "$run" != "-" ] || return 0
-  hdir="$(handoffs_dir "$run")"
-  [ -r "${hdir}/.dispatched" ] || return 0
-  while IFS=$'\t' read -r j_run j_task j_dispatch j_agent; do
-    # By agent, so only this pane's Dispatches are abandoned. A three-column
-    # journal line names no agent and so matches nothing here: `wait` already
-    # skips those for the same reason, and guessing which pane sent one would
-    # abandon somebody else's work on a coincidence of ids.
-    [ "$j_run" = "$run" ] && [ "$j_agent" = "$name" ] || continue
-    [ -n "$j_task" ] && [ -n "$j_dispatch" ] || continue
-    [ -e "${hdir}/${j_task}-${j_dispatch}.md" ] && continue
-    printf '%s\t%s\t%s\t%s\n' "$run" "$j_task" "$j_dispatch" "$name" \
-      >>"${hdir}/.abandoned"
-  done <"${hdir}/.dispatched"
+  local name="$1" dir run j_run j_task j_dispatch j_agent
+  # Every Run's journal, not the one on the pane's record. A record names the
+  # Run a pane was *spawned* under and a journal line names the Run that *sent*
+  # the Dispatch, and those are not the same question: a retained pane is
+  # dispatched to by a later Run, whose journal is the one holding the line. Read
+  # from the record's Run alone, a teardown writes its marker into a journal the
+  # pane has nothing in and leaves the real line outstanding — which is the
+  # stall the marker exists to end, now with a file that looks like it was
+  # handled. The name is what ties the two together; the Run is the journal's.
+  for dir in "${ROOT}"/runs/*/handoffs; do
+    [ -d "$dir" ] || continue
+    run="${dir%/handoffs}"
+    run="${run##*/}"
+    [ -r "${dir}/.dispatched" ] || continue
+    while IFS=$'\t' read -r j_run j_task j_dispatch j_agent; do
+      # By agent, so only this pane's Dispatches are abandoned. A three-column
+      # journal line names no agent and so matches nothing here: `wait` already
+      # skips those for the same reason, and guessing which pane sent one would
+      # abandon somebody else's work on a coincidence of ids.
+      [ "$j_run" = "$run" ] && [ "$j_agent" = "$name" ] || continue
+      [ -n "$j_task" ] && [ -n "$j_dispatch" ] || continue
+      [ -e "${dir}/${j_task}-${j_dispatch}.md" ] && continue
+      printf '%s\t%s\t%s\t%s\n' "$run" "$j_task" "$j_dispatch" "$name" \
+        >>"${dir}/.abandoned"
+    done <"${dir}/.dispatched"
+  done
   return 0
 }
 
 cmd_teardown() {
-  local name="${1:-}" force=0
+  local name="${1:-}" force=0 abandon_only=0
   shift || true
-  [ "${1:-}" = "--force" ] && force=1
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      --abandon-only) abandon_only=1; shift ;;
+      *) die "teardown: unknown option $1" ;;
+    esac
+  done
   [ -n "$name" ] || usage
   valid_name "$name" || die "teardown: bad agent name: ${name}"
+
+  # A pane herdr no longer knows. Nothing is live to close, nothing is left to
+  # guard and no worktree is this verb's to remove — the only thing undone is
+  # the bookkeeping, and it is exactly the case the guard above would refuse:
+  # a pane that died on its own leaves its journal lines outstanding and its
+  # record behind, and without this the Run reads `running` for as long as
+  # anyone cares to look, with the record counting the credential of a pane
+  # that is not there. Asked for by hand, because "the agent is gone" and "the
+  # agent should be gone" are the same absence and only a human knows which.
+  if [ "$abandon_only" -eq 1 ]; then
+    abandon_outstanding "$name"
+    rm -f "$(pane_record "$name")"
+    ok "${name}: nothing is live to close — its outstanding Dispatches are abandoned"
+    return 0
+  fi
 
   local cwd ws
   cwd="$(agent_field "$name" cwd)"
   ws="$(agent_field "$name" workspace_id)"
-  [ -n "$ws" ] || die "teardown: no live agent named ${name}"
+  [ -n "$ws" ] || die "teardown: no live agent named ${name} — if it died on its own, --abandon-only marks the Dispatches it left outstanding"
 
   if [ "$force" -eq 0 ] && [ -n "$cwd" ] && [ -d "$cwd" ]; then
     [ -z "$(git -C "$cwd" status --porcelain)" ] ||
@@ -3602,16 +3766,10 @@ cmd_teardown() {
   fi
 
   herdr workspace close "$ws" >/dev/null
-  # Read off the record, which is about to be deleted: it names the Run this
-  # pane was spawned under, and teardown was given an agent name. A pane whose
-  # Run is not on its record — or a record already reaped — falls back to the
-  # current Run, which is the same question asked the only other way; neither
-  # answer is wrong, and an agent with no outstanding line has nothing written
-  # either way.
-  local torn_run
-  torn_run="$(pane_record_field "$name" run)"
-  [ -n "$torn_run" ] && [ "$torn_run" != "-" ] || torn_run="$(current_run)" || torn_run=""
-  abandon_outstanding "$name" "$torn_run"
+  # Given the agent name and nothing else: which Run a line is abandoned in is
+  # the journal's own answer, not the record's, and the record is about to be
+  # deleted anyway.
+  abandon_outstanding "$name"
   # The record goes with the pane, and here rather than at the top: everything
   # above can refuse, and a refusal leaves a pane that is still live and still
   # holding its provider. `settle … release` reaches this same line, so the two

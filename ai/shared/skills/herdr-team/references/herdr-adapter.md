@@ -127,12 +127,27 @@ has accepted it. The fourth column is `wait`'s.
 `dispatch` picks the next id from that journal **and** the handoff files, since
 they are the same claim made twice and they disagree in exactly one case: a
 Dispatch torn down before it could write a handoff is in the journal and in no
-file, so a reader of files alone hands out `D-01` a second time. `teardown`
+file, so a reader of files alone hands out `D-01` a second time. An `--dispatch
+<id>` naming one already in the journal is refused for the same reason — the id
+is spent whether or not a handoff followed it, and the matcher is `next_dispatch`'s,
+so the two cannot drift apart. `teardown`
 appends the pane's outstanding lines to `.abandoned` beside the journal, in the
 same shape, because destroying the pane is what makes them unanswerable — the
 Dispatch happened, the handoff is not coming. `wait` and `collect --plan` skip
 those lines rather than blocking on an agent herdr no longer knows, or reading
 the Task as `running` for as long as anyone cares to look.
+
+A second journal, `.providers`, is keyed `(task, dispatch)` and holds the tier a
+Dispatch was sent to and the one it fell back from, because `state/panes/<name>`
+does not survive `release` — and `report` has to answer for a Run after every
+pane in it is gone. It is written by the same `dispatch` that writes
+`.dispatched`, at the last moment the pane record certainly exists.
+
+`teardown` marks a pane it no longer knows only with `--abandon-only`: herdr
+cannot close a pane that is not there, but the Run can still abandon what that
+pane left outstanding, which is what stops those Tasks reading `running`
+forever. Plain `teardown` refuses — `--force` and `--abandon-only` are the two
+ways to say which you meant.
 
 `plan lint <plan.md>` prints `depth D  width W  tasks N`, warning above depth 4
 or below width 2 once a plan has 3 Tasks: depth is the Dispatches the Run must
@@ -225,9 +240,12 @@ finished plan, so a wave stops on it only when nothing is outstanding.
 - A wave's `spawn` carries the row's `tier_reason` through as `--tier-reason`,
   always — so a `cc` row that states its reason can be spawned by the loop, and
   one that does not is refused, because the loop does not get to pick a tier
-  the plan left unsaid. A refused spawn is exit 6 whatever `spawn` exited with,
-  and stops the wave before it dispatches anything: the refusal's own wording is
-  on stderr, and retrying it every wave would be one refusal per turn forever.
+  the plan left unsaid. `spawn` says no by exiting — a `1` from `die`, a `6`
+  from the Pro window's gate — and that exit is a process, so the wave runs it
+  as a subshell and reads the status rather than calling it inline. Any non-zero
+  is **the wave's 6**, naming the Task that could not be launched, and stops the
+  wave before it dispatches anything: the refusal's own wording is on stderr,
+  and retrying it every wave would be one refusal per turn forever.
 - `--max-waves <n>` (default 20) bounds the run. Reaching it is a 4, like a
   timeout: the Run did not stop, the loop did.
 - `--timeout <ms>` is each wave's `wait` timeout, milliseconds and at least
@@ -251,8 +269,11 @@ handoff's mtime against the Run directory's.
 A Task whose pane fell back to `cc` adds a `fallback(s): <task> <from>→<to>`
 line below the table, a `fallback` field on its row and a count in both
 `report.json` and the metrics line — the spend a plan that ran `ccd` did not
-expect, stated rather than left for someone to reconstruct from a pane that is
-gone.
+expect. The tier is read from the Run's own `.providers` note first, since the
+pane it came from is gone by the time anyone reads a report: `settle … release`
+and `teardown` delete the record, which is exactly when the spend is worth
+knowing. A record still standing is the next source, and the plan row is the
+last, so a Run from before the note existed reads as it always did.
 
 ## The two caps
 

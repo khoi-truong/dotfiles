@@ -227,6 +227,20 @@ sent() {
   fi
 }
 
+# prov <run> <task> <dispatch> <agent> <provider> [fallback] — one `.providers`
+# line, the note `dispatch` writes into the Run beside its journal entry. A case
+# places the note it wants read rather than sending a real Dispatch, for the same
+# reason `sent` writes the journal by hand: what a Dispatch was answered with is
+# a live pane's business, and these cases are about what a reader makes of the
+# answer later — after the pane that gave it is gone.
+prov() {
+  local dir
+  dir="$(handoff_dir "$1")"
+  mkdir -p "$dir"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-}" \
+    >>"${dir}/.providers"
+}
+
 # plan_for <run> <plan-file> — the line `run new --plan` writes down, so a case
 # can put a Run in front of `report` with the plan it was cut from and nothing
 # in the case has to hand the plan over twice. The path is written as the
@@ -3396,6 +3410,47 @@ unset FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
 called 1 '^worktree open .* --label exec-0001-1 ' \
   "129d the executor it refused above was drawn"
 
+# 141. What a wave does with a spawn that refuses. `spawn` refuses through `die`
+#      and `gate`, and those are `exit`s in the shell they run in — which used to
+#      be this wave's own shell, so `loop` left with `spawn`'s 1, the `report` at
+#      the end of `loop` never ran, and the printf, `loop_log` and `return 6`
+#      under the call were code nothing could reach. The pair below is the whole
+#      of what that costs: 6 is the code an orchestrator branches on, and the
+#      trace line is the sentence naming the Task a human has to look at. The
+#      fixture's T-02 is the row that refuses — `cc` with a `verify` and nothing
+#      saying why — and T-01's `ccd` spawn is what says the wave got as far as
+#      the spawn at all.
+loop_fresh
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+export FIXTURE_REF HERDR_FIXTURE_KEY
+loop_on 6 '' "141 a refused spawn stops the wave at the gate, not at a failure" \
+  --plan "${FIXTURES}/plan-cc-tier.md" --spawn feat/loop
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+loop_tail 'gate: exit 6' "141b and the Run's trace ends on that gate"
+loop_says 'wave 1: spawn refused T-02 \(exit 1\)' \
+  "141c and the wave line names the Task the refusal was about"
+called 0 '^agent prompt' "141d and nothing was dispatched on the way out"
+
+# 142. The route's empty field, which is not the same thing as an empty string.
+#      A row with no `provider` and a `tier_reason` is one tab-separated line
+#      with a hole in it, and the `read` that opens it treats a tab as IFS
+#      whitespace — so the hole vanished and the reason arrived as the provider.
+#      `spawn --provider "review — a second model family…"` is a refusal, so the
+#      row never got a pane; the launch line is what says it now gets the one it
+#      asked for, which is the default `ccd`, with the sentence still a sentence.
+loop_fresh
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+export FIXTURE_REF HERDR_FIXTURE_KEY
+loop_on 4 '' "142 a row with no provider is routed as the default, not as its reason" \
+  --plan "${FIXTURES}/plan-no-provider.md" --spawn feat/noprov --max-waves 1
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+called 1 '^worktree open .* --label exec-0001-1 ' \
+  "142b and the pane it needed was drawn"
+called 1 "^pane run .*zsh -ic 'ccd'\$" \
+  "142c launched with the default provider, not with the reason the row carries"
+
 echo
 echo "the tiers: a row a command settles is ccd"
 
@@ -3450,14 +3505,19 @@ fi
 # running the suite, and a spawn whose answer depended on it would pass or fail
 # by the clock. The shape is `ai/claude/statusline.sh`'s to write and
 # `ai/claude/quota-advice.sh`'s to read, and team.sh reads the same two fields.
+# quota <file> <used-percent> <resets-in-seconds> [cache-age-seconds] — the
+# fourth argument is how long ago the cache was written, so a case can stage one
+# that is stale, or dated in the future by a clock nobody can read. It defaults
+# to 0: a cache written now is the ordinary case, and the one a fallback is
+# allowed from.
 quota() {
-  python3 - "$1" "$2" "$3" <<'PY'
+  python3 - "$1" "$2" "$3" "${4:-0}" <<'PY'
 import json, sys, time
 now = time.time()
 five = {"used_percentage": float(sys.argv[2]),
         "resets_at": now + float(sys.argv[3])}
 json.dump(
-    {"cached_at": now, "rate_limits": {"five_hour": five}},
+    {"cached_at": now - float(sys.argv[4]), "rate_limits": {"five_hour": five}},
     open(sys.argv[1], "w", encoding="utf-8"),
 )
 PY
@@ -3525,35 +3585,174 @@ if wt_add t; then
   else
     no "136b and says so, naming the window it read" "$(tr '\n' '|' <"${TMP}/err")"
   fi
+  # The launch, not the record. A record can be right about a pane that was
+  # never launched on the provider it names, and the claim a fallback makes is
+  # about the credential that actually went into the pane — so this reads what
+  # the spawn typed, which is the last thing before the agent started.
+  if grep -qE "pane run .*zsh -ic 'cc'\$" "${TMP}/herdr-called"; then
+    ok "136c the pane was launched on cc, not left on the ccd it asked for"
+  else
+    no "136c the pane was launched on cc, not left on the ccd it asked for" \
+      "$(tr '\n' '|' <"${TMP}/herdr-called")"
+  fi
   # Read off the file rather than through the verb that wrote it: what a later
   # `status` or `report` can say is bounded by what is on disk here.
   if [ "$(pane_field exec-t1 provider)" = "cc" ] &&
     [ "$(pane_field exec-t1 fallback)" = "ccd" ]; then
-    ok "136c the pane record names the provider it asked for and the one it got"
+    ok "136d the pane record names the provider it asked for and the one it got"
   else
-    no "136c the pane record names the provider it asked for and the one it got" \
+    no "136d the pane record names the provider it asked for and the one it got" \
       "provider=$(pane_field exec-t1 provider) fallback=$(pane_field exec-t1 fallback)"
   fi
-  # 136d. The same record through the table a human reads. `ccd→cc` is both
+  # 136e. The same record through the table a human reads. `ccd→cc` is both
   #       halves in one token: either alone reads as a decision somebody made,
-  #       and the point of the record is that nobody decided this one.
-  loop_fresh "exec-t1 idle"
-  record exec-t1 cc "${RUN}" "" ccd
-  loop_cmd 0 "136d status prints the substitution for a pane that fell back" status
+  #       and the point of the record is that nobody decided this one. The pane
+  #       list is staged here rather than through `loop_fresh`, which resets the
+  #       state root — and the record this case is reading is the one the spawn
+  #       wrote into it, not one the case placed by hand.
+  : >"${TMP}/loop-panes"
+  printf 'exec-t1\tidle\twL:p1\n' >>"${TMP}/loop-panes"
+  loop_cmd 0 "136e status prints the substitution for a pane that fell back" status
   if grep -qE '^exec-t1 +- +ccd→cc' "${TMP}/out"; then
-    ok "136e and prints both providers rather than one of them"
+    ok "136f and prints both providers rather than one of them"
   else
-    no "136e and prints both providers rather than one of them" "$(tr '\n' '|' <"${TMP}/out")"
+    no "136f and prints both providers rather than one of them" "$(tr '\n' '|' <"${TMP}/out")"
   fi
   git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null
   git -C "${DOTFILES}" branch -D "${T05_BRANCH}-t" >/dev/null 2>&1
 else
   sk "136 a ccd spawn whose key is empty falls back to cc" "no throwaway worktree"
   sk "136b and says so, naming the window it read" "no throwaway worktree"
-  sk "136c the pane record names the provider it asked for and the one it got" \
+  sk "136c the pane was launched on cc, not left on the ccd it asked for" \
     "no throwaway worktree"
-  sk "136d status prints the substitution for a pane that fell back" "no throwaway worktree"
-  sk "136e and prints both providers rather than one of them" "no throwaway worktree"
+  sk "136d the pane record names the provider it asked for and the one it got" \
+    "no throwaway worktree"
+  sk "136e status prints the substitution for a pane that fell back" "no throwaway worktree"
+  sk "136f and prints both providers rather than one of them" "no throwaway worktree"
+fi
+
+# 143. Freshness from the other end. The age is checked as a span — `0 <= now -
+#      cached <= max_age` — because a one-sided `now - cached > max_age` answers
+#      "no" for a cache dated in the future: a negative age is under every
+#      threshold there is. A clock nobody can read would pass as the freshest
+#      cache on the machine, which is the same unknown a missing cache is, and
+#      the same gate.
+#
+# The probe below is the state 135 leaves behind, written again here because
+# 143-147 are read without 135-136 having necessarily run: an empty key is what
+# puts a `ccd` spawn in front of the fallback question at all, and a case that
+# inherited it would be testing the key check instead.
+printf 'env:HERDR_FIXTURE_KEY HERDR_FIXTURE_KEY empty\n' >"${TMP}/probe"
+quota "${TMP}/pro-quota-future.json" 10 3600 -60
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-future.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "143 a cache dated in the future is not a fresh one" \
+  exec-t1 --branch feat/tier-future --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE
+if grep -q 'the Pro 5h window is unknown' "${TMP}/err"; then
+  ok "143b and it answers unknown rather than reading a number off it"
+else
+  no "143b and it answers unknown rather than reading a number off it" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -qE 'worktree open|pane run' "${TMP}/herdr-called" 2>/dev/null; then
+  no "143c and nothing was created for the pane it would not spend Pro on" \
+    "$(tr '\n' '|' <"${TMP}/herdr-called")"
+else
+  ok "143c and nothing was created for the pane it would not spend Pro on"
+fi
+
+# 144. A cache older than the window it describes. 900s is the default and this
+#      one was written 1200s ago: whatever it says about the five-hour window is
+#      a statement about a window that has since moved, and a fallback decided
+#      from it would be decided from a number nobody has looked at. The age and
+#      the reset are two questions and this case is the first of them — 135d is
+#      the second, a window that has already reset at an age of nothing.
+quota "${TMP}/pro-quota-stale.json" 10 3600 1200
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-stale.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "144 a stale cache is unknown, not headroom" \
+  exec-t1 --branch feat/tier-stale --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE
+if grep -q 'the Pro 5h window is unknown' "${TMP}/err"; then
+  ok "144b and the refusal is the same one a missing cache draws"
+else
+  no "144b and the refusal is the same one a missing cache draws" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 145. A cache that is there and is not a cache. The read is wrapped, so this is
+#      the unreadable case rather than a crash: a fallback decision that fails
+#      open on a parse error is the silent Pro spend, and one that fails closed
+#      on the same file is a gate. The file is truncated rather than absent, so
+#      the difference between "no cache" (67) and "a cache nothing can read" is
+#      what this case is looking at.
+printf '{"rate_limits": {' >"${TMP}/pro-quota-broken.json"
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-broken.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "145 a cache that cannot be parsed is unknown too" \
+  exec-t1 --branch feat/tier-broken --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE
+if grep -q 'the Pro 5h window is unknown' "${TMP}/err"; then
+  ok "145b and the refusal still names the window rather than the parser"
+else
+  no "145b and the refusal still names the window rather than the parser" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 146. Exactly at the threshold. `at or over` is not `over`: 70% used is a
+#      window the fallback is not allowed from, which is the reading a human
+#      gets from `HERDR_TEAM_PRO_FALLBACK_MAX=70` and the one the comparison has
+#      to make — the boundary is where an off-by-one in a quota check is worth
+#      the most and shows the least.
+quota "${TMP}/pro-quota-edge.json" 70 3600
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-edge.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "146 a window exactly at the threshold is over it" \
+  exec-t1 --branch feat/tier-edge --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE
+if grep -q 'the Pro 5h window is 70% used, at or over the 70%' "${TMP}/err"; then
+  ok "146b and the refusal says at or over rather than over"
+else
+  no "146b and the refusal says at or over rather than over" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 147. A limit that is not a number. `[ "$used" -ge "$max" ]` is a condition, so
+#      `set -e` does not fire on the malformed arithmetic — it answers false, and
+#      false is the branch that takes the fallback. A knob nobody can read was
+#      therefore the knob that spent Pro, which is the one way this check can
+#      fail open; the gate closes it by asking the question first. Both knobs,
+#      because either one decides the same fallback and neither is a number.
+quota "${TMP}/pro-quota-knob.json" 10 3600
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-knob.json"
+HERDR_TEAM_PRO_FALLBACK_MAX="70%"
+export HERDR_TEAM_PRO_QUOTA_CACHE HERDR_TEAM_PRO_FALLBACK_MAX
+spawn_on "${TMP}/spawn" 6 "147 a fallback limit that is not a whole number gates" \
+  exec-t1 --branch feat/tier-knob --provider ccd
+unset HERDR_TEAM_PRO_FALLBACK_MAX
+if grep -q 'HERDR_TEAM_PRO_FALLBACK_MAX=70% is not a whole number' "${TMP}/err"; then
+  ok "147b and the refusal names the setting and what it holds"
+else
+  no "147b and the refusal names the setting and what it holds" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -qE 'worktree open|pane run' "${TMP}/herdr-called" 2>/dev/null; then
+  no "147c and nothing was launched on a window nobody could read" \
+    "$(tr '\n' '|' <"${TMP}/herdr-called")"
+else
+  ok "147c and nothing was launched on a window nobody could read"
+fi
+HERDR_TEAM_PRO_QUOTA_MAX_AGE="soon"
+export HERDR_TEAM_PRO_QUOTA_MAX_AGE
+spawn_on "${TMP}/spawn" 6 "147d the same for the age the cache is read at" \
+  exec-t1 --branch feat/tier-knob2 --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE HERDR_TEAM_PRO_QUOTA_MAX_AGE
+if grep -q 'HERDR_TEAM_PRO_QUOTA_MAX_AGE=soon is not a whole number' "${TMP}/err"; then
+  ok "147e and it names that one too, rather than standing in for it"
+else
+  no "147e and it names that one too, rather than standing in for it" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
 fi
 
 echo
@@ -3644,6 +3843,97 @@ else
     "$(grep -n 'Dispatch \|dispatch' "${TMP}/out" "${TMP}/err" | tr '\n' '|')"
 fi
 
+# 148. A pane herdr no longer knows. `teardown` finds its pane by asking herdr
+#      who is live, so a pane that died on its own — a crashed agent, a
+#      workspace closed by hand — is refused at "no live agent" before anything
+#      is abandoned, and its Dispatches stay outstanding for the rest of the Run
+#      while its record goes on counting a credential no pane holds. Nothing is
+#      live to close and no worktree is this verb's to remove, so the half that
+#      is left is the bookkeeping — and it is asked for by name, because "the
+#      agent is gone" and "the agent should be gone" are the same absence and
+#      only a human knows which of the two they are looking at.
+loop_fresh
+record exec-t9 ccd "${RUN}"
+sent "${RUN}" T-01 D-01 exec-t9
+loop_cmd 1 "148 a teardown that cannot find its pane abandons nothing" \
+  teardown exec-t9 --force
+if grep -q -- '--abandon-only' "${TMP}/err"; then
+  ok "148b and the refusal names the half that can still be done"
+else
+  no "148b and the refusal names the half that can still be done" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if [ ! -f "$(handoff_dir "${RUN}")/.abandoned" ]; then
+  ok "148c and the Dispatch stays outstanding rather than being guessed at"
+else
+  no "148c and the Dispatch stays outstanding rather than being guessed at" \
+    "$(tr '\n' '|' <"$(handoff_dir "${RUN}")/.abandoned")"
+fi
+loop_cmd 0 "148d --abandon-only is that half" teardown exec-t9 --abandon-only
+if awk -F'\t' '$2 == "T-01" && $3 == "D-01" && $4 == "exec-t9"' \
+  "$(handoff_dir "${RUN}")/.abandoned" | grep -q . &&
+  [ ! -f "${HERDR_TEAM_ROOT}/state/panes/exec-t9" ]; then
+  ok "148e and it marks the Dispatch and drops the record of a pane that is not there"
+else
+  no "148e and it marks the Dispatch and drops the record of a pane that is not there" \
+    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-t9" 2>/dev/null || echo 'gone')"
+fi
+
+# 149. Whose journal a line is in. The abandon used to read the Run off the pane
+#      record, which names the Run that *spawned* the pane — and a retained pane
+#      is exactly what a later Run dispatches to, so the lines that most need
+#      abandoning are the ones that reading misses. The journal is the answer
+#      instead: an agent name is written where the Dispatch went, so every Run's
+#      journal is asked, and the line is marked in the Run that holds it.
+reset
+use_run "R-fixture-0300" tab-a
+use_run "R-fixture-0301" tab-b
+record exec-t9 ccd R-fixture-0300
+sent R-fixture-0301 T-01 D-01 exec-t9
+tiers_teardown "149 a live teardown abandons the Dispatch another Run sent"
+ab_b="$(handoff_dir R-fixture-0301)/.abandoned"
+if [ -f "$ab_b" ] &&
+  awk -F'\t' -v r=R-fixture-0301 '$1 == r && $2 == "T-01" && $3 == "D-01"' \
+    "$ab_b" | grep -q .; then
+  ok "149b and the line is marked where the Dispatch was made, not where the pane was spawned"
+else
+  no "149b and the line is marked where the Dispatch was made, not where the pane was spawned" \
+    "$(if [ -f "$ab_b" ]; then tr '\n' '|' <"$ab_b"; else echo 'no .abandoned'; fi)"
+fi
+if [ ! -f "$(handoff_dir R-fixture-0300)/.abandoned" ]; then
+  ok "149c and the Run that spawned the pane has no line to abandon"
+else
+  no "149c and the Run that spawned the pane has no line to abandon" \
+    "$(tr '\n' '|' <"$(handoff_dir R-fixture-0300)/.abandoned")"
+fi
+
+# 150. An id named by hand. `--dispatch D-01` checked the handoff files and
+#      nothing else, and the journal is the half no file can answer: a Dispatch
+#      torn down before it could write a handoff is in the journal and in no
+#      file, so the id was accepted and two agents' work went out under one id.
+#      The check shares its matcher with the mint, so the id this refuses is the
+#      id the mint skips — one rule asked twice rather than two readings of the
+#      same state that can come to disagree.
+reset
+sent "${RUN}" T-01 D-01 exec-t1
+printf '%s\t%s\t%s\t%s\n' "${RUN}" T-01 D-01 exec-t1 >"$(handoff_dir "${RUN}")/.abandoned"
+expect_exit 1 "150 --dispatch refuses an id the journal has already spent" \
+  --task T-01 --dispatch D-01 --from-plan "${FIXTURES}/plan-ok.md"
+if grep -q "T-01/D-01 is already in this Run's journal" "${TMP}/err"; then
+  ok "150b and the refusal says the Dispatch happened whether or not it was answered"
+else
+  no "150b and the refusal says the Dispatch happened whether or not it was answered" \
+    "$(head -3 "${TMP}/err" | tr '\n' ' ')"
+fi
+expect_exit 0 "150c while the next minted id is free" \
+  --task T-01 --from-plan "${FIXTURES}/plan-ok.md"
+if grep -q '^This is Dispatch D-02\.' "${TMP}/out"; then
+  ok "150d and it is D-02, minted past the id the teardown spent"
+else
+  no "150d and it is D-02, minted past the id the teardown spent" \
+    "$(grep -n 'Dispatch ' "${TMP}/out" | tr '\n' '|')"
+fi
+
 echo
 echo "report: the fallback in the table"
 
@@ -3678,6 +3968,57 @@ then
   ok "140b report.json counts it and names what the Task fell back from"
 else
   no "140b report.json counts it and names what the Task fell back from" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+# 151. The other half of a fallback's life. The pane record is what a *live*
+#      pane holds, and both ways a pane ends delete it — `settle … release` and
+#      `teardown` — so a fallback read only from there is a fact that vanishes
+#      exactly when the pane it explains does. The Run then reads as one that ran
+#      `ccd` throughout, with a count of zero to match: the silent Pro spend
+#      cost.md's checklist forbids, arrived at by waiting. The note `dispatch`
+#      writes into the Run when it binds a Task to a pane is the half that
+#      outlives the pane, and `report` reads it first.
+RPF2="R-fixture-0201"
+reset
+use_run "${RPF2}"
+sent "${RPF2}" T-01 D-01 exec-t1
+prov "${RPF2}" T-01 D-01 exec-t1 cc ccd
+record exec-t1 cc "${RPF2}" "" ccd
+code=0
+"${TEAM}" report "${RPF2}" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "$code" -eq 0 ] && grep -q '^fallback(s): T-01 ccd→cc$' "${TMP}/out"; then
+  ok "151 report reads a fallback the pane record also holds"
+else
+  no "151 report reads a fallback the pane record also holds" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+# The release, which is the same line teardown runs last: the record goes, and
+# the pane it described is nobody's to read any more.
+rm -f "${HERDR_TEAM_ROOT}/state/panes/exec-t1"
+code=0
+"${TEAM}" report "${RPF2}" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "$code" -eq 0 ] && grep -q '^fallback(s): T-01 ccd→cc$' "${TMP}/out"; then
+  ok "151b and still reads it after the pane that fell back is released"
+else
+  no "151b and still reads it after the pane that fell back is released" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+# The counted copy, which is the one a later session opens: a fallback that
+# survives in the printed line and not in the number is the spend this case is
+# about, one field further out.
+if python3 - "$(run_dir "${RPF2}")/report.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d["totals"]["fallbacks"] == 1, d["totals"]
+row = {r["task"]: r for r in d["tasks"]}["T-01"]
+assert row["provider"] == "cc", row
+assert row["fallback"] == "ccd", row
+PY
+then
+  ok "151c and report.json still counts it, on the provider the Task ran on"
+else
+  no "151c and report.json still counts it, on the provider the Task ran on" \
     "$(head -3 "${TMP}/err" | tr '\n' '|')"
 fi
 

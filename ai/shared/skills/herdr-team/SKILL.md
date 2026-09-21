@@ -106,7 +106,9 @@ window it names. Unknown is not headroom — a missing or stale cache is a gate
 for a human, not a fallback. **`omp` is never that fallback**: it is a
 different agent spending a DeepSeek key of its own (`ai/omp/models.yml`), so
 it relieves nothing the fallback exists to relieve. Any fallback is written to
-the pane record: `status` reads it back as `ccd→cc`, `report` lists it.
+the pane record and to the Run's `.providers` note: `status` reads the record
+back as `ccd→cc`, and `report` lists it from the note, which outlives the pane
+`release` deletes.
 
 ## Reviewing a PR
 

@@ -62,8 +62,9 @@ pressure never moves the review down a tier.
 
 - [ ] Tier stated, not asserted: every `cc` row carries a `tier_reason`, and
       every `ccd` spawn that fell back to Pro is inside the window a fallback
-      is allowed at and written into the pane record — `status` shows it as
-      `ccd→cc` and `report` lists it. A fallback that isn't recorded is the
-      silent Pro spend this list exists to catch.
+      is allowed at and recorded — the pane record for `status`, which shows it
+      as `ccd→cc`, and the Run's `.providers` note for `report`, which has to
+      outlive the pane. A fallback that isn't recorded is the silent Pro spend
+      this list exists to catch, and `report` still answers after `release`.
 - [ ] Inside both caps: 2 executors per Run, 4 panes per provider machine-wide.
 - [ ] Every Task worth its Dispatch, and every handoff inside its 150 lines.
