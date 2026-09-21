@@ -85,6 +85,13 @@ PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-4}"
 # written and is the only record of what the agent did.
 HANDOFF_MAX=150
 
+# How long a clear may spend proving the pane took its name back. A rename that
+# holds answers on the first read pair, so this is only ever reached by a pane
+# that lost its name — and spending it there buys the difference between a
+# nameless pane and a recorded decision that says one is ready to dispatch to.
+# Overridable so a test can drive the expiry without waiting it out.
+CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
+
 command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
 command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
 
@@ -740,6 +747,29 @@ def command_entries(raw):
         return None
     entries = []
     for item in items:
+        head = item[0].strip()
+        # One layer of YAML quoting off the item first: an agent may wrap the
+        # object it writes, and which it chose says nothing about what it
+        # meant. Whether an item is quoted is not evidence about the Run.
+        for q in ('"', "'"):
+            if len(head) >= 2 and head.startswith(q) and head.endswith(q):
+                head = head[1:-1].strip()
+                break
+        if head.startswith("{"):
+            # The other block spelling: the list is YAML and each item is the
+            # whole inline object the contract block shows. Two agents fixed
+            # this field independently and each accepted the shape it had seen
+            # — one mapping per item, or one object per item — so the reader
+            # takes both. A continuation line under an object is neither shape.
+            if len(item) > 1:
+                return None
+            try:
+                entry = json.loads(head)
+            except ValueError:
+                return None
+            if isinstance(entry, dict):
+                entries.append(entry)
+            continue
         entry = {}
         for line in item:
             if ":" not in line:
@@ -993,8 +1023,9 @@ PY
 # handoff does not name the row's own `verify` at exit 0 in its `commands:`
 # reads `review` with UNVERIFIED (or UNPARSED, for a shape nobody can read) in
 # the cause column instead, so the orchestrator sends a reviewer rather than
-# building on it. That changes what this shows and never blocks a dispatch: a
-# false positive from a substring match must not be able to wedge a Run.
+# building on it. The dispatch gate asks `unproven()` the same question of the
+# same handoff, so the two cannot disagree — `--force`, which is human-gated,
+# is how a Task the table will not call done is dispatched anyway.
 #
 # A `done` Task's cause column also names its agent `releasable` when that agent
 # has no other outstanding Dispatch under the Run — the pane is finished and
@@ -1012,7 +1043,7 @@ cmd_collect_plan() {
     plan_parser_py
     handoff_py
     cat <<'PY'
-import glob, json, sys
+import glob, sys
 
 plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 plan = os.path.abspath(plan)
@@ -1589,8 +1620,8 @@ PY
   # and is correct under either answer. run-tests.sh case 44 stages this window
   # (a python3 that writes the handoff after reading the journal) and fails if
   # the guard goes away, which is what keeps it from being dead code.
-  local task dispatch agent
-  local -a w_task=() w_agent=()
+  local task dispatch agent pane
+  local -a w_task=() w_dispatch=() w_agent=()
   while IFS=$'\t' read -r task dispatch agent; do
     [ -n "$task" ] || continue
     if [ -e "${handoffs}/${task}-${dispatch}.md" ]; then
@@ -1601,7 +1632,22 @@ PY
       warn "wait: ${task}/${dispatch} has no agent in the journal — skipped"
       continue
     fi
+    # A journal naming an agent herdr has never heard of is a Dispatch this
+    # verb cannot watch, and it is a precondition failure rather than another
+    # skip. `collect --plan` counts the Dispatch because the journal says so —
+    # blocking is a question about the Run — so the two verbs would disagree
+    # about what is out until someone reads the table. Naming the reader is
+    # the point: it is how the orchestrator finds the Dispatch this is about.
+    #
+    # `|| true` because `agent_field` is a pipeline over a herdr that may have
+    # died, and `set -e` would otherwise take the wait with it before it can
+    # say which agent it could not resolve. An agent missing from the listing
+    # is the empty answer, not the failing one, so both are read as unresolved.
+    pane="$(agent_field "$agent" pane_id 2>/dev/null || true)"
+    [ -n "$pane" ] ||
+      die "wait: ${dispatch} for ${task} names ${agent}, which herdr does not know — collect --plan still reports it"
     w_task+=("$task")
+    w_dispatch+=("$dispatch")
     w_agent+=("$agent")
   done <<<"$rows"
 
@@ -1683,10 +1729,26 @@ PY
   # pane — so the honest answer is 5, and the next move is to put that screen
   # in front of them. Guessing 0 here is what left the question invisible until
   # someone happened to look at the pane, which is the manual step this exists
-  # to remove. The lookup is best-effort: an empty answer is not `blocked`, so
-  # a herdr that has gone away reports a settle rather than failing the wait.
+  # to remove.
+  #
+  # An empty answer is a third thing again, and it is not a settle. The read is
+  # empty either because herdr has gone away or because the agent went with it,
+  # and both leave the Dispatch undecided: no handoff was found above, so
+  # nothing on disk says how it ended. The comment here used to argue the other
+  # way — that an empty answer is "not blocked", so a herdr that has gone away
+  # should report a settle rather than failing the wait — and that is the
+  # defect: it turns the one condition the caller most needs to hear about into
+  # a success, and the orchestrator reads a Dispatch with no handoff and no
+  # agent as finished. Exit 1, name the agent, and print no `settled` line.
+  #
+  # `|| true`: the failure to answer and the empty answer are the same case
+  # here, so the non-zero from a herdr that died mid-pipeline must not escape
+  # to `set -e` and exit without the message that says which Dispatch it was.
   local state=""
   state="$(agent_field "${w_agent[$winner]}" agent_status 2>/dev/null || true)"
+  if [ -z "$state" ]; then
+    die "wait: ${w_agent[$winner]} answered no status for ${w_task[$winner]} (${w_dispatch[$winner]}) — the Dispatch is undecided, and collect --plan still reports it"
+  fi
   if [ "$state" = "blocked" ]; then
     printf '%s %s blocked\n' "${w_agent[$winner]}" "${w_task[$winner]}"
     warn "wait: ${w_agent[$winner]} is blocked on a question — team.sh surface ${w_agent[$winner]}"
@@ -2797,8 +2859,18 @@ for path in glob.glob(os.path.join(handoffs, "*.md")):
     if meta is None or meta.get("run") != run:
         continue
     # 'succeeded' at 'reported' is a claim, not a result: it does not settle.
-    if meta.get("outcome") == "succeeded" and meta.get("evidence") == "verified":
-        settled.add(meta.get("task"))
+    if meta.get("outcome") != "succeeded" or meta.get("evidence") != "verified":
+        continue
+    # The blocker's own `verify`, out of its row: the gate and `collect --plan`
+    # ask `unproven()` the same question about the same handoff on purpose, so
+    # the two cannot reach opposite verdicts about one file. 'verified' is the
+    # agent's word for a check; this is the check itself, and a Task whose
+    # commands do not carry it is not settled here either. Stricter than this
+    # gate used to be, deliberately: `--force` is the way past it.
+    blocker = by_id.get(meta.get("task"))
+    if unproven(meta, (blocker or {}).get("verify") or ""):
+        continue
+    settled.add(meta.get("task"))
 
 unmet = [b for b in row.get("blocks", []) if b not in settled]
 if unmet:
@@ -2968,6 +3040,36 @@ EOF
 # send rather than living in `spawn` alone: /clear resets the terminal title,
 # the title carries the name, and a reused pane without a name is a pane the
 # next `dispatch` cannot address at all.
+#
+# One rename cannot close that, because the race is between two processes and
+# nothing orders them. `agent prompt` returns when the keys are away; the pane
+# processes the clear after that, and the title reset lands last — so a rename
+# issued the instant the send returns can be undone by the very clear it is
+# meant to survive. Measured: a cycle that ran `settle` straight into `dispatch`
+# with no pause between them lost the name *after* the dispatch had resolved it,
+# while every later cycle, which had a `sleep` in between, kept it. So the
+# binding is confirmed rather than assumed: a rename that returned 0 is not
+# evidence, and a pane that never holds its name is a failure the orchestrator
+# reads, not a decision recorded against a Dispatch that cannot be delivered.
+
+# confirm_clear_binding <pane> <name> — read the pane back twice, a second
+# apart, and require it to answer to its name both times. A read that comes back
+# empty or naming another pane means the reset landed after the rename, so the
+# rename goes out again and the pair is re-read. The loop is bounded by
+# CLEAR_CONFIRM_TIMEOUT and returns 1 when it runs out, which is the only thing
+# a caller can do about a pane that will not hold its name. Reads are harmless:
+# a herdr that cannot answer at all is the same answer as an empty one.
+confirm_clear_binding() {
+  local pane="$1" name="$2" start="$SECONDS" first second
+  while [ "$((SECONDS - start))" -lt "$CLEAR_CONFIRM_TIMEOUT" ]; do
+    first="$(agent_field "$name" pane_id)" || true
+    sleep 1
+    second="$(agent_field "$name" pane_id)" || true
+    if [ "$first" = "$pane" ] && [ "$second" = "$pane" ]; then return 0; fi
+    herdr agent rename "$pane" "$name" >/dev/null || return 1
+  done
+  return 1
+}
 
 cmd_settle() {
   local name="${1:-}" decision="${2:-}" clear=0
@@ -3014,8 +3116,15 @@ cmd_settle() {
     # was typed by hand. A clear that loses the name has not finished clearing,
     # so a rename herdr refuses dies here rather than recording a decision that
     # says a nameless pane is ready for the next Dispatch.
+    local remedy="herdr agent rename ${pane} ${name}"
     herdr agent rename "$pane" "$name" >/dev/null ||
-      die "settle: ${name} was cleared but herdr would not take the name back on ${pane} — rename it by hand: herdr agent rename ${pane} ${name}"
+      die "settle: ${name} was cleared but herdr would not take the name back on ${pane} — rename it by hand: ${remedy}"
+    # And the rename returning 0 is not the same as the name holding: the reset
+    # it is racing lands after it, so the binding is read back before anything
+    # is recorded. Both failure modes end in the same place — no decision, no
+    # `cleared=1`, and a remedy the orchestrator can type.
+    confirm_clear_binding "$pane" "$name" ||
+      die "settle: ${name} was cleared but the name would not hold on ${pane} for ${CLEAR_CONFIRM_TIMEOUT}s — rename it by hand: ${remedy}"
     cleared=1
   fi
 
