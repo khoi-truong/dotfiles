@@ -274,6 +274,65 @@ def test_resolve_refuses_a_profile_that_is_not_there() -> None:
         shipped().profile("nope")
 
 
+def table_of(conf: config.Config) -> dict[str, list[str]]:
+    """`resolve profiles` as {profile: [credential, ceiling, reset]}.
+
+    Split on the tab and not on whitespace: a harness that states no `reset =`
+    leaves that column empty, and a whitespace split would drop it rather than
+    report it — which is the column `settle` refuses on.
+    """
+    return {
+        row[0]: row[1:] for row in (line.split("\t") for line in conf.profiles_table())
+    }
+
+
+def test_the_profile_table_names_every_profile_with_its_ceiling_and_reset() -> None:
+    # The one call `team.sh` makes about ceilings: the ceiling belongs to the
+    # credential and the reset to the harness, while every pane record, every
+    # message and every plan row names a *profile* — and this is where the three
+    # meet. Disabled profiles are in it too, which is the difference between it
+    # and `resolve profile`: a pane spawned before its profile was disabled
+    # still has to be settled, and the table is what `settle` reads to find out
+    # what that pane clears with.
+    table = [line.split("\t") for line in shipped().profiles_table()]
+    assert table == [
+        ["cc", "anthropic-pro", "4", "/clear"],
+        ["ccd", "deepseek", "4", "/clear"],
+        ["cck", "kimi", "4", "/clear"],
+        ["cco", "openrouter", "4", "/clear"],
+        ["ccp", "copilot", "4", ""],
+        ["ccur", "cursor", "4", ""],
+        ["cdx", "openai", "4", "/new"],
+        ["oc", "openrouter", "4", ""],
+        ["omp", "deepseek-omp", "4", "/clear"],
+    ]
+
+
+def test_the_table_carries_no_reset_for_a_harness_that_states_none() -> None:
+    # Empty rather than `/clear`: the two harnesses below ship disabled and with
+    # no `reset =`, and a `settle --clear` on one of them has no command it may
+    # send. A default here would be this reader inventing one.
+    resets = {name: row[2] for name, row in table_of(shipped()).items()}
+    assert resets["cdx"] == "/new"
+    assert resets["ccur"] == resets["ccp"] == ""
+
+
+def test_the_table_follows_the_harness_a_profile_points_at(tmp_path: Path) -> None:
+    # A profile is harness × credential × model, and the reset comes from the
+    # first of those — so pointing one at another harness moves its reset, and
+    # nothing about the profile's name is involved. `cck` rather than a profile
+    # a role names, so that moving it moves nothing else.
+    overlay = tmp_path / "team.toml"
+    overlay.write_text('[profile.cck]\nharness = "codex"\ncredential = "openai"\n')
+    moved = config.load(
+        layers=[config.Layer(TEAM, True), config.Layer(overlay, True)],
+        env={},
+        dotfiles=DOTFILES,
+    )
+    assert moved.lint() == []
+    assert table_of(moved)["cck"][2] == "/new"
+
+
 def test_the_guard_is_found_through_the_role_and_not_by_name(tmp_path: Path) -> None:
     # The executor tier is whatever `role.exec.profiles` names, and which
     # profile that is is a config decision — `ccd` is not written down anywhere
@@ -353,6 +412,44 @@ def test_route_reads_needs_as_words_or_as_a_list() -> None:
 def test_route_will_not_answer_while_the_config_has_findings() -> None:
     with pytest.raises(config.ConfigError, match="finding"):
         overlaid("bad-ref.toml").route({})
+
+
+def test_route_places_a_row_on_the_profile_the_route_names() -> None:
+    # The profile a provider-less row launches is the matched entry's own word.
+    # `shipped()` answers `ccd` for this row because no route names anything;
+    # the fixture's third entry names `mid`, and that is the whole difference —
+    # which is what lets a config put a kind of row on its own tier without a
+    # line of `loop.py` or `team.sh` knowing the name.
+    table = overlaid("route-names-a-profile.toml")
+    assert table.route({"verify": "pytest -q"}) == {
+        "role": "exec",
+        "lane": "exec",
+        "profile": "mid",
+    }
+
+
+def test_route_answers_a_lane_no_reader_knows() -> None:
+    # The lane is the matched role's prefix, so a role this file adds answers a
+    # lane of its own — `audit`, which appears in no reader, in `team.sh`'s
+    # `case` arms or in its lane pools. That is the property `lane_for` has
+    # because it asks `route` rather than comparing a provider against a name.
+    table = overlaid("route-names-a-profile.toml")
+    assert table.route({"needs": "web"}) == {
+        "role": "audit",
+        "lane": "audit",
+        "profile": "mid",
+    }
+
+
+def test_requires_reason_is_read_off_the_profile_the_row_names() -> None:
+    # The read `plan.py`'s tier warning makes, spelled out: the key is the
+    # profile the row names, and a profile may be added to the set that has to
+    # account for itself without being called `cc`. `None` is a profile that has
+    # said nothing about its tier, which `_needs_reason` reads as `is True` —
+    # not as a third answer.
+    table = overlaid("route-names-a-profile.toml")
+    assert table.get("profile.mid.requires_reason") is True
+    assert table.get("profile.ccd.requires_reason") is None
 
 
 # --- the layers -------------------------------------------------------------
@@ -693,6 +790,21 @@ def test_main_env_prints_shell_assignments(
     out = capsys.readouterr().out
     assert "HERDR_TEAM_ROOT=%s/.herdr\n" % DOTFILES in out
     assert "HERDR_TEAM_EXEC_CAP=2\n" in out
+
+
+def test_main_resolve_profiles_prints_the_table(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # What `team.sh` runs once per process for the ceilings, and the reason it
+    # can count a credential's panes while every record it holds names a
+    # profile. One profile per line, four tab-separated columns.
+    monkeypatch.setenv(config.ENV_CONFIG, str(TEAM))
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    assert config.main(["resolve", "profiles"]) == 0
+    out = capsys.readouterr().out
+    assert "ccd\tdeepseek\t4\t/clear\n" in out
+    assert "cdx\topenai\t4\t/new\n" in out
+    assert "ccur\tcursor\t4\t\n" in out
 
 
 def test_main_env_is_evaluable(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from herdr_team import config
@@ -32,6 +33,17 @@ FAT_FILES = 8  # paths a row may name before its verify stops localizing ...
 # ... which is the shipped value of `limits.plan_max_paths`, and no longer the
 # last word on it: `_max_paths` reads the setting, so a machine that would
 # rather trade a wider row for a coarser retry gets that from team.toml.
+
+# The checkout this module is in — five directories up from
+# `ai/herdr/lib/herdr_team/plan.py`, which is `config.py`'s own
+# `_DERIVED_DOTFILES` and `team.sh`'s `_CHECKOUT`. A reader here that asked the
+# environment instead would be asking the wrong tree the moment
+# `DOTFILES=${HOME}/.dotfiles` (exported by `~/.zshrc`, see team.sh:75-86)
+# names a checkout other than the one running — a linked worktree's main
+# checkout, or this file imported by a test. Not resolved through symlinks: a
+# checkout reached with its `lib/` linked in, as run.sh's fixtures are, is the
+# checkout being tested.
+_CHECKOUT = Path(__file__).parents[4]
 
 
 def _max_paths() -> int:
@@ -255,28 +267,56 @@ def _granularity(by_id: dict[str, Any], bodies: dict[str, str]) -> list[str]:
     return out
 
 
+def _needs_reason(cfg: config.Config, provider: str) -> bool:
+    """Whether a profile's tier is one a row has to account for.
+
+    `requires_reason` is the profile's own word for that (and `config lint`
+    refuses a premium profile without it), so a second profile whose tier has to
+    be justified is a line of `team.toml` rather than a second name compared
+    here. Read from the profile's body rather than through `config.profile()`:
+    the question is what the *row* is claiming, and a profile this machine
+    cannot launch right now is still a claim a plan should state a reason for.
+    """
+    return cfg.get("profile.%s.requires_reason" % provider) is True
+
+
 def _tiers(by_id: dict[str, Any]) -> list[str]:
-    """Rows claiming the expensive tier with nothing saying why.
+    """Rows claiming a tier that needs a reason, with nothing saying why.
 
     The test is verifiability: a row whose `verify` command can catch a wrong
-    answer is a `ccd` row, and `cc` is for the work no command settles — the
-    row shapes later work, it is a spec, or it is a review (cost.md). So a `cc`
-    row that has a `verify` reads one of two ways, and both want the same thing
-    written down: a row that is really `ccd` and is mislabelled, or a row that
-    is really `cc` for a reason the plan has not stated. `tier_reason` is where
-    that reason goes — and `spawn --provider cc` refuses without one, so a plan
-    that omits it is a plan whose Dispatches are refused, or worse, quietly run
-    on the wrong credential.
+    answer is a `ccd` row, and a profile that costs what `cc` costs is for the
+    work no command settles — the row shapes later work, it is a spec, or it is
+    a review (cost.md). So a row on such a profile that has a `verify` reads one
+    of two ways, and both want the same thing written down: a row that is really
+    `ccd` and is mislabelled, or a row that is really `cc` for a reason the plan
+    has not stated. `tier_reason` is where that reason goes — and `spawn
+    --provider cc` refuses without one, so a plan that omits it is a plan whose
+    Dispatches are refused, or worse, quietly run on the wrong credential.
 
     A warning and never a finding, because the second reading is legitimate:
     a review row has a `verify` (it runs the suite) and is still `cc`. No
     parser can tell the two apart, so refusing would refuse correct plans —
     which is how a check stops being read.
+
+    A configuration that cannot be read draws no warning at all, for the reason
+    `_max_paths` falls back to its own default: the reader's own failure is
+    reported by the verbs that read the configuration for what it is, and a
+    `plan lint` that refused to run because `team.local.toml` has a typo would
+    be a plan nobody could lint.
     """
+    try:
+        cfg: config.Config | None = config.load(dotfiles=_CHECKOUT)
+    except config.ConfigError:
+        cfg = None
     out: list[str] = []
     for tid in sorted(by_id):
         row = by_id[tid]
-        if (row.get("provider") or "") != "cc":
+        provider = str(row.get("provider") or "")
+        # Read once for the plan rather than once per row, and asked of the
+        # profile's own word rather than of a name: a `ccd` row draws nothing
+        # because `ccd` does not require a reason, and a second profile that
+        # does draws the same warning without a line here.
+        if cfg is None or not provider or not _needs_reason(cfg, provider):
             continue
         if not (row.get("verify") or "").strip():
             continue

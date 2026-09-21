@@ -4242,6 +4242,353 @@ else
 fi
 
 echo
+echo "the credential: one key, however many profiles spend it"
+
+# 157. AC4. A ceiling belongs to the *entry* in ai/providers.toml — the key —
+#      and every profile that spends it draws on the same number. That is not
+#      what counting per profile would do, and the two agree only while no two
+#      enabled profiles share a credential: the shipped inventory keeps that
+#      true, and a local layer need not. `px1` and `px2` below are one harness
+#      on one key, and the second spawn is refused by the first pane's record.
+#      The `x` in that refusal is the entry, because the reader deciding whether
+#      to spend the last seat is deciding about a key.
+#
+#      Both halves of AC4 are here: `HERDR_TEAM_PROVIDER_CAP=1` states the
+#      ceiling for every entry, which is the override, and dropping it puts the
+#      registry's own `ceiling = 4` back — the same spawn that was refused then
+#      goes through, which is what says the override was what refused it.
+#
+#      A checkout of its own, for the reason the configuration cases use one:
+#      the two profiles are appended to a copy of team.toml, and writing them
+#      into the shipped file would be this suite editing a developer's config.
+fact="$(cd "${TMP}" && pwd -P)/cred-checkout"
+cfg_checkout "${fact}"
+cat >>"${fact}/ai/herdr/team.toml" <<'TOML'
+
+[profile.px1]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+
+[profile.px2]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+TOML
+
+# cred_spawn <want-exit> <label> <args...> — one spawn out of that checkout,
+# against the stubs and the provider check the ceiling cases already use. Its
+# own helper because `spawn_on` runs this checkout's team.sh, and the two
+# profiles are the fixture's.
+cred_spawn() {
+  local want="$1" label="$2" code=0
+  shift 2
+  rm -f "${TMP}/loop-called"
+  env PATH="${TMP}/loop:${PATH}" "${fact}/ai/herdr/team.sh" spawn "$@" \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  else
+    ok "$label"
+  fi
+}
+
+loop_fresh
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+HERDR_TEAM_PROVIDER_CAP=1
+export FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
+cred_spawn 0 "157 the first of two profiles on one credential spends its seat" \
+  px-a --branch feat/cred-a --provider px1
+if [ "$(pane_field px-a provider)" = px1 ]; then
+  ok "157b and the record names the profile, which is the noun the messages use"
+else
+  no "157b and the record names the profile, which is the noun the messages use" \
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/px-a" 2>/dev/null)"
+fi
+cred_spawn 1 "157c a second profile on that credential is refused by it" \
+  px-b --branch feat/cred-b --provider px2
+if grep -q "1 pane count against px2's ceiling (px-a)" "${TMP}/err" &&
+  grep -q 'the deepseek entry in ai/providers.toml' "${TMP}/err"; then
+  ok "157d and the refusal names the panes and the entry the ceiling belongs to"
+else
+  no "157d and the refusal names the panes and the entry the ceiling belongs to" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+called 0 '^worktree open' "157e nothing was created for the refused spawn"
+unset HERDR_TEAM_PROVIDER_CAP
+cred_spawn 0 "157f and with the override gone the registry's own ceiling lets it through" \
+  px-b --branch feat/cred-b --provider px2
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+
+echo
+echo "settle: the reset belongs to the harness"
+
+# 158. `--clear` sends the command the *record's* harness clears with, not the
+#      one this file was written for. Claude clears with `/clear`; codex, which
+#      is the disabled `cdx` profile, clears with `/new` — and a `/clear` sent
+#      to a codex pane is a slash command its owner answers differently or not
+#      at all. The record names a profile and the profile names a harness, so
+#      the profile table is where the answer comes from; the table carries the
+#      reset for exactly this reason.
+#
+#      `/clear` is still what a pane with no record gets, which is why every
+#      case above this one is unchanged: they settle a pane that was never
+#      spawned.
+reset
+record exec-1 cdx
+settle_on idle 0 'settled: reuse \(wS:p1, cleared\)' \
+  "158 a pane whose harness clears with /new is cleared with /new" exec-1 reuse --clear
+recorded sent '^/new$' "158b and /new is all that was sent"
+recorded prompt '^agent prompt exec-1 /new$' \
+  "158c through the same helper a Dispatch goes out on"
+recorded meta '^pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=1$' \
+  "158d and the record still says the pane was cleared"
+
+# 158e. The end that refuses: a harness stating no reset has no command this
+#       verb may send, and a profile no layer defines is not something to guess
+#       at either. `ccur` is the first — cursor ships disabled and with no
+#       `reset =` — and the refusal has to land before anything is sent, which
+#       is what the untouched recordings say.
+record exec-1 ccur
+settle_on idle 1 '' "158e a harness with no reset is refused" exec-1 reuse --clear
+if grep -q 'release it instead of reusing it' "${TMP}/err"; then
+  ok "158f and the refusal names the way out"
+else
+  no "158f and the refusal names the way out" "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+untouched prompt "158g and nothing was sent to the pane"
+untouched meta "158h and no decision was recorded for it"
+
+echo
+echo "the config a case writes: routing, the lane bounds, the tier clause"
+
+# 159. AC3, and the whole of it: a checkout whose two files say one more thing,
+#      and no line of team.sh, loop.py or plan.py that names it. `profile.fake`
+#      is a `[profile.*]` table launched by a script on PATH, the route names
+#      that profile, and the row the plan leaves provider-less —
+#      plan-no-provider.md's T-01 — is the one that falls to it. The wave draws
+#      a pane on `fake` and launches it with `fake-agent`, which is what "a new
+#      provider is a config edit" has to mean: the profile is the only noun any
+#      of the three files names.
+#
+#      The `[[route]]` array is restated whole in the local layer because an
+#      array replaces rather than appends (config.py's `merge`), and the profile
+#      goes on the entry the row actually matches — `has_verify = true`, which
+#      the fixture's row is. The credential is `anthropic-pro`, a login with no
+#      url and no key: a keyed one would put the provider check in front of the
+#      thing this case is about, and case 142 already has the keyed reading.
+#
+#      The fixture's own team.sh is what runs, for the reason `cfg_checkout`
+#      exists: `_CHECKOUT` has to be the tree those two files are in.
+fake="$(cd "${TMP}" && pwd -P)/fake-checkout"
+cfg_checkout "${fake}"
+cat >>"${fake}/ai/herdr/team.toml" <<'TOML'
+
+[profile.fake]
+harness = "claude"
+credential = "anthropic-pro"
+launch = "fake-agent"
+cost = "cheap"
+TOML
+cat >"${fake}/ai/herdr/team.local.toml" <<'TOML'
+# The whole array, because an array replaces rather than appends: the entry a
+# provider-less row with a verify matches is the third one, so that is where
+# the profile this checkout launches goes.
+[[route]]
+when = { provider_cost = "premium", has_blockers = true }
+role = "review"
+
+[[route]]
+when = { needs = "web" }
+role = "research"
+
+[[route]]
+when = { has_verify = true }
+role = "exec"
+profile = "fake"
+
+[[route]]
+role = "exec"
+TOML
+mkdir -p "${TMP}/fake-bins"
+printf '#!/bin/sh\nexit 0\n' >"${TMP}/fake-bins/fake-agent"
+chmod +x "${TMP}/fake-bins/fake-agent"
+
+# fake_loop <want-exit> <label> <args...> — one `loop` out of that checkout,
+# against the loop stubs. `loop_on` runs this checkout's team.sh, and the
+# profile and the route are the fixture's. The bin directory is prepended so
+# the launcher the fixture names is a script on PATH, which is what AC3 says
+# the harness's launch is.
+fake_loop() {
+  local want="$1" label="$2" code=0
+  shift 2
+  rm -f "${TMP}/loop-called"
+  env PATH="${TMP}/fake-bins:${TMP}/loop:${PATH}" "${fake}/ai/herdr/team.sh" "$@" \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  else
+    ok "$label"
+  fi
+}
+
+loop_fresh
+fake_loop 4 "159 a route table can place a row a plan leaves provider-less" \
+  loop "${RUN}" --plan "${FIXTURES}/plan-no-provider.md" --spawn feat/fake --max-waves 1
+if grep -qx 'wave 1: dispatched T-01, waiting' "${TMP}/out"; then
+  ok "159b and the row was routed to the lane the route names"
+else
+  no "159b and the row was routed to the lane the route names" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+if [ "$(pane_field exec-0001-1 provider)" = fake ]; then
+  ok "159c and the pane it drew is on the profile the route named"
+else
+  no "159c and the pane it drew is on the profile the route named" \
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/exec-0001-1" 2>/dev/null)"
+fi
+called 1 "^pane run .*zsh -ic 'fake-agent'\$" \
+  "159d launched with the fixture's own launcher, a script on PATH"
+
+# 160. The lane bound, and the number it is read from. `role.exec.max_per_run`
+#      and `limits.exec_per_run` are both 2 in the shipped files, so the pair
+#      says nothing on its own; the refusal's own words are what distinguishes
+#      them, and it names the role's line. Then the same Run, the same two
+#      panes and the same row under `preset.all-cheap` — whose only word is
+#      `role.exec.max_per_run = 4` — draws the pane it would not draw before.
+#      Nothing else in that preset moved, so what let the third pane through is
+#      the number on the role.
+loop_fresh "exec-0001-1 busy" "exec-0001-2 busy"
+record exec-0001-1 ccd "${RUN}"
+record exec-0001-2 ccd "${RUN}"
+loop_on 6 'ready and no pane free for them — this Run already holds its 2 executors \(cap 2 per Run, role\.exec\.max_per_run in ai/herdr/team\.toml\)' \
+  "160 a lane that is full refuses the row, naming the role's line" \
+  --plan "${FIXTURES}/plan-ok.md" --spawn feat/bound
+called 0 '^worktree open' "160b and nothing was drawn for it"
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+export FIXTURE_REF HERDR_FIXTURE_KEY
+env HERDR_TEAM_PRESET=all-cheap PATH="${TMP}/loop:${PATH}" "${TEAM}" loop "${RUN}" \
+  --plan "${FIXTURES}/plan-ok.md" --spawn feat/bound --max-waves 1 \
+  >"${TMP}/out" 2>"${TMP}/err"
+code=$?
+if [ "$code" -eq 4 ] && grep -qx 'wave 1: dispatched T-01, waiting' "${TMP}/out"; then
+  ok "160c while the same Run under preset.all-cheap draws the row it could not"
+else
+  no "160c while the same Run under preset.all-cheap draws the row it could not" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+if [ "$(pane_field exec-0001-3 provider)" = ccd ]; then
+  ok "160d and the pane is the third one, which is the number the role now states"
+else
+  no "160d and the pane is the third one, which is the number the role now states" \
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/exec-0001-3" 2>/dev/null)"
+fi
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+
+# 161. The tier warning follows the profile's own word rather than the name
+#      `cc`, which is the other half of what T-04 changed and the reason plan.py
+#      reads `requires_reason`. `plan-cc-tier.md`'s T-02 is what case 133 reads:
+#      `cc` is premium in the shipped file and a premium profile without the word
+#      is a lint finding, so there a row on it always has to account for itself.
+#      This checkout says otherwise twice over — `cc` is stated cheap with
+#      nothing to account for, and `mid`, which is not `cc` at all, requires a
+#      reason. The plan is written here as well, because the question is a
+#      question about a plan's rows and there is no fixture pairing those two
+#      rows with those two profiles.
+#
+#      The sentence is byte-identical either way: the warning still says "is cc
+#      with a verify", because that text is frozen and what moved is which
+#      profiles draw it.
+tier="$(cd "${TMP}" && pwd -P)/tier-checkout"
+cfg_checkout "${tier}"
+cat >"${tier}/ai/herdr/team.local.toml" <<'TOML'
+# `requires_reason` is the profile's own word for whether a row on it has to say
+# why, so the check cannot be the name `cc`: this layer takes the reason away
+# from a profile called cc and gives it to one that is not.
+[profile.cc]
+cost = "cheap"
+requires_reason = false
+
+[profile.mid]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+requires_reason = true
+TOML
+cat >"${TMP}/tier-plan.md" <<'MD'
+# Fixture plan — two rows, read against the profile table
+
+Status: fixture. Both rows have a `verify` and neither says why it is on the
+profile it names, so the pair is the warning and nothing else.
+
+## Tasks
+
+```json
+[
+  {"task": "T-01", "provider": "cc", "files": ["README.md"],
+   "verify": "npx markdownlint-cli2 README.md", "blocks": []},
+  {"task": "T-02", "provider": "mid", "files": ["ai/herdr/team.sh"],
+   "verify": "bash ai/herdr/tests/run.sh", "blocks": []}
+]
+```
+
+### T-01 — A cc row the profile says nothing about
+
+The profile is stated cheap with no reason to account for, so the name it
+carries is not what the tier rule is about.
+
+### T-02 — A row on a profile that is not cc
+
+Same shape, a different profile, and this one requires a reason. It is the row
+the warning names.
+MD
+"${tier}/ai/herdr/team.sh" plan lint "${TMP}/tier-plan.md" >"${TMP}/out" 2>"${TMP}/err"
+code=$?
+if [ "$code" -eq 0 ] && grep -qE '^lint: T-02 is cc with a verify' "${TMP}/err"; then
+  ok "161 a profile that is not cc can still be the one the tier warning names"
+else
+  no "161 a profile that is not cc can still be the one the tier warning names" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+if [ "$(grep -c 'is cc with a verify' "${TMP}/err")" -eq 1 ]; then
+  ok "161b and a cc row on a profile that requires nothing draws none"
+else
+  no "161b and a cc row on a profile that requires nothing draws none" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 162. AC7, as a case rather than as something someone ran once. The first
+#      pattern is a comparison against, or a `${x:-…}` default of, one of the
+#      three shipped profiles: the answer now comes from the route table, and a
+#      second place it is written down is a second place it can disagree. The
+#      second is the `case` arms that read a name as a set of providers, which
+#      is the same claim for the shape a list is written in. Prose still names
+#      all three — the first pattern only matches an operator, so a docstring
+#      that mentions `ccd` passes, which is the point.
+named="$(grep -nE '(==|!=) *"?(cc|ccd|omp)"?|:-(cc|ccd|omp)\}' \
+  "${TEAM}" \
+  "${DOTFILES}/ai/herdr/lib/herdr_team/loop.py" \
+  "${DOTFILES}/ai/herdr/lib/herdr_team/plan.py" || true)"
+if [ -z "${named}" ]; then
+  ok "162 no comparison and no default names a provider in the three files"
+else
+  no "162 no comparison and no default names a provider in the three files" \
+    "$(printf '%s' "${named}" | tr '\n' '|')"
+fi
+listed="$(grep -nE 'in ([a-z| ]*\b)?(cc|ccd|omp) *[|)]' "${TEAM}" || true)"
+if [ -z "${listed}" ]; then
+  ok "162b nor does any case arm read one as a set of providers"
+else
+  no "162b nor does any case arm read one as a set of providers" \
+    "$(printf '%s' "${listed}" | tr '\n' '|')"
+fi
+
+echo
 echo "the ids"
 
 # case_ids — every id this file labels a case with, as the id and the whole

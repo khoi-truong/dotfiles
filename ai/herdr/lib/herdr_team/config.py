@@ -42,6 +42,7 @@ Run as `python3 -m herdr_team.config <verb>` with `lib/` on PYTHONPATH:
     lint                     schema findings, one per line
     doctor                   this machine's findings and notes, one per line
     resolve profile <name>   one profile, resolved, as `key=value`
+    resolve profiles         every profile as `name<TAB>credential<TAB>ceiling<TAB>reset`
     route <row-json>         the role, lane and profile for a plan row
 
 `env`, `resolve` and `route` refuse to answer while `lint` has findings: a
@@ -1367,8 +1368,52 @@ class Config:
             "never": " ".join(str(ref) for ref in chain.get("never") or []),
         }
 
-    # -- route -------------------------------------------------------------
+    def profiles_table(self) -> list[str]:
+        """Every profile as `name<TAB>credential<TAB>ceiling<TAB>reset`.
 
+        What `resolve profile` cannot answer for a pane that already exists, and
+        the reason this verb exists: the ceiling counts panes per *credential* —
+        two profiles on one key share a budget — while a pane record names a
+        *profile*, so counting one means knowing which profiles share an entry.
+        Asking per pane would be a lookup per pane; this is the whole table in
+        one call, which `team.sh` reads once and holds. The reset is here for
+        the same shape of reason: `settle` holds a record rather than a profile
+        and has to know what that record's harness clears with.
+
+        Every profile the inventory defines, disabled ones included. A pane
+        spawned before a profile was disabled still holds the credential that
+        profile spends and still has the context only that profile's harness
+        knows how to clear, and a reader that could not place it would be
+        answering for nobody. Tabs and nothing else, because the caller reads
+        this with `awk -F'\\t'` rather than with `eval`; an unstated ceiling or
+        a harness that names no reset is an empty field, which is the caller's
+        to refuse.
+        """
+        self.clean()
+        rows = []
+        harnesses = self.document.get("harness") or {}
+        for name in sorted(self.document.get("profile") or {}):
+            body = (self.document.get("profile") or {})[name]
+            if not isinstance(body, dict):
+                continue
+            credential = str(body.get("credential") or "")
+            entry = self.registry.get(credential) or {}
+            harness = harnesses.get(body.get("harness"))
+            if not isinstance(harness, dict):
+                harness = {}
+            rows.append(
+                "\t".join(
+                    (
+                        name,
+                        credential,
+                        _render(entry.get("ceiling", "")),
+                        str(harness.get("reset") or ""),
+                    )
+                )
+            )
+        return rows
+
+    # -- route -------------------------------------------------------------
     def route(self, row: dict[str, Any]) -> dict[str, str]:
         """`{role, lane, profile}` for a plan row: first matching route wins.
 
@@ -1761,8 +1806,14 @@ def main(argv: list[str]) -> int:
             print(_render(config.get(rest[0])))
             return 0
         if verb == "resolve":
+            if rest == ["profiles"]:
+                for line in load().profiles_table():
+                    print(line)
+                return 0
             if len(rest) != 2 or rest[0] != "profile":
-                sys.stderr.write("usage: config resolve profile <name>\n")
+                sys.stderr.write(
+                    "usage: config resolve profile <name> | config resolve profiles\n"
+                )
                 return 2
             for key, value in load().profile(rest[1]).items():
                 print("%s=%s" % (key, shlex.quote(value)))
