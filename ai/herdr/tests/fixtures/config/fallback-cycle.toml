@@ -1,0 +1,10 @@
+# A fallback chain that comes back to where it started.
+#
+# The shipped `ccd` falls back to `cc`. This adds the edge back, so the chain
+# the spawn walks when the DeepSeek key is missing is `ccd -> cc -> ccd`: asked
+# once, the answer would be the same question, and the pane it was meant to
+# rescue never starts. Cyclic by construction rather than by accident — this is
+# the case a reader has to detect, not the case it has to avoid while editing.
+
+[fallback.cc]
+to = ["ccd"]

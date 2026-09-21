@@ -1,0 +1,327 @@
+# ai/herdr/team.toml — what the herdr team runs on, how a spawn falls back, and
+# how a plan row is routed.
+#
+# Read by `herdr_team.config`, reached from `team.sh` as `config env`,
+# `config get`, `config resolve profile` and `config route`, and as
+# `config show --sources` and `config lint` by hand. Nothing in this file is
+# read by bash directly: bash cannot parse TOML, and a `team.sh` that grew a
+# hand-rolled reader would be one more parser to disagree with this one.
+#
+# What this file does NOT hold is credentials. A profile names one with
+# `credential`, and the entry that name refers to — its url, its key ref, its
+# ceiling — lives in ai/providers.toml. Two profiles on one credential share
+# one budget, which is why the ceiling is on the credential and not here.
+#
+# Every value below reproduces what `team.sh` hardcoded before this file
+# existed. That is the point of the shipped defaults: with no local file and no
+# environment overrides, behaviour is identical, and the tests that pin that
+# behaviour are the ones that say so.
+#
+# Two placeholder forms appear in values, both expanded by the reader:
+#   {dotfiles}          this checkout's root — the repository, not $HOME
+#   ${VAR} / ${VAR:-x}  the environment, with a default if it is unset
+# TOML itself expands neither, so nothing here is expanded at parse time and
+# `config show --sources` can still print the value as it was written.
+
+schema = 1
+
+# --- the limits, and where the state lives ---------------------------------
+#
+# `exec_per_run` is the discipline limit: how many executors one orchestrator
+# may hold at once. `detect_timeout_s` covers a cold start plus an `op read`.
+# `handoff_max_lines` is protocol.md's "over 150 lines is a defect", counted
+# rather than enforced, because by the time anyone could object the handoff is
+# already the only record of what the agent did. `plan_max_paths` is where a
+# row's `verify` stops localizing, which `plan.py` reads directly.
+#
+# `clear_confirm_timeout_s` is how long a clear may spend proving a pane took
+# its name back: a rename that holds answers on the first read pair, so this is
+# only ever reached by a pane that lost its name.
+
+[limits]
+exec_per_run = 2
+detect_timeout_s = 60
+clear_confirm_timeout_s = 15
+handoff_max_lines = 150
+plan_max_paths = 8
+
+[paths]
+root = "{dotfiles}/.herdr"
+
+# --- harnesses: the agent CLIs ---------------------------------------------
+#
+# A harness is the CLI. It contributes the herdr `--kind` used for detection,
+# the command that starts it, the flags it needs to run with nobody at the
+# keyboard, how a model is passed, and the command that resets its context.
+#
+# `reset` is absent when a CLI has no such command, and its absence is
+# meaningful: `settle reuse` is refused for that harness, with `release`
+# suggested, rather than a pane being handed work with its predecessor's
+# context still in it.
+#
+# herdr already detects claude, codex, cursor, copilot, kimi, opencode, omp and
+# gemini (`herdr agent start --help`), so `kind` needs no invention: it is the
+# name herdr answers to.
+
+[harness.claude]
+kind = "claude"
+reset = "/clear"
+model_arg = "--model"
+
+# omp is launched with its own config, which is where its provider and key come
+# from — the key is registered in ai/providers.toml so the ceiling can count
+# it, but omp never reads it from there.
+# https://github.com/anthropics/oh-my-pi  (ai/omp/executor.yml)
+
+[harness.omp]
+kind = "omp"
+launch = "omp"
+launch_args = ["--config", "{dotfiles}/ai/omp/executor.yml"]
+reset = "/clear"
+
+# --- disabled until a spike says otherwise ---------------------------------
+#
+# Each of these is a CLI that could be wired up today and that nothing here has
+# yet proved a pane can be spawned on unattended: the approval flags are the
+# part most likely to be wrong, and a pane that blocks on an approval looks
+# exactly like a hung spawn to everything watching from outside. They ship with
+# the profile that enables them (`enabled = false` below), so turning one on is
+# two words once its spike has passed.
+#
+# `model_arg` is absent where the CLI takes no model, and where a profile can
+# still name one through `launch_args`.
+
+# https://github.com/openai/codex
+[harness.codex]
+kind = "codex"
+launch = "codex"
+launch_args = ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
+model_arg = "-m"
+reset = "/new"
+enabled = false
+
+# https://cursor.com/docs/cli/overview
+[harness.cursor]
+kind = "cursor"
+launch = "cursor-agent"
+launch_args = ["--force"]
+model_arg = "--model"
+enabled = false
+
+# https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli
+[harness.copilot]
+kind = "copilot"
+launch = "copilot"
+launch_args = ["--allow-all-tools"]
+enabled = false
+
+# https://opencode.ai/docs/
+[harness.opencode]
+kind = "opencode"
+launch = "opencode"
+launch_args = ["run"]
+model_arg = "--model"
+enabled = false
+
+# --- profiles: what a plan row's `provider` names --------------------------
+#
+# A profile is harness × credential × model. It is the only noun a plan, a role
+# or a route ever names, which is what keeps a model change out of every plan
+# ever written: the row says `ccd`, and only this file knows what `ccd` is.
+#
+# `launch` overrides the harness's command. Claude Code is the case that needs
+# it — one harness, three launchers, one credential each — which is also why
+# `launch` is checked against the credential's `launcher.short` by `config
+# lint`.
+#
+# A `cc` pane spends the Pro login, and the tiers are not a price list: the
+# cheap tier is safe wherever a command catches a wrong answer. What earns the
+# expensive one is a Task whose mistakes ship silently, so `requires_reason`
+# is set on every premium profile and `config lint` refuses one without it.
+
+[profile.cc]
+harness = "claude"
+credential = "anthropic-pro"
+launch = "cc"
+cost = "premium"
+requires_reason = true
+caps = ["web", "review"]
+
+[profile.ccd]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+
+[profile.omp]
+harness = "omp"
+credential = "deepseek-omp"
+cost = "cheap"
+caps = ["web"]
+
+# Kimi and OpenRouter both reach Claude Code through an Anthropic-compatible
+# endpoint, so neither needs a new harness — only the entry in providers.toml
+# and the launcher short that comes with it. The unverified part is the model
+# id, not the plumbing.
+[profile.cck]
+harness = "claude"
+credential = "kimi"
+launch = "cck"
+cost = "cheap"
+enabled = false
+
+[profile.cco]
+harness = "claude"
+credential = "openrouter"
+launch = "cco"
+cost = "cheap"
+enabled = false
+
+# Codex, Cursor, Copilot and opencode are their own CLIs: no launcher to
+# define, no url to inject, only the harness's own flags.
+[profile.cdx]
+harness = "codex"
+credential = "openai"
+model = "gpt-5-codex"
+cost = "cheap"
+enabled = false
+
+[profile.ccur]
+harness = "cursor"
+credential = "cursor"
+cost = "cheap"
+enabled = false
+
+[profile.ccp]
+harness = "copilot"
+credential = "copilot"
+cost = "cheap"
+enabled = false
+
+[profile.oc]
+harness = "opencode"
+credential = "openrouter"
+cost = "cheap"
+enabled = false
+
+# --- fallback: what a spawn does when the key it needs is not there --------
+#
+# `ccd` is the tier every executable Task runs on, so the one case that has to
+# be decided is what a spawn does when the DeepSeek key is missing. Falling
+# back to the Pro login is the alternative that costs money, so it is bounded
+# by the guard below and recorded in the pane record (`status` and `report`
+# read it back).
+#
+# `guard.credential` is whose window the ceiling is measured against. It is
+# stated rather than inferred from `to` because `to` is a list that may grow:
+# the guard is about one credential's quota, and `config lint` checks that
+# credential is one the chain actually lands on.
+#
+# `on` is which failures trigger the chain. `never` is which profiles the chain
+# may not land on however it is edited — omp is there because omp is a
+# different agent with a different context, so a Task falling back onto it
+# would not be the same Task (references/cost.md).
+
+[fallback.ccd]
+to = ["cc"]
+on = ["key-missing"]
+guard = { credential = "anthropic-pro", quota_max_pct = 70 }
+never = ["omp"]
+
+# --- roles: the six kinds of pane ------------------------------------------
+#
+# `prefix` is the pane-name prefix the rest of `team.sh` already keys on, and
+# it is also the lane: `loop` answers a lane per row, and the lane is this
+# prefix. `max_per_run` bounds how many panes of this role one Run may hold,
+# which is "how many executors for this kind of task" — together with the
+# credential's ceiling, and independent of it.
+#
+# `cwd` is where the pane works: the main checkout, its own worktree, or the
+# worktree of the executor it is reviewing.
+
+[role.orchestrator]
+# Declared, not spawned: the orchestrator is the user's own session, which
+# nothing here starts. `config doctor` warns when the profile named here
+# disagrees with `$CC_PROVIDER` in the current shell — that is the only thing
+# this entry can do, and it is worth doing.
+profile = "cc"
+spawned = false
+
+[role.spec]
+prefix = "spec-"
+profiles = ["cc"]
+lifetime = "ephemeral"
+cwd = "main"
+
+[role.research]
+prefix = "res-"
+profiles = ["omp"]
+lifetime = "ephemeral"
+cwd = "main"
+
+[role.plan]
+prefix = "plan-"
+profiles = ["cc"]
+lifetime = "ephemeral"
+cwd = "main"
+
+[role.exec]
+prefix = "exec-"
+profiles = ["ccd"]
+max_per_run = 2
+lifetime = "ephemeral"
+cwd = "worktree"
+
+[role.review]
+prefix = "rev-"
+profiles = ["cc"]
+max_per_run = 1
+lifetime = "ephemeral"
+cwd = "executor-worktree"
+
+# --- routing: plan row → role, first match wins ----------------------------
+#
+# An explicit `provider` on the row always wins; these fill in what a row
+# leaves out. Ordered, and the last one has no `when` at all, so every row gets
+# a role: a route table with a hole in it would leave a row with no lane, and
+# `loop` reads a lane per row.
+#
+# A route may name a `profile` as well, which is how a new kind of work gets
+# its own tier without a code edit. Naming only a role is the usual case — the
+# role's own `profiles` list already says what it runs on.
+
+[[route]]
+when = { provider_cost = "premium", has_blockers = true }
+role = "review"
+
+[[route]]
+when = { needs = "web" }
+role = "research"
+
+[[route]]
+when = { has_verify = true }
+role = "exec"
+
+[[route]]
+role = "exec"
+
+# --- presets: a named patch over everything above --------------------------
+#
+# A preset is a partial document in this same schema, selected by
+# `HERDR_TEAM_PRESET` or `--preset`, and deep-merged last — after the files,
+# before the environment and the command line. It is for the case a file per
+# repo cannot express: the same repo on a different budget today.
+#
+# Shipped here are the two this checkout actually reaches for. Neither names a
+# disabled profile, and `config lint` checks each of them against the same
+# rules as any other layer.
+
+# The Pro window is nearly spent: a spec and a plan shape later work, and both
+# run on a cheap credential the moment that stops being affordable.
+[preset.pro-low]
+role.spec.profiles = ["ccd"]
+role.plan.profiles = ["ccd"]
+
+# A wide plan on a day with nothing else running.
+[preset.all-cheap]
+role.exec.max_per_run = 4

@@ -1,0 +1,9 @@
+# A key at the top level that nothing reads.
+#
+# `provider_cap` is the name this knob had before it moved into `[limits]
+# exec_per_run`, and a file that still says it is a file that believes it has
+# set a bound. Unknown keys are refused rather than ignored for exactly that
+# reason: a setting that is silently dropped is worse than one that is wrong,
+# because nothing reports it.
+
+provider_cap = 4

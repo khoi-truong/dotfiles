@@ -12,6 +12,8 @@ import json
 import re
 from typing import Any
 
+from herdr_team import config
+
 __all__ = ["plan_rows"]
 
 # What a plan's *shape* is measured against. Every number here is a starting
@@ -26,7 +28,31 @@ DEPTH_MAX = 4  # the longest chain of `blocks` edges a plan should have
 WIDTH_MIN = 2  # Tasks a plan should be able to run at once ...
 WIDTH_MIN_TASKS = 3  # ... once it has this many Tasks to run at all
 THIN_LINES = 8  # non-blank lines a chained row needs to earn its Dispatch
-FAT_FILES = 8  # paths a row may name before its verify stops localizing
+FAT_FILES = 8  # paths a row may name before its verify stops localizing ...
+# ... which is the shipped value of `limits.plan_max_paths`, and no longer the
+# last word on it: `_max_paths` reads the setting, so a machine that would
+# rather trade a wider row for a coarser retry gets that from team.toml.
+
+
+def _max_paths() -> int:
+    """`limits.plan_max_paths` from ai/herdr/team.toml, else `FAT_FILES`.
+
+    Read here rather than handed in, because every caller of `plan_rows` —
+    `lint`, `dispatch`, `collect`, `loop`, `report` — would otherwise have to
+    be given the number, and the one that forgot would disagree with the rest
+    about the same plan.
+
+    A configuration that cannot be read falls back to the shipped default
+    instead of failing the plan: this is a warning threshold, and a `plan lint`
+    that refused to run because `team.local.toml` has a typo would be a plan
+    nobody could lint — with the reader's own failure reported by the verbs
+    that read the configuration for what it is.
+    """
+    try:
+        value = config.load().get("limits.plan_max_paths")
+    except config.ConfigError:
+        return FAT_FILES
+    return value if isinstance(value, int) and value >= 1 else FAT_FILES
 
 
 def _cycles(by_id: dict[str, Any]) -> list[list[str]]:
@@ -191,6 +217,7 @@ def _granularity(by_id: dict[str, Any], bodies: dict[str, str]) -> list[str]:
     """
     out: list[str] = []
     pairs: set[frozenset[str]] = set()
+    fat = _max_paths()
     for tid in sorted(by_id):
         body = bodies.get(tid)
         # A row with no section is a finding of its own, and a proxy measured
@@ -204,12 +231,11 @@ def _granularity(by_id: dict[str, Any], bodies: dict[str, str]) -> list[str]:
                 "%s names %s, a directory — no verify can localize a "
                 "failure inside one, so a retry re-does all of it" % (tid, dirs[0])
             )
-        elif len(files) > FAT_FILES:
+        elif len(files) > fat:
             out.append(
                 "%s names %d paths, over the %d a verify can localize a "
                 "failure in — a retry would re-do all of them (%d is a "
-                "starting guess, not a measurement)"
-                % (tid, len(files), FAT_FILES, FAT_FILES)
+                "starting guess, not a measurement)" % (tid, len(files), fat, fat)
             )
         lines = len([ln for ln in body.splitlines() if ln.strip()])
         if len(files) != 1 or lines >= THIN_LINES:

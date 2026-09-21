@@ -1,0 +1,13 @@
+# A project file taking an entry back out of `never`.
+#
+# `never` is the list a chain may not land on however it is edited. Adding to it
+# from a project is fine — a repo that wants omp ruled out as well as
+# unreachable is a repo being more careful. Emptying it is not: it removes the
+# bound the user set, and the chain is then free to land on omp, which is a
+# different agent with a different context, so a Task that fell onto it would
+# not be the same Task.
+#
+# Loaded as an untrusted layer over ai/herdr/team.toml.
+
+[fallback.ccd]
+never = []

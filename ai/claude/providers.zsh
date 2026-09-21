@@ -2,8 +2,10 @@
 # shellcheck disable=SC1071  # shellcheck has no zsh mode; zsh -n is the check
 # ai/claude/providers.zsh — run Claude Code against Anthropic-compatible
 # providers, one process at a time. The Pro login is never touched.
-# Sourced from ai/aliases.zsh. To add a provider, add one cc_provider call at
-# the bottom; it generates claude-<name> and, with short=, <short>/<short>c/<short>r.
+# Sourced from ai/aliases.zsh. To add a provider, add a `[provider.<name>]`
+# entry to ai/providers.toml: the cc_provider calls are generated from it into
+# the cache this file sources at the bottom. Each generates claude-<name> and,
+# with a `short`, <short>/<short>c/<short>r.
 
 typeset -gA _cc_prov                 # "<name>:<field>" -> value
 typeset -ga _cc_prov_names
@@ -94,29 +96,54 @@ function cc-providers {
   done
 }
 
-# --- providers ---------------------------------------------------------------
+# --- the cache ---------------------------------------------------------------
+#
+# No cc_provider call is written here. Providers are `[provider.<name>]`
+# entries in ai/providers.toml — one definition, read by this cache, by
+# ai/herdr/team.toml's `credential` fields and by `team.sh config` — and the
+# calls are generated from it: reading TOML at every shell start is out of the
+# question, so the shell compares two mtimes instead and pays the 100 ms only
+# in the shell that follows an edit.
+#
+# A start costs three builtins. A start that regenerates forks python3, writes
+# a temp file, checks it with `zsh -n` and `mv`s it into place, because a wave
+# of team.sh's `zsh -ic` probes can arrive at once and a reader must never see
+# half a file. Failure is not fatal and never silent: one warning, and the
+# previous cache stays exactly as it was, so a registry nobody can parse costs
+# a line on stderr rather than the `ccd` command. With no cache at all the
+# shell still starts, without the provider launchers.
 
-# DeepSeek: key shared with omp (ai/omp/models.yml). Every model id,
-# Opus included, is served by Flash.
-#
-# `env:` rather than `op://`, because _cc_run resolves the key on every launch
-# and an `op read` puts a biometric prompt in front of it. A human at a
-# terminal can answer that; an agent pane ai/herdr/team.sh spawned cannot, so
-# the prompt is indistinguishable from a hung spawn and the whole unattended
-# workflow stops there. omp never had the problem — it keeps its copy of this
-# key in ~/.omp/agent/agent.db, which is also why `omp` panes start and `ccd`
-# panes did not; ai/omp/models.yml now reads its key from the environment for
-# the same reason.
-#
-# CLAUDE_CODE_DEEPSEEK_API_KEY is the 1Password field label: ai/setup.sh dumps
-# that item to ai/env.local.zsh as one export per field, under the label
-# verbatim, so the item is where the name is decided. omp holds a separate
-# DeepSeek key under PI_CODING_AGENT_DEEPSEEK_API_KEY (ai/omp/models.yml) —
-# one key per consumer, so either can be rotated alone. 1Password stays the
-# place the keys are *kept*; this is only about how they are *read* at launch.
-cc_provider deepseek \
-  url=https://api.deepseek.com/anthropic \
-  key=env:CLAUDE_CODE_DEEPSEEK_API_KEY \
-  model=deepseek-flash \
-  label=DS \
-  short=ccd
+typeset -g _cc_cache_dir=${XDG_CACHE_HOME:-${HOME}/.cache}/dotfiles
+typeset -g _cc_cache=${_cc_cache_dir}/providers.zsh
+
+# _cc_cache_refresh — rewrite the cache from the registry, atomically.
+function _cc_cache_refresh {
+  local tmp=${_cc_cache}.$$ line
+  [[ -d $_cc_cache_dir ]] || mkdir -p "$_cc_cache_dir" 2>/dev/null || return 1
+  if ! PYTHONPATH=${DOTFILES}/ai/herdr/lib /usr/bin/python3 -m providers zsh \
+      >"$tmp" 2>&1; then
+    IFS= read -r line <"$tmp"
+    print -u2 "cc_provider: cannot regenerate ${_cc_cache}: ${line:-no output}"
+    print -u2 "             keeping the last good cache; fix ai/providers.toml"
+    print -u2 "             and start a new shell"
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! zsh -n "$tmp" 2>/dev/null; then
+    print -u2 "cc_provider: generated cache is not valid zsh — keeping the last good one"
+    rm -f "$tmp"
+    return 1
+  fi
+  mv -f "$tmp" "$_cc_cache"
+}
+
+# The registry, or the generator in ai/herdr/lib. Naming the file rather than
+# the directory around it is the point: a pull rewrites a file in place and
+# leaves the directory's own mtime alone, so a directory test would miss
+# exactly the change this is for.
+if [[ ! -r $_cc_cache ]] \
+  || [[ ${DOTFILES}/ai/providers.toml -nt $_cc_cache ]] \
+  || [[ ${DOTFILES}/ai/herdr/lib/providers.py -nt $_cc_cache ]]; then
+  _cc_cache_refresh
+fi
+[[ -r $_cc_cache ]] && source "$_cc_cache"

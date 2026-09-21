@@ -18,8 +18,12 @@
 # this ruff cannot see; mypy@2.3.1 has no 3.9 mode, so `python_version` below
 # stays at what CI can type-check.
 target-version = "py39"
-# Vendored Xcode templates and the plan fixtures are data, not source.
-extend-exclude = ["plugins", "tests/fixtures"]
+# Vendored Xcode templates, the plan fixtures and the vendored TOML parser are
+# not source to be linted: the first two are data, and `lib/_vendor` is someone
+# else's file that is here to be the parser 3.9 does not have. Reformatting it
+# would also break the one property that matters about a vendored copy, which is
+# that it is the same bytes as upstream.
+extend-exclude = ["plugins", "tests/fixtures", "lib/_vendor"]
 
 [tool.ruff.lint]
 # Ruff's default set (E4, E7, E9, F) plus import sorting: a move that put 700
@@ -38,6 +42,12 @@ strict = true
 # One entry point, so `mypy` with no arguments here checks the same files a
 # bare `uvx mypy` does from this directory in CI and on a laptop.
 files = ["lib", "tests"]
+# `lib/_vendor` is not ours to type: it is the parser `providers.py` falls back
+# to on 3.9, kept as upstream wrote it, and `strict` over a file nobody here
+# maintains is a second copy that drifts from the first. `providers.py` is
+# checked, and it only reaches the vendored module on a Python that mypy cannot
+# target anyway.
+exclude = ["lib/_vendor"]
 # Nothing here exempts pytest. The tests import it and mypy is run with it
 # alongside — `uvx --with pytest==… mypy@… --strict` — rather than with
 # `ignore_missing_imports`, because a decorator mypy cannot see makes the test

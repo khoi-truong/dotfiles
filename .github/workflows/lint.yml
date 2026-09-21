@@ -271,15 +271,20 @@ jobs:
       # stand in for this either.
       #
       # The whole package, through `pkgutil` rather than a list of names, so a
-      # module added later is covered without a second edit. Last in the job
-      # because it is the only step that fetches an interpreter; uv caches it
-      # after the first run.
+      # module added later is covered without a second edit. `providers` is
+      # imported on top of that because it is not in the package — it sits
+      # beside it on the same PYTHONPATH — and because importing it is what
+      # takes the 3.9 half of the tomllib import, which is the branch this step
+      # exists for: 3.9 has no `tomllib`, and the fallback is a vendored parser
+      # that nothing else here reads. Last in the job because it is the only
+      # step that fetches an interpreter; uv caches it after the first run.
       - name: Verify the modules import under Python 3.9
         working-directory: ai/herdr
         run: |
           PYTHONPATH=lib uv run --no-project --python 3.9 python -c '
           import pkgutil
           import herdr_team
+          import providers
 
           for name in sorted(m.name for m in pkgutil.iter_modules(herdr_team.__path__)):
               __import__("herdr_team." + name)

@@ -25,6 +25,7 @@
 #   team.sh loop --plan <plan.md> [--max-waves <n>] [--timeout <ms>] [--spawn <branch-prefix>]
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
+#   team.sh config [show [--sources] | get <key> | lint | doctor]
 #   team.sh settle <name> <reuse|retain|release> [--clear]
 #   team.sh teardown <name> [--force | --abandon-only]
 #
@@ -71,6 +72,58 @@ herdr_py() {
   PYTHONPATH="${HERDR_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 "$@"
 }
 
+# The checkout the configuration is read from, which is the one this file is in
+# and not necessarily `${DOTFILES}`. Those name the same directory wherever
+# team.sh is run the way it is meant to be — out of the checkout `DOTFILES`
+# points at — and they part company the moment they do not: `~/.zshrc` exports
+# `DOTFILES=${HOME}/.dotfiles`, so a team.sh run out of a linked worktree would
+# otherwise read the *main* checkout's `ai/herdr/team.toml` and answer for
+# defaults that are not the branch's. The tree read has to be the tree running,
+# which is why `herdr_py` above resolves its package from `_self` too — and why
+# the path every other path here is relative to (lib/common.sh, the state root,
+# the worktrees `spawn` cuts) keeps coming from `DOTFILES`, which is the
+# checkout the Run it belongs to actually lives in.
+_CHECKOUT="$(cd "$(dirname "${_self}")/../.." && pwd)"
+
+# Before the configuration is read, because reading it is a `python3` the
+# `command not found` at line one of it would otherwise explain badly.
+command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
+command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
+
+# --- the knobs -------------------------------------------------------------
+#
+# Every knob below is a value in ai/herdr/team.toml, resolved by the reader in
+# ai/herdr/lib/herdr_team/config.py and read here in one `eval`. The names in
+# the environment still win: the reader emits a name already set there with its
+# own value, untouched, so `HERDR_TEAM_EXEC_CAP=3 team.sh …` behaves as it
+# always did — and `HERDR_TEAM_PRO_FALLBACK_MAX=70%` still reaches `bad_knob`
+# below, where the gate that is named after it lives, rather than being
+# corrected into a number here.
+#
+# Fail closed. A layer that will not parse, a key the schema does not know, an
+# override that is not a whole number: the reader exits non-zero naming the
+# file and line, and this stops on that message rather than starting a pane on
+# defaults nobody chose. Two things cannot be gated on the configuration
+# resolving — `config`, the verb that explains a broken one, and the usage
+# anyone reads while fixing it — and they are why this is a case and not an
+# unconditional load.
+#
+# `DOTFILES` is set on the reader rather than merely inherited: the reader
+# resolves its layers against that name, and `_CHECKOUT` is the checkout this
+# file is in. Nothing is exported — the assignments here last as long as the
+# command does — so the shell's own `DOTFILES` is still the one every path
+# below is relative to.
+case "${1:-}" in
+  config | -h | --help | help | "") ;;
+  *)
+    _cfg="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config env)" || {
+      printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+      exit 1
+    }
+    eval "${_cfg}"
+    ;;
+esac
+
 # The state root: every Run this checkout has started, and the pointer naming
 # the one this shell is in. Deliberately not `${DOTFILES}/.omc`, which is OMC's
 # own root: an agent writes OMC artifacts of its own under it, and a Run's
@@ -82,21 +135,15 @@ herdr_py() {
 #   runs/<run-id>/        the Run: its handoffs, and the plan it was cut from
 #   runs/by-plan/<sha1>   plan path → the Run that plan started
 #
-# Overridable, so a test run can point the whole script at a throwaway
-# directory instead of reading and writing live state.
+# `paths.root`, and then `[limits]`. The `:-` is a fallback and not the default:
+# if the reader ever stops emitting a name, the short name is still bound and
+# `set -u` does not turn a missing knob into a crash mid-wave. A test run points
+# the root at a throwaway directory, which is the same override it always was.
 ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
-# Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
-DETECT_TIMEOUT=60
-
-# Two limits, because one number was doing two jobs.
-#
-# `EXEC_CAP` is the discipline limit: how many executors one orchestrator may
-# hold at once. It stops a single tab from taking the whole machine, and it is
-# the number a plan's width is read against. Counted over the panes *this Run*
-# holds — the agents its journal names, plus the panes it spawned and has not
-# dispatched to yet — so one tab cannot hand out a third executor and another
-# tab's executors are not its business.
+DETECT_TIMEOUT="${HERDR_TEAM_DETECT_TIMEOUT:-60}"
 EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
+HANDOFF_MAX="${HERDR_TEAM_HANDOFF_MAX:-150}"
+CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
 
 # `PROVIDER_CAP` is the machine ceiling: how many panes may be live on one
 # provider across every Run. The resource is the credential, not the executor —
@@ -113,23 +160,34 @@ EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
 # provider's load rather than ignored: what such a pane holds is exactly what
 # is not known, so the error goes the way of a refusal that could have been
 # allowed, never of a key that runs out.
+#
+# The one knob no file carries yet: the per-credential ceilings are
+# `ceiling =` in ai/providers.toml, and `spawn` still counts against this
+# single number. It joins the eval above when `spawn` reads them, which is what
+# `config show` reports on today.
 PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-4}"
 
 # `ccd` is the tier every executable task runs on, so the one case that has to
 # be decided is what a spawn does when the key it needs is not there. Falling
 # back to the Pro login is the alternative that costs money, so it is bounded:
 #
-# `PRO_FALLBACK_MAX` is the 5h window, in percent, a fallback is allowed at.
-# Measured against the same cache `ai/claude/quota-advice.sh` advises from, and
-# below quota-advice's own "Prefer ccd ... on Pro" threshold of 50% on purpose —
-# the further the window is from full, the cheaper the mistake.
+# `PRO_FALLBACK_MAX` is the 5h window, in percent, a fallback is allowed at —
+# `fallback.ccd.guard.quota_max_pct` in team.toml, since the window belongs to
+# the credential the guard is measured against and not to this file. Measured
+# against the same cache `ai/claude/quota-advice.sh` advises from, and below
+# quota-advice's own "Prefer ccd ... on Pro" threshold of 50% on purpose — the
+# further the window is from full, the cheaper the mistake. Overridden in the
+# environment, it is emitted back untouched and reaches `bad_knob`, which is
+# where "70% is not a whole number" is said.
 PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
 
 # The cache `ai/claude/statusline.sh` writes on every render of a Pro session's
 # status line, and `ai/claude/quota-advice.sh` reads. Account-wide by design:
 # the windows are, so whichever pane rendered last refreshed them for all of
-# them. `HERDR_TEAM_PRO_QUOTA_CACHE` exists for the tests, which must not have
-# the fallback's answer depend on how much of this machine's window is spent.
+# them. Both this and the age below are the Pro credential's `[quota]` table in
+# ai/providers.toml; `HERDR_TEAM_PRO_QUOTA_CACHE` exists for the tests, which
+# must not have the fallback's answer depend on how much of this machine's
+# window is spent.
 PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json}"
 
 # How old that cache may be and still describe the window it names. The status
@@ -139,22 +197,6 @@ PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.cla
 # number is a judgement, not a measurement: it is long enough to survive a
 # thinking pause and short enough to be inside the same 5h window.
 PRO_QUOTA_MAX_AGE="${HERDR_TEAM_PRO_QUOTA_MAX_AGE:-900}"
-
-# protocol.md states the cap on a handoff — "over 150 lines is a defect" — and
-# nothing has ever checked it. `report` counts them. A count rather than a
-# refusal, because by the time anyone could object the handoff is already
-# written and is the only record of what the agent did.
-HANDOFF_MAX=150
-
-# How long a clear may spend proving the pane took its name back. A rename that
-# holds answers on the first read pair, so this is only ever reached by a pane
-# that lost its name — and spending it there buys the difference between a
-# nameless pane and a recorded decision that says one is ready to dispatch to.
-# Overridable so a test can drive the expiry without waiting it out.
-CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
-
-command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
-command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
 
 # --- helpers ---------------------------------------------------------------
 
@@ -1844,6 +1886,23 @@ cmd_plan() {
   esac
 }
 
+# --- config ----------------------------------------------------------------
+# One verb for the settings this script reads its knobs from, and the only
+# reason it is a verb here rather than a module to remember: the reader in
+# lib/herdr_team/config.py is the whole of the parser, and asking it a question
+# about `team.toml` should not require knowing its name, its PYTHONPATH or
+# which of its verbs take an argument. Passed through whole, including the
+# exit code — `lint` and `doctor` answer in it, and a wrapper that swallowed it
+# would turn both into a printout nobody could branch on.
+#
+# It runs with the configuration *unread* — see the gate above — which is what
+# makes it the verb to reach for when the configuration is the thing that is
+# broken: `config lint` names the file and the line, and `config doctor` says
+# what this machine would have to be for a spawn to work. The reader is told
+# which checkout to read, the same way the gate tells it: one file, one answer,
+# whether a verb got as far as `eval` or not.
+cmd_config() { DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config "$@"; }
+
 # --- dispatch --------------------------------------------------------------
 # The completion contract is handed over verbatim, never reconstructed by the
 # orchestrator from memory: that is the whole point of having a command for it.
@@ -2333,6 +2392,7 @@ case "${1:-}" in
   loop) shift; cmd_loop "$@" ;;
   surface) shift; cmd_surface "$@" ;;
   plan) shift; cmd_plan "$@" ;;
+  config) shift; cmd_config "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;
   -h | --help | help) usage 0 ;;

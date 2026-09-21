@@ -1,0 +1,10 @@
+# The same profile in `to` and in `never`.
+#
+# The shipped `ccd` falls back to `cc` and may not land on `omp`. Writing `cc`
+# into `never` as well is the contradiction a reader cannot resolve by picking a
+# winner: one list says this chain may land there and the other says it may not,
+# and whichever won, the other would still read as a bound.
+
+[fallback.ccd]
+to = ["cc"]
+never = ["cc"]

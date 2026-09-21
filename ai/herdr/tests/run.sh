@@ -712,17 +712,25 @@ chmod +x "${TMP}/panes/herdr"
 printf 'idle\n' >"${TMP}/status"
 
 # The window, for case 44: the handoff appears after the journal has been read.
-# python3 is what reads it, so a python3 that runs the real interpreter first
-# and writes the handoff after puts the file in the gap between the read and the
-# fan-out on every run, instead of hoping to win a race. The content is never
-# read — `wait` stats the path — and the herdr beside it is the poison one, so a
-# `wait` that falls through to herdr fails that case rather than passing it.
+# python3 is what reads it, so a python3 that runs the real interpreter and then
+# writes the handoff puts the file in the gap between the read and the fan-out
+# on every run, instead of hoping to win a race. Only the call that reads the
+# journal writes it: `team.sh` forks a python3 of its own before any verb runs,
+# and a handoff planted by that one has already settled the Dispatch by the time
+# the read happens — the case would be staging the wrong side of the window. The
+# content is never read — `wait` stats the path — and the herdr beside it is the
+# poison one, so a `wait` that falls through to herdr fails that case rather
+# than passing it.
 mkdir -p "${TMP}/window"
 REAL_PY="$(command -v python3)"
 export REAL_PY
 cat >"${TMP}/window/python3" <<'SH'
 #!/usr/bin/env bash
 "${REAL_PY}" "$@"
+case "$*" in
+  *herdr_team.wait*) ;;
+  *) exit 0 ;;
+esac
 printf -- '---\nrun: fixture\ntask: T-01\ndispatch: D-01\noutcome: succeeded\nevidence: verified\n---\n' \
   >"${HERDR_FIXTURE_HANDOFFS}/T-01-D-01.md"
 SH
@@ -4020,6 +4028,217 @@ then
 else
   no "151c and report.json still counts it, on the provider the Task ran on" \
     "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+echo
+echo "config: the verb, and the gate in front of it"
+
+# team_of <team.sh> <args...> — run that copy and record what it did: the exit
+# code in `${code}`, stdout in ${TMP}/out and stderr in ${TMP}/err. The copy is
+# a parameter because half of these cases are about the gate in front of the
+# verb, and the only way to put a broken layer in front of a team.sh is a
+# checkout of its own: a case that wrote one into this checkout would be writing
+# ai/herdr/team.local.toml, which is a file a developer may be relying on.
+team_of() {
+  local sh="$1"; shift
+  code=0
+  "${sh}" "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+}
+
+# cfg_checkout <dir> — a checkout-shaped tree holding the three things the
+# configuration is read from and nothing else: a copy of team.sh, so the
+# `_CHECKOUT` resolved beside it is ${dir} rather than this checkout; the
+# shipped team.toml; and `lib/` symlinked at the real package, so what runs is
+# the module under test rather than a copy of it that a later edit here would
+# leave behind. The local layer, and the Run the fixture is in, are the case's
+# to write.
+cfg_checkout() {
+  mkdir -p "$1/ai/herdr"
+  cp "${TEAM}" "$1/ai/herdr/team.sh"
+  cp "${DOTFILES}/ai/herdr/team.toml" "$1/ai/herdr/team.toml"
+  ln -sfn "${DOTFILES}/ai/herdr/lib" "$1/ai/herdr/lib"
+  chmod +x "$1/ai/herdr/team.sh"
+}
+
+# 152. AC5. `limits.exec_per_run` is a number in ai/herdr/team.toml now, and the
+#      environment still wins over it: the reader emits a name it finds already
+#      set there with that environment's own value, so the `eval` above binds
+#      what it always bound. What changed is which of the two answered, and
+#      `--sources` is how a reader asks: the file for a default, the variable
+#      that did it for an override — the name rather than a bare "env", because
+#      five knobs come from the environment and "some override happened" is not
+#      an answer to which one to go and look at.
+team_of "${TEAM}" config get limits.exec_per_run
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "2" ]; then
+  ok "152 limits.exec_per_run still answers 2 on the shipped files"
+else
+  no "152 limits.exec_per_run still answers 2 on the shipped files" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+fi
+team_of "${TEAM}" config show --sources
+if [ "${code}" -eq 0 ] &&
+  grep -qE '^limits\.exec_per_run = 2  # .*team\.toml$' "${TMP}/out"; then
+  ok "152b and --sources credits the file, not the reader's own default"
+else
+  no "152b and --sources credits the file, not the reader's own default" \
+    "$(grep -n 'exec_per_run' "${TMP}/out" | tr '\n' '|')"
+fi
+HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config get limits.exec_per_run
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "3" ]; then
+  ok "152c while HERDR_TEAM_EXEC_CAP=3 still overrides it"
+else
+  no "152c while HERDR_TEAM_EXEC_CAP=3 still overrides it" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+fi
+HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config show --sources
+if [ "${code}" -eq 0 ] &&
+  grep -q '^limits.exec_per_run = 3  # HERDR_TEAM_EXEC_CAP$' "${TMP}/out"; then
+  ok "152d and --sources names the variable that did it"
+else
+  no "152d and --sources names the variable that did it" \
+    "$(grep -n 'exec_per_run' "${TMP}/out" | tr '\n' '|')"
+fi
+
+# 153. AC6, fail closed. A local layer that will not parse used to be a file
+#      nothing read — the knobs lived in this script. It is the layer they come
+#      from now, so a typo in it is a typo in the numbers every verb runs on,
+#      and the one answer that is never right is the shipped defaults: they are
+#      not what the machine asked for, and nothing would say so. The gate stops
+#      the verb instead, naming the file and the line. The fixture runs a verb
+#      first, because a checkout that could not run one at all would pass every
+#      case under it for the wrong reason — and the verb is `plan lint`, which
+#      asks herdr nothing: a `status` here would fail on the stub session the
+#      suite runs under and the case would be reading the wrong refusal.
+#
+#      `pwd -P`, because the reader resolves the layer it names: a fixture under
+#      macOS's /var is reported as /private/var, and a case matching the path it
+#      wrote would be matching a path the message never holds.
+fix="$(cd "${TMP}" && pwd -P)/cfg-checkout"
+cfg_checkout "${fix}"
+team_of "${fix}/ai/herdr/team.sh" plan lint "${FIXTURES}/plan-ok.md"
+if [ "${code}" -eq 0 ] && grep -q 'plan-ok.md: ok' "${TMP}/out"; then
+  ok "153 the fixture checkout runs a verb while its layers parse"
+else
+  no "153 the fixture checkout runs a verb while its layers parse" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+printf '[limits\nbroken = \n' >"${fix}/ai/herdr/team.local.toml"
+team_of "${fix}/ai/herdr/team.sh" plan lint "${FIXTURES}/plan-ok.md"
+if [ "${code}" -ne 0 ] &&
+  grep -qE "^config: ${fix}/ai/herdr/team\.local\.toml:[0-9]+:[0-9]+: " "${TMP}/err" &&
+  grep -q 'nothing was started' "${TMP}/err"; then
+  ok "153b a syntax error in team.local.toml stops the verb, naming the file and line"
+else
+  no "153b a syntax error in team.local.toml stops the verb, naming the file and line" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+if [ ! -s "${TMP}/out" ]; then
+  ok "153c and the verb printed nothing, rather than running on defaults"
+else
+  no "153c and the verb printed nothing, rather than running on defaults" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+team_of "${fix}/ai/herdr/team.sh" config lint
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+  grep -q "team.local.toml:" "${TMP}/err"; then
+  ok "153d and the verb that explains a configuration answers with the same file and line"
+else
+  no "153d and the verb that explains a configuration answers with the same file and line" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+team_of "${fix}/ai/herdr/team.sh" config show
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ]; then
+  ok "153e and show refuses to answer from the layers that did parse"
+else
+  no "153e and show refuses to answer from the layers that did parse" \
+    "exit ${code}: $(head -2 "${TMP}/out" | tr '\n' ' ')"
+fi
+team_of "${fix}/ai/herdr/team.sh" -h
+if [ "${code}" -eq 0 ] && grep -qF 'team.sh config [show' "${TMP}/out"; then
+  ok "153f while the usage still prints — the one text that survives a broken file"
+else
+  no "153f while the usage still prints — the one text that survives a broken file" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+HERDR_TEAM_CONFIG="${DOTFILES}/ai/herdr/team.toml" \
+  team_of "${fix}/ai/herdr/team.sh" plan lint "${FIXTURES}/plan-ok.md"
+if [ "${code}" -eq 0 ] && grep -q 'plan-ok.md: ok' "${TMP}/out"; then
+  ok "153g and HERDR_TEAM_CONFIG replaces the broken layer, which is the way out"
+else
+  no "153g and HERDR_TEAM_CONFIG replaces the broken layer, which is the way out" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 154. The verb against the shipped pair of files. `lint` is the one verb here
+#      that can refuse the configuration this machine is actually running, and
+#      `config: ok` is the line a caller greps for; `get` is how another task
+#      reads one knob, and a key no layer wrote down is a refusal rather than an
+#      empty line, because the caller that read an empty line goes on with "".
+team_of "${TEAM}" config lint
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "config: ok" ]; then
+  ok "154 config lint accepts the shipped files"
+else
+  no "154 config lint accepts the shipped files" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+team_of "${TEAM}" config show
+if [ "${code}" -eq 0 ] && grep -qx 'fallback.ccd.to = cc' "${TMP}/out"; then
+  ok "154b and show prints the resolved keys, the fallback chain among them"
+else
+  no "154b and show prints the resolved keys, the fallback chain among them" \
+    "$(grep -n 'fallback' "${TMP}/out" | tr '\n' '|')"
+fi
+team_of "${TEAM}" config get nope.nope
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+  grep -q 'config get: no nope.nope' "${TMP}/err"; then
+  ok "154c while get refuses a key no layer wrote, rather than answering nothing"
+else
+  no "154c while get refuses a key no layer wrote, rather than answering nothing" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 155. `doctor`'s contract, the half that refuses: a finding is a mismatch this
+#      reader is sure of, and a machine with one is a machine a spawn would fail
+#      on, so it exits non-zero. What this machine defines is not something a
+#      fixture gets to decide, so the case decides it instead — no HOME, no
+#      ZDOTDIR and an empty directory in front of PATH is a shell that defines
+#      no launcher, and `ccd` is defined nowhere but in ai/claude/providers.zsh.
+#      The stub herdr answers no session, so the kind question is a note: that
+#      difference is the one the exit code is being asked about.
+mkdir -p "${TMP}/cfg-home" "${TMP}/cfg-nolaunch" "${TMP}/cfg-bins"
+code=0
+env -u CC_PROVIDER -u ZDOTDIR -u CLAUDE_CODE_DEEPSEEK_API_KEY \
+  HOME="${TMP}/cfg-home" PATH="${TMP}/cfg-nolaunch:${PATH}" \
+  "${TEAM}" config doctor >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 1 ] &&
+  grep -q 'profile ccd is launched with ccd, which is not on PATH' "${TMP}/out"; then
+  ok "155 config doctor fails on a launcher no shell on this machine defines"
+else
+  no "155 config doctor fails on a launcher no shell on this machine defines" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 156. The half that does not refuse. A stub command for each launcher the
+#      shipped profiles name is a machine that has them, and the key that is not
+#      set is then a note: a spawn falls back to the Pro login, which is a
+#      substitution the guard above bounds, and not a machine that cannot start.
+#      Exit 0 is the contract — a note nobody can act on must not be the thing
+#      that stops a Run — and the note names the variable and where it falls to.
+for name in cc ccd omp; do
+  printf '#!/bin/sh\nexit 0\n' >"${TMP}/cfg-bins/${name}"
+  chmod +x "${TMP}/cfg-bins/${name}"
+done
+code=0
+env -u CC_PROVIDER -u ZDOTDIR -u CLAUDE_CODE_DEEPSEEK_API_KEY \
+  HOME="${TMP}/cfg-home" PATH="${TMP}/cfg-bins:${PATH}" \
+  "${TEAM}" config doctor >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 0 ] &&
+  grep -q "ccd's key CLAUDE_CODE_DEEPSEEK_API_KEY is not set, so a spawn falls back to cc" \
+    "${TMP}/out"; then
+  ok "156 and notes the key it does not hold, with the profile it falls to"
+else
+  no "156 and notes the key it does not hold, with the profile it falls to" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
 fi
 
 echo
