@@ -1308,8 +1308,9 @@ if plan:
         # what is wrong with it rather than left with a Run that measures out
         # to nothing. This is also the switch metrics keys off below, which is
         # why it is said out loud here rather than only felt there.
-        sys.stderr.write("report: %s does not resolve: %s\n"
-                         % (plan, parsed["findings"][0]))
+        sys.stderr.write(
+            "report: %s does not resolve: %s\n"
+            % (plan, parsed["findings"][0]))
     else:
         row_by_id = {r["task"]: r for r in parsed["rows"]}
         shape = parsed["shape"]
@@ -1465,22 +1466,25 @@ payload = {
     "shape": shape,
     "wall_seconds": wall,
     "wall_approximate": True,
-    "tasks": [{"task": r["task"], "dispatch": r["dispatch"],
-               "outcome": r["outcome"], "evidence": r["evidence"],
-               "provider": r["provider"], "dispatches": int(r["sends"]),
-               "handoff_lines": None if r["lines"] == "-" else int(r["lines"]),
-               "verify": r["verify"]} for r in table],
-    "totals": {"tasks": total, "dispatches": dispatches, "retried_tasks": retried,
-               "retry_rate": retry_rate, "verify_rated": len(rated),
-               "verify_proven": proven, "verify_pass_rate": verify_rate,
-               "over_long_handoffs": len(over_long)},
+    "tasks": [{
+        "task": r["task"], "dispatch": r["dispatch"],
+        "outcome": r["outcome"], "evidence": r["evidence"],
+        "provider": r["provider"], "dispatches": int(r["sends"]),
+        "handoff_lines": None if r["lines"] == "-" else int(r["lines"]),
+        "verify": r["verify"]} for r in table],
+    "totals": {
+        "tasks": total, "dispatches": dispatches, "retried_tasks": retried,
+        "retry_rate": retry_rate, "verify_rated": len(rated),
+        "verify_proven": proven, "verify_pass_rate": verify_rate,
+        "over_long_handoffs": len(over_long)},
 }
-metrics = {"run": run, "plan": plan, "tasks": total, "dispatches": dispatches,
-           "retry_rate": retry_rate, "verify_pass_rate": verify_rate,
-           "wall_seconds": wall, "providers": sorted(providers),
-           "plan_depth": (shape or {}).get("depth"),
-           "plan_width": (shape or {}).get("width"),
-           "over_long_handoffs": len(over_long)}
+metrics = {
+    "run": run, "plan": plan, "tasks": total, "dispatches": dispatches,
+    "retry_rate": retry_rate, "verify_pass_rate": verify_rate,
+    "wall_seconds": wall, "providers": sorted(providers),
+    "plan_depth": (shape or {}).get("depth"),
+    "plan_width": (shape or {}).get("width"),
+    "over_long_handoffs": len(over_long)}
 
 if not write:
     print("--no-write: report.json and metrics.jsonl untouched")
@@ -2687,14 +2691,16 @@ def _granularity(by_id, bodies):
         files = [f for f in (by_id[tid].get("files") or []) if isinstance(f, str) and f]
         dirs = [f for f in files if f.endswith("/")]
         if dirs:
-            out.append("%s names %s, a directory — no verify can localize a "
-                       "failure inside one, so a retry re-does all of it"
-                       % (tid, dirs[0]))
+            out.append(
+                "%s names %s, a directory — no verify can localize a "
+                "failure inside one, so a retry re-does all of it"
+                % (tid, dirs[0]))
         elif len(files) > FAT_FILES:
-            out.append("%s names %d paths, over the %d a verify can localize a "
-                       "failure in — a retry would re-do all of them (%d is a "
-                       "starting guess, not a measurement)"
-                       % (tid, len(files), FAT_FILES, FAT_FILES))
+            out.append(
+                "%s names %d paths, over the %d a verify can localize a "
+                "failure in — a retry would re-do all of them (%d is a "
+                "starting guess, not a measurement)"
+                % (tid, len(files), FAT_FILES, FAT_FILES))
         lines = len([l for l in body.splitlines() if l.strip()])
         if len(files) != 1 or lines >= THIN_LINES:
             continue
@@ -2704,10 +2710,11 @@ def _granularity(by_id, bodies):
         if twin and frozenset((tid, twin)) not in pairs:
             pairs.add(frozenset((tid, twin)))
             sized = "%d non-blank line%s" % (lines, "" if lines == 1 else "s")
-            out.append("%s is %s and shares %s with %s, which it is chained "
-                       "to — two Dispatches doing one task's work; merge them "
-                       "(%d non-blank lines is a starting guess, not a "
-                       "measurement)" % (tid, sized, files[0], twin, THIN_LINES))
+            out.append(
+                "%s is %s and shares %s with %s, which it is chained "
+                "to — two Dispatches doing one task's work; merge them "
+                "(%d non-blank lines is a starting guess, not a "
+                "measurement)" % (tid, sized, files[0], twin, THIN_LINES))
     return out
 
 

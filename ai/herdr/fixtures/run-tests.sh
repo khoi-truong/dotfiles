@@ -3063,7 +3063,7 @@ if [ "$(pane_field exec-b1 provider)" = cc ] && [ "$(pane_field exec-b1 run)" = 
   ok "125c the pane was recorded with its provider and the Run that drew it"
 else
   no "125c the pane was recorded with its provider and the Run that drew it" \
-    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null | tr '\t' ':')"
+    "record: $(tr '\t' ':' < "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
 fi
 
 # 126. The record's other end. It is written where the pane is made, because the
@@ -3078,7 +3078,7 @@ if [ "$(pane_field exec-b1 worktree)" = "${TMP}/loop-wt/feat/cap-b" ] &&
   ok "126 the record carries the worktree the pane was opened on, and a stamp"
 else
   no "126 the record carries the worktree the pane was opened on, and a stamp" \
-    "record: $(cat "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null | tr '\t' ':')"
+    "record: $(tr '\t' ':' < "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
 fi
 loop_cmd 0 "126b settle retain keeps the record" settle exec-b1 retain
 if [ -f "${HERDR_TEAM_ROOT}/state/panes/exec-b1" ]; then
