@@ -12,13 +12,19 @@
 # comments are skipped for the same reason: a comment explaining one of these
 # rules has to be able to name a prefix.
 #
-# The file list comes from `shell_files` below. A `*.sh`/`*.zsh` glob was not
-# enough: it walked past zsh/zshrc, zsh/zshenv and the extensionless hooks in
-# git/template/, and zsh/zshrc is read on every shell start — the one place a
-# hardcoded prefix would hurt most.
+# The file list comes from `shell_files` below: the shell scripts
+# scripts/ci/list-shell-scripts.sh finds in the index, every zsh file, and the
+# same test applied to untracked files that are not gitignored. A `*.sh`/`*.zsh`
+# glob was not enough — it walked past zsh/zshrc, zsh/zshenv and the
+# extensionless hooks in git/template/, and zsh/zshrc is read on every shell
+# start, the one place a hardcoded prefix would hurt most.
 #
-# Files are read from the working tree, so an edit that is not committed yet is
-# still checked. CI runs on a clean checkout, where the two are the same.
+# Untracked files are included so a violation is caught while it is still one
+# edit from being fixed. CI runs on a clean checkout, where the working tree and
+# the index agree, so this is stricter than CI and never looser.
+#
+# The credential rule below is the one exception to "read the working tree": it
+# asks whether a secrets file is tracked, which an untracked one is not.
 #
 # Run by .github/workflows/lint.yml and scripts/ci/lint-local.sh; both files
 # name the other, so a change here lands in both.
@@ -61,17 +67,36 @@ all_files() {
   git ls-files -z --cached --others --exclude-standard
 }
 
-# Every shell file the Homebrew-prefix rule is about, taken from the same source
-# CI's shellcheck step reads — scripts/ci/list-shell-scripts.sh finds every
-# tracked `*.sh` and every tracked extensionless file whose shebang names bash
-# or sh.
-# That script leaves zsh to `zsh -n`, so the zsh files are named here — those
-# two extensionless ones included, since they are what a shell reads. `sort -u`
-# so a path cannot be listed twice and reported twice.
+# The test scripts/ci/list-shell-scripts.sh applies to a tracked path, applied
+# to one that is not tracked yet: `*.sh`, `*.zsh`, either extensionless zsh
+# file, or a file with no extension whose shebang names bash or sh.
+# It is written out a second time because that script reads the index, which
+# cannot see a file that has not been staged — and the file that has not been
+# staged is exactly the one this copy is here for. The two name each other in
+# their headers so a change to either has somewhere to land.
+is_shell_script() {
+  case "$1" in
+    *.sh | *.zsh | zsh/zshrc | zsh/zshenv) return 0 ;;
+    *.*) return 1 ;;
+  esac
+  head -n 1 "$1" 2>/dev/null | grep -qE '^#!.*\b(bash|sh)\b'
+}
+
+# Every shell file the Homebrew-prefix rule is about: the same source the CI
+# lint job's shellcheck pass reads, every zsh file, and the same test applied
+# to untracked files. That script leaves zsh to `zsh -n`, so the zsh files are
+# named here — those two extensionless ones included, since they are what a
+# shell reads. `sort -u` so a path cannot be listed twice and reported twice.
 shell_files() {
   {
     scripts/ci/list-shell-scripts.sh
     git ls-files '*.zsh' zsh/zshrc zsh/zshenv
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      if is_shell_script "$path"; then
+        printf '%s\n' "$path"
+      fi
+    done < <(git ls-files --others --exclude-standard)
   } | sort -u
 }
 

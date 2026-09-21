@@ -17,10 +17,12 @@
 # check, and a local run that is green while CI is red is worse than either.
 #
 # Where it differs from CI it is stricter, never looser: editorconfig-checker
-# also sees untracked files, and the two rule scripts read the working tree
-# rather than the last commit, so an edit you have not committed is checked
-# here and is not in a CI run of a commit that predates it. Ignored paths
-# (.omc/, .herdr/) are skipped exactly as a clean checkout skips them.
+# also sees untracked files, and the rule scripts read the working tree rather
+# than the last commit — check-rules.sh over tracked files plus untracked ones
+# that are not gitignored (its credential rule is index-only by design), and
+# check-brewfile.sh over the file on disk — so an edit you have not committed is
+# checked here and is not in a CI run of a commit that predates it. Ignored
+# paths (.omc/, .herdr/) are skipped exactly as a clean checkout skips them.
 #
 # Every pin below is the one lint.yml uses, and this file's steps mirror that
 # file's steps. Bump them together — the two files are the only places these

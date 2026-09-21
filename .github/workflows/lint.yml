@@ -146,15 +146,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # "type name" per entry, quotes removed, in a stable order. The same
-          # two parse rules as scripts/ci/check-brewfile.sh — an entry may be
-          # indented, and a name may be quoted either way — so the two agree on
-          # what an entry is. Validating the line is that script's job, and it
-          # runs earlier in this job, so a malformed one never reaches here.
+          # "type name" per entry, quotes removed and any parens dropped, in a
+          # stable order. The same entry types, the same optional `brew("name")`
+          # parens and the same two quote styles as
+          # scripts/ci/check-brewfile.sh, so the two agree on what an entry is.
+          # Validating the line is that script's job, and it runs earlier in
+          # this job, so a malformed one never reaches here.
           pairs() {
+            local entry_types='tap|brew|cask|mas|vscode|whalebrew|go|cargo|uv'
             sed -nE \
-              -e "s/^[[:space:]]*(tap|brew|cask|mas|vscode|whalebrew)[[:space:]]+\"([^\"]*)\".*/\1 \2/p" \
-              -e "s/^[[:space:]]*(tap|brew|cask|mas|vscode|whalebrew)[[:space:]]+'([^']*)'.*/\1 \2/p" \
+              -e "s/^[[:space:]]*(${entry_types})[[:space:]]*[(]?\"([^\"]+)\"[)]?.*/\1 \2/p" \
+              -e "s/^[[:space:]]*(${entry_types})[[:space:]]*[(]?'([^']+)'[)]?.*/\1 \2/p" \
               | sort -u
           }
 
