@@ -9,10 +9,15 @@
 # for that reason. Bump them together.
 
 [tool.ruff]
-# The interpreter `ubuntu-24.04` ships, which is what CI runs. Stated rather
-# than sniffed off the developer's own python3, so a rule that only holds on a
-# newer one cannot pass here and fail on the runner.
-target-version = "py312"
+# The interpreter these modules are run by, which is not the one CI lints them
+# on: `team.sh` calls whatever `python3` is on PATH, and on macOS that is
+# `/usr/bin/python3` — 3.9. Stated rather than sniffed off the developer's own
+# python3, so a rule cannot hold on the machine that wrote the code and fail on
+# the machine that runs it. `lint.yml`'s `python` job and
+# `scripts/ci/lint-local.sh` both import the package under 3.9 for the half of
+# this ruff cannot see; mypy@2.3.1 has no 3.9 mode, so `python_version` below
+# stays at what CI can type-check.
+target-version = "py39"
 # Vendored Xcode templates and the plan fixtures are data, not source.
 extend-exclude = ["plugins", "tests/fixtures"]
 

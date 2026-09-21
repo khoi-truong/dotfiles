@@ -57,15 +57,15 @@ DOTFILES="${DOTFILES:-$(cd "$(dirname "${_self}")/../.." && pwd)}"
 . "${DOTFILES}/lib/common.sh"
 require_macos
 
-# The Python the `python3 -` blocks below import: `lib/herdr_team/`, a module
-# per reader that more than one verb needs. Resolved from `_self` the way
-# DOTFILES is, so a team.sh reached through a shim finds the package beside the
-# file it is running rather than beside the shim.
+# The Python every verb below runs: `lib/herdr_team/`, a module per subcommand
+# and a module per reader that more than one subcommand needs. Resolved from
+# `_self` the way DOTFILES is, so a team.sh reached through a shim finds the
+# package beside the file it is running rather than beside the shim.
 HERDR_DIR="$(cd "$(dirname "${_self}")" && pwd)"
 
 # `python3` with that package importable. PYTHONPATH is set on the command
 # rather than exported: the panes `spawn` starts are not this script's children,
-# and a path only its own `python3 -` blocks have a use for has no business in
+# and a path only its own `python3` calls have a use for has no business in
 # their environment. A caller's own PYTHONPATH is kept, after ours.
 herdr_py() {
   PYTHONPATH="${HERDR_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 "$@"
@@ -445,31 +445,7 @@ esac'
 # caller refuses to fall back on unknown.
 pro_window_used() {
   [ -r "${PRO_QUOTA_CACHE}" ] || return 0
-  python3 - "${PRO_QUOTA_CACHE}" "${PRO_QUOTA_MAX_AGE}" <<'PY' 2>/dev/null || true
-import json, sys, time
-
-try:
-    path, max_age = sys.argv[1], int(sys.argv[2])
-except ValueError:
-    # A limit that is not a number is not a limit. `spawn` gates on this before
-    # it gets here; answering "unknown" is the same refusal from the other side,
-    # and the only one this reader can make on its own.
-    raise SystemExit(0)
-try:
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    five = data["rate_limits"]["five_hour"]
-    used = float(five["used_percentage"])
-    reset = float(five["resets_at"])
-    cached = float(data["cached_at"])
-except (OSError, ValueError, KeyError, TypeError):
-    raise SystemExit(0)
-now = time.time()
-age = now - cached
-if reset <= now or age < 0 or age > max_age:
-    raise SystemExit(0)
-print(int(used))
-PY
+  herdr_py -m herdr_team.proquota "${PRO_QUOTA_CACHE}" "${PRO_QUOTA_MAX_AGE}" 2>/dev/null || true
 }
 
 # bad_knob <name> <value> — `NAME=value` when the value is not a whole number,
@@ -810,61 +786,7 @@ cmd_status() {
   # are one Run's, because a handoff is what one Run's Dispatch wrote.
   run="$(current_run)" || run=""
   if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
-  python3 - "$handoffs" "$run" "$agents_json" "$(panes_dir)" <<'PY'
-import glob, json, os, re, sys
-handoffs, run, panes = sys.argv[1], sys.argv[2], sys.argv[4]
-
-
-def provider_of(name):
-    """The provider `spawn` recorded for that pane, or `unknown`.
-
-    Recorded rather than inferred: a provider is not in the agent's name (an
-    `exec-` name is a Run and an index) and not readable off its screen, and a
-    table that guessed would be most wrong about exactly the panes a reader is
-    about to count. A pane with no record — hand-started, or spawning while
-    this file is being read — is `unknown`, which is the same bucket the
-    provider ceiling counts it in.
-
-    A pane that fell back shows both providers, `ccd→cc`, because either alone
-    is a half-truth: `cc` reads as a decision somebody made, and `ccd` as the
-    provider the task asked for and did not get.
-    """
-    try:
-        with open(os.path.join(panes, name), encoding="utf-8") as fh:
-            fields = fh.readline().rstrip("\n").split("\t")
-        provider = fields[1] or "unknown"
-        fell_back = fields[5] if len(fields) > 5 else ""
-        return "%s→%s" % (fell_back, provider) if fell_back else provider
-    except (OSError, IndexError):
-        return "unknown"
-
-
-d = json.loads(sys.argv[3])
-agents = d["result"]["agents"]
-if not agents:
-    print("no agents")
-else:
-    w = max(len(a.get("name") or a["pane_id"]) for a in agents)
-    for a in sorted(agents, key=lambda a: a["pane_id"]):
-        name = a.get("name") or a["pane_id"]
-        # An executor's name says which Run it works: `exec-<run-suffix>-N`, the
-        # suffix being the last field of `R-<date>-<hhmmss>`, so a table holding
-        # three orchestrators' executors reads as three groups instead of a
-        # flat run of `exec-1`. Six digits or nothing: a pane named any other
-        # way — another role, or the older hand-typed `exec-1` — has no Run in
-        # its name, and a guessed one would be worse than the dash.
-        m = re.match(r"^exec-(\d{6})-", name)
-        print("%-*s  %-6s  %-8s  %-8s  %-8s  %s" % (
-            w, name, m.group(1) if m else "-", provider_of(name),
-            a["pane_id"], a.get("agent_status", "?"), a.get("cwd", "")))
-if not run:
-    print("\nno Run started — team.sh run new")
-else:
-    pending = sorted(glob.glob(os.path.join(handoffs, "*.md")))
-    print("\n%d handoff(s) in %s" % (len(pending), handoffs))
-    for p in pending[-10:]:
-        print("  " + os.path.basename(p))
-PY
+  herdr_py -m herdr_team.status "$handoffs" "$run" "$agents_json" "$(panes_dir)"
 }
 
 # --- collect ---------------------------------------------------------------
@@ -872,9 +794,9 @@ PY
 # pane is not the record of what it did.
 
 # The reader itself lives in `lib/herdr_team/handoff.py`, imported by the
-# `python3 -` blocks below that need it: one module is the same single reader
-# with a name, so `collect`, `collect --plan` and the dispatch gate cannot
-# disagree about what a handoff says.
+# modules below that need it: one module is the same single reader with a name,
+# so `collect`, `collect --plan` and the dispatch gate cannot disagree about
+# what a handoff says.
 
 cmd_collect() {
   local run="" plan=""
@@ -907,50 +829,7 @@ cmd_collect() {
   if [ -n "$run" ] || [ -n "${HERDR_TEAM_HANDOFFS:-}" ]; then
     hdir="$(handoffs_dir "$run")"
   fi
-  {
-    cat <<'PY'
-import glob, os, sys
-
-from herdr_team.handoff import artifacts, handoff_meta
-
-handoffs, runs_root, run = sys.argv[1], sys.argv[2], sys.argv[3]
-# A Run id is R-<date>-<time>: globbing that shape cannot pick up a stray
-# directory under runs/ that is not one.
-dirs = [handoffs] if handoffs else sorted(glob.glob(os.path.join(runs_root, "R-*", "handoffs")))
-rows, bad = [], []
-for path in sorted(p for d in dirs for p in glob.glob(os.path.join(d, "*.md"))):
-    # Through handoff_meta rather than a second copy of its six lines: this
-    # table and `collect --plan` reading one handoff two ways is the failure
-    # `herdr_team.handoff` exists to make impossible.
-    meta = handoff_meta(path)
-    if meta is None:
-        bad.append((os.path.basename(path), "no frontmatter")); continue
-    if run and meta.get("run") != run:
-        continue
-    missing = [k for k in ("run", "task", "dispatch", "outcome", "evidence") if k not in meta]
-    if missing:
-        bad.append((os.path.basename(path), "missing " + ",".join(missing))); continue
-    rows.append(meta)
-if not rows and not bad:
-    print("no handoffs" + (" for run %s" % run if run else "")); sys.exit(0)
-for m in rows:
-    line = "%-12s %-6s %-6s %-9s %-9s %s" % (
-        m["run"], m["task"], m["dispatch"], m["outcome"],
-        m.get("evidence", "-"), m.get("cause", "") or "")
-    # The receipt is appended rather than given a column of its own: a row for
-    # a handoff that names no artifact stays byte-for-byte what it always was,
-    # which is what lets the path be read off the same table as everything else
-    # without anything already reading it having to change.
-    arts = artifacts(m)
-    if arts:
-        line += "  artifacts: %s" % " ".join(arts)
-    print(line)
-for name, why in bad:
-    print("MALFORMED %s (%s)" % (name, why))
-# An unreadable handoff is a failed Dispatch, not a missing one.
-sys.exit(1 if bad else 0)
-PY
-  } | herdr_py - "$hdir" "${ROOT}/runs" "$run"
+  herdr_py -m herdr_team.collect "$hdir" "${ROOT}/runs" "$run"
 }
 
 # cmd_collect_plan <plan> <run> — one row per Task in the plan, not per
@@ -985,171 +864,7 @@ PY
 # says which of the two cases it is, and `wait` is how an orchestrator blocks
 # until there is a table to read.
 cmd_collect_plan() {
-  {
-    cat <<'PY'
-import glob, os, sys
-
-from herdr_team.handoff import artifacts, dispatched, handoff_meta, unproven
-from herdr_team.plan import plan_rows
-
-plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
-plan = os.path.abspath(plan)
-
-parsed = plan_rows(plan)
-if parsed["findings"]:
-    for finding in parsed["findings"]:
-        sys.stderr.write("collect: %s\n" % finding)
-    sys.exit(1)
-
-# Handoffs for this Run, indexed task -> dispatch id -> frontmatter.
-bad, seen = [], {}
-for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
-    name = os.path.basename(path)
-    meta = handoff_meta(path)
-    if meta is None:
-        bad.append((name, "no frontmatter"))
-        continue
-    if meta.get("run") != run:
-        continue
-    missing = [k for k in ("run", "task", "dispatch", "outcome", "evidence") if k not in meta]
-    if missing:
-        bad.append((name, "missing " + ",".join(missing)))
-        continue
-    seen.setdefault(meta["task"], {})[meta["dispatch"]] = meta
-
-sent = dispatched(handoffs, run)
-
-
-def settled_state(row):
-    """State from this Task's own handoffs, or None when it has none.
-
-    The highest Dispatch id wins. Without that fold a Task that failed at
-    D-01 and was retried to success at D-02 reads `failed` forever, and an
-    orchestrator loop can never terminate.
-    """
-    tid = row["task"]
-    hs = seen.get(tid)
-    last_sent = sent.get(tid, {}).get("dispatch")
-    if not hs:
-        return ("running", last_sent, "dispatched, no handoff yet") if last_sent else None
-    last = max(hs)
-    if last_sent and last_sent > last:
-        return "running", last_sent, "dispatched, no handoff yet"
-    m = hs[last]
-    detail = "%s/%s" % (m["outcome"], m.get("evidence", "-"))
-    if m["outcome"] == "succeeded":
-        # Verified is the only evidence that settles a Task; a claim is work
-        # to dispatch a reviewer at, not a result.
-        if m.get("evidence") != "verified":
-            return "review", last, detail
-        why = unproven(m, row.get("verify") or "")
-        if why:
-            # Not `done` — the row's own verify is not in the handoff — but not
-            # a failure either. `review` is what sends a reviewer at it, and a
-            # dependent stays `blocked` on it rather than building on a claim.
-            return "review", last, "%s %s" % (why, detail)
-        return "done", last, detail
-    # An agent that reports `blocked` needs a human exactly as a failure does.
-    # The `blocked` state name is already spoken for by the dependency sense.
-    cause = m.get("cause") or ""
-    if cause and cause != "null":
-        detail += " (%s)" % cause
-    return "failed", last, detail
-
-
-def receipt(tid):
-    """The Task's newest handoff's `artifacts:`, or [] while it has none.
-
-    The newest Dispatch id, the same fold `settled_state` reads: a retry that
-    names a different receipt is the one that counts. A Task with no handoff
-    yet has written nothing, so there is nothing to name.
-    """
-    hs = seen.get(tid)
-    if not hs:
-        return []
-    return artifacts(hs[max(hs)])
-
-
-states = {}
-for row in parsed["rows"]:
-    states[row["task"]] = settled_state(row)
-
-
-def outstanding(tid):
-    """True when this Task still has a Dispatch out with an agent.
-
-    The fold `wait` blocks on and `running` already means here: the journal
-    sent it, no handoff has landed. A Task the plan does not list counts as
-    outstanding too — the journal is the Run's record, and a Dispatch in it is
-    out whether or not a row mentions it.
-    """
-    if tid not in states:
-        return True
-    known = states[tid]
-    return bool(known) and known[0] == "running"
-
-
-def releasable(tid, agent):
-    """`releasable <agent>` for a done Task whose agent owes nothing else.
-
-    Reporting only: `collect` names the agent and settles nothing. Settlement
-    stays an explicit `settle` call, because it is a decision with three
-    answers and picking one silently is how a worktree someone wanted to keep
-    gets destroyed.
-
-    An agent still needed elsewhere is not named. Release destroys a worktree,
-    so the marker has to mean done with the Run rather than done with this
-    Task — an agent holding a second outstanding Task is still working away on
-    it, and settling the pane it is working in would throw that work away.
-    """
-    if not agent:
-        # A journal line written before the agent column existed: no name to
-        # settle, so nothing to name.
-        return None
-    for other in sent:
-        if other != tid and sent[other].get("agent") == agent and outstanding(other):
-            return None
-    return "releasable %s" % agent
-
-
-out = []
-for row in parsed["rows"]:
-    tid = row["task"]
-    known = states[tid]
-    if known:
-        state, dispatch, detail = known
-        if state == "done":
-            mark = releasable(tid, sent.get(tid, {}).get("agent"))
-            if mark:
-                detail = "%s %s" % (mark, detail)
-        out.append((tid, state, dispatch, detail, receipt(tid)))
-        continue
-    blocks = row.get("blocks") or []
-    unmet = [b for b in blocks if not states.get(b) or states[b][0] != "done"]
-    if unmet:
-        out.append((tid, "blocked", None, "blocked on %s" % " ".join(unmet), []))
-    else:
-        out.append((tid, "ready", None, "-", []))
-
-for tid, state, dispatch, detail, arts in out:
-    line = "%-6s %-8s %-6s %s" % (tid, state, dispatch or "-", detail)
-    # Appended, not its own column, for the reason `collect` gives: a Task with
-    # no artifact to name reads exactly as it did before this existed.
-    if arts:
-        line += "  artifacts: %s" % " ".join(arts)
-    print(line)
-for name, why in bad:
-    print("MALFORMED %s (%s)" % (name, why))
-
-if bad:
-    sys.exit(1)
-if any(s in ("ready", "review") for _, s, _, _, _ in out):
-    sys.exit(0)
-if any(s == "failed" for _, s, _, _, _ in out):
-    sys.exit(2)
-sys.exit(3)
-PY
-  } | herdr_py - "$1" "$2" "$(handoffs_dir "$2")"
+  herdr_py -m herdr_team.collect_plan "$1" "$2" "$(handoffs_dir "$2")"
 }
 
 # --- report ----------------------------------------------------------------
@@ -1208,334 +923,7 @@ cmd_report() {
   [ -d "${ROOT}/runs/${run}" ] ||
     die "report: no Run ${run} under ${ROOT}/runs — team.sh run list"
 
-  {
-    cat <<'PY'
-import glob, json, os, sys
-
-from herdr_team.handoff import handoff_meta, journal_lines, unproven
-from herdr_team.plan import plan_rows
-
-root, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
-write = sys.argv[4] == "1"
-handoff_max = int(sys.argv[5])
-panes = sys.argv[6]
-run_dir = os.path.join(root, "runs", run)
-
-
-def recorded_field(name, index):
-    """Field `index` of the record `spawn` wrote for that pane, or empty.
-
-    Empty rather than a placeholder, because the callers substitute: a
-    provider falls back to the plan's own row, and a pane that never fell back
-    has nothing to say about where it came from. Out of range is empty too,
-    which is how a five-field record from an older Run reads — the field
-    simply was not written then.
-    """
-    if not name:
-        return ""
-    try:
-        with open(os.path.join(panes, name), encoding="utf-8") as fh:
-            fields = fh.readline().rstrip("\n").split("\t")
-        return fields[index] if len(fields) > index else ""
-    except OSError:
-        return ""
-
-
-def bound_provider(task, dispatch):
-    """(provider, fell back from) that Dispatch was sent on, or None.
-
-    From the Run's own `.providers`, not from the pane record, and preferred
-    over it: a record is what a *live* pane holds, and `settle … release` and
-    `teardown` both delete it — so a fallback read from there is a fallback
-    that vanishes exactly when the pane it explains does, and the report bills
-    a Run that ran a substitution as if it had run `ccd`. `dispatch` writes it
-    down at the moment the Task is bound to the pane, which is the last moment
-    the record is certainly there, so a Run with either one tells the same
-    story about itself a month later.
-
-    None — not ("", "") — for a Dispatch with no note, which is every Dispatch
-    of a Run that predates the file: the caller falls back to the record and
-    then to the plan row, which is what it did before there was a file at all.
-    """
-    return bound.get((task, dispatch))
-
-
-bound = {}
-try:
-    prov_lines = open(os.path.join(handoffs, ".providers"),
-                      encoding="utf-8").read().splitlines()
-except OSError:
-    prov_lines = []
-for line in prov_lines:
-    parts = line.split("\t")
-    if len(parts) < 6 or parts[0] != run:
-        continue
-    bound[(parts[1], parts[2])] = (parts[4], parts[5])
-
-# --- the plan, when this Run has one ---------------------------------------
-# The path `run new --plan` wrote down, not the plan this shell happens to be
-# standing next to: a report is about that Run, and a Run knows its own plan
-# even from a tab that has never seen the file.
-plan = None
-try:
-    plan = open(os.path.join(run_dir, "plan"), encoding="utf-8").read().strip() or None
-except OSError:
-    plan = None
-
-row_by_id, shape = {}, None
-if plan:
-    parsed = plan_rows(plan)
-    if parsed["findings"]:
-        # Not a failure: the Run happened, and its handoffs are worth reading
-        # either way. But a plan is why the Run exists, so a reader is told
-        # what is wrong with it rather than left with a Run that measures out
-        # to nothing. This is also the switch metrics keys off below, which is
-        # why it is said out loud here rather than only felt there.
-        sys.stderr.write(
-            "report: %s does not resolve: %s\n"
-            % (plan, parsed["findings"][0]))
-    else:
-        row_by_id = {r["task"]: r for r in parsed["rows"]}
-        shape = parsed["shape"]
-
-# --- what the Run left behind ----------------------------------------------
-# Dispatch counts come off the journal, which is the only thing that tells one
-# attempt from two; outcomes come from the highest-id handoff, the same fold
-# `collect --plan` reads a Task through.
-sends, sent_max, sent_agent = {}, {}, {}
-for task, dispatch, agent in journal_lines(handoffs, run):
-    sends[task] = sends.get(task, 0) + 1
-    if dispatch > sent_max.get(task, ""):
-        sent_max[task] = dispatch
-        # The pane the winning Dispatch went to, which is the pane whose
-        # record the provider is read off below. The losing attempt's pane is
-        # not this Task's answer, and a retry that moved to another provider
-        # should report the one that finished the work.
-        sent_agent[task] = agent or ""
-
-by_task, lengths, newest, over_long = {}, {}, 0, []
-for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
-    meta = handoff_meta(path)
-    if meta is None or meta.get("run") != run:
-        continue
-    tid, did = meta.get("task"), meta.get("dispatch")
-    if not tid or not did:
-        continue
-    by_task.setdefault(tid, {})[did] = meta
-    # Every handoff the Run wrote, not only the winning ones: a 200-line
-    # handoff was 200 lines somebody read, and the retry that replaced it did
-    # not make it shorter. This is also the only place the cap protocol.md
-    # states is ever looked at, and it is a count here rather than a refusal —
-    # by the time anyone could object, the file is written and is the only
-    # record of what the agent did.
-    n = len(open(path, encoding="utf-8").read().splitlines())
-    lengths[(tid, did)] = n
-    newest = max(newest, os.path.getmtime(path))
-    if n > handoff_max:
-        over_long.append("%s/%s" % (tid, did))
-
-# Rows are the Run's Tasks, not the plan's: a Task the plan never got to has no
-# handoff and is exactly what a reader wants to see, and a Dispatch the plan has
-# no row for is an anomaly a plan-only table would hide.
-#
-# The columns, in the order they print. One spelling of them, so the table, the
-# JSON beside it and the totals below cannot come to disagree about which field
-# is which — which is the one thing about a report anybody can check.
-head = ("task", "dispatch", "outcome", "evidence", "provider", "sends", "lines",
-        "verify")
-table, dispatches, retried, proven = [], 0, 0, 0
-providers, fallbacks = set(), []
-for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
-    row = row_by_id.get(tid) or {}
-    hs = by_task.get(tid, {})
-    # The journal is the record of Dispatches; a handoff with no line under it
-    # arrived some other way (moved by hand, or written before the journal
-    # existed), and counting the files is the closest honest answer for it.
-    count = sends.get(tid, 0) or len(hs)
-    if hs:
-        # The highest Dispatch id wins, the same fold `collect --plan` makes: a
-        # Task that failed at D-01 and succeeded at D-02 is done, not failed.
-        winner = max(hs)
-        meta = hs[winner]
-        outcome = meta.get("outcome") or "-"
-        evidence = meta.get("evidence") or "-"
-        lines = str(lengths.get((tid, winner), 0))
-        # Proved through the same function `collect --plan` reads `done`
-        # through: two tables disagreeing about one handoff would be worse than
-        # either alone.
-        why = unproven(meta, row.get("verify") or "")
-        verify = why or ("ok" if row.get("verify") else "-")
-    elif count:
-        # Journalled and unanswered: the Dispatch is still out, or the Run was
-        # abandoned with it out. Either way there is no outcome yet, and
-        # `running` is the word `collect --plan` already uses for exactly this.
-        winner = sent_max.get(tid, "-")
-        outcome, evidence, lines, verify = "running", "-", "-", "-"
-    else:
-        winner, outcome, evidence, lines, verify = "-", "-", "-", "-", "-"
-    # The provider the winning Dispatch was sent on, and the plan's own row only
-    # when nothing wrote one down — a Run from before `.providers` or before
-    # records existed, or a pane nobody here started. It cannot be inferred: the
-    # journal has no provider in it, an agent name is `exec-<run>-N`, and
-    # reading the pane is not passive (herdr-adapter.md). The two sources
-    # disagreeing is itself worth seeing: the note is what was launched, the row
-    # is what was asked for, and a Run that quietly ran on the wrong credential
-    # is what a report is for.
-    note = bound_provider(tid, winner)
-    if note is not None:
-        provider = note[0] or row.get("provider") or "-"
-        fell_back = note[1]
-    else:
-        provider = recorded_field(sent_agent.get(tid, ""), 1) or row.get("provider") or "-"
-        fell_back = recorded_field(sent_agent.get(tid, ""), 5)
-    if provider != "-":
-        providers.add(provider)
-    # The provider that pane fell back from, when `spawn` had to substitute one.
-    # Its own line below rather than a wider provider column: the column is on
-    # one line of a table whose readers match a row by shape, and a fallback is
-    # a fact about the Run worth reading in a sentence, not a fifth glyph in a
-    # cell. `cc` alone would report a substitution as a choice.
-    if fell_back:
-        fallbacks.append((tid, fell_back, provider))
-    if verify == "ok":
-        proven += 1
-    dispatches += count
-    if count > 1:
-        retried += 1
-    table.append({"task": tid, "dispatch": winner, "outcome": outcome,
-                  "evidence": evidence, "provider": provider,
-                  "sends": str(count), "lines": lines, "verify": verify,
-                  "fallback": fell_back or None})
-
-total = len(table)
-# Rated over the Tasks whose plan row states a `verify`, not over every row: a
-# planner that answered "no command settles this" is not a pass and not a fail,
-# and folding it into the denominator would quietly move the number this series
-# exists to make comparable.
-rated = [t for t in row_by_id if (row_by_id[t].get("verify") or "").strip()]
-retry_rate = round(retried / total, 3) if total else None
-verify_rate = round(proven / len(rated), 3) if rated else None
-
-# Wall time, and the only reason it is a number at all: the journal records no
-# timestamps, so this is the newest handoff's mtime against the Run directory's
-# own. Both are approximations of a span — the directory's mtime is the Run's
-# start only until the first `report` writes `report.json` into it, and the
-# floor moves then. Every place it is printed says so, and metrics keeps the
-# first value it saw for the Run rather than a later, shorter one.
-wall = int(max(0, newest - os.path.getmtime(run_dir))) if newest else 0
-
-def plural(n, one, many=None):
-    return "%d %s" % (n, one if n == 1 else (many or one + "s"))
-
-def pct(v):
-    return "-" if v is None else "%.0f%%" % (v * 100)
-
-width = [len(c) for c in head]
-for r in table:
-    width = [max(w, len(r[c])) for w, c in zip(width, head)]
-
-def row_line(cells):
-    return "  ".join(c.ljust(w) for c, w in zip(cells, width)).rstrip()
-
-print("%s  plan %s" % (run, plan or "(none)"))
-if newest:
-    print("wall ~%ds (approximate: newest handoff mtime against the Run directory's)"
-          % wall)
-else:
-    print("wall: unknown — no handoff has landed to measure against")
-print()
-print(row_line(head))
-print("  ".join("-" * w for w in width))
-for r in table:
-    print(row_line([r[c] for c in head]))
-print()
-footer = [plural(total, "task"), plural(dispatches, "dispatch", "dispatches"),
-          "retry rate %s" % pct(retry_rate), "verify pass rate %s" % pct(verify_rate)]
-over = "%s over %d lines" % (plural(len(over_long), "handoff"), handoff_max)
-if over_long:
-    over += " (%s)" % " ".join(sorted(over_long))
-footer.append(over)
-print("  ".join(footer))
-# A substitution is the one thing about a Run that its provider column cannot
-# say, because the column is right: the work did run on `cc`. This is the line
-# that says it was not supposed to.
-if fallbacks:
-    print("fallback(s): %s" % "  ".join(
-        "%s %s→%s" % (tid, src, dst) for tid, src, dst in sorted(fallbacks)))
-
-payload = {
-    "run": run,
-    "plan": plan,
-    "shape": shape,
-    "wall_seconds": wall,
-    "wall_approximate": True,
-    "tasks": [{
-        "task": r["task"], "dispatch": r["dispatch"],
-        "outcome": r["outcome"], "evidence": r["evidence"],
-        "provider": r["provider"], "fallback": r["fallback"],
-        "dispatches": int(r["sends"]),
-        "handoff_lines": None if r["lines"] == "-" else int(r["lines"]),
-        "verify": r["verify"]} for r in table],
-    "totals": {
-        "tasks": total, "dispatches": dispatches, "retried_tasks": retried,
-        "retry_rate": retry_rate, "verify_rated": len(rated),
-        "verify_proven": proven, "verify_pass_rate": verify_rate,
-        "over_long_handoffs": len(over_long), "fallbacks": len(fallbacks)},
-}
-metrics = {
-    "run": run, "plan": plan, "tasks": total, "dispatches": dispatches,
-    "retry_rate": retry_rate, "verify_pass_rate": verify_rate,
-    "wall_seconds": wall, "providers": sorted(providers),
-    "fallbacks": len(fallbacks),
-    "plan_depth": (shape or {}).get("depth"),
-    "plan_width": (shape or {}).get("width"),
-    "over_long_handoffs": len(over_long)}
-
-if not write:
-    print("--no-write: report.json and metrics.jsonl untouched")
-    sys.exit(0)
-
-os.makedirs(run_dir, exist_ok=True)
-report_path = os.path.join(run_dir, "report.json")
-with open(report_path, "w", encoding="utf-8") as fh:
-    fh.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-print("report.json: %s" % report_path)
-
-# One Run, one line, appended and never rewritten or pruned by any verb here —
-# the point of a series is that the earlier numbers are still there. Read back
-# first so a second `report` on the same Run does not add a second row: the
-# first is the snapshot of the Run as it stood, and a series that gained a line
-# every time somebody looked at it would measure looking, not working.
-metrics_path = os.path.join(root, "metrics.jsonl")
-recorded = set()
-try:
-    with open(metrics_path, encoding="utf-8") as fh:
-        for line in fh:
-            try:
-                recorded.add(json.loads(line)["run"])
-            except (ValueError, KeyError, TypeError):
-                # A line this code cannot read costs its own row, not the
-                # series: the append below still happens.
-                continue
-except OSError:
-    pass
-
-if run in recorded:
-    print("metrics.jsonl: %s already recorded — not appended" % run)
-elif not shape:
-    # A Run whose plan does not resolve is a Run whose numbers are not
-    # comparable with the rest of the series (no depth, no width), and a smoke
-    # test against a fixture is exactly this shape. Nothing was measured, so
-    # nothing is recorded.
-    print("metrics.jsonl: no plan resolves for %s — not appended" % run)
-else:
-    # One write of one line to a file opened `a`: the same guarantee a single
-    # `printf >>` gives, without a second process holding the descriptor.
-    with open(metrics_path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(metrics, sort_keys=True) + "\n")
-    print("metrics.jsonl: appended %s" % run)
-PY
-  } | herdr_py - "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX" "$(panes_dir)"
+  herdr_py -m herdr_team.report "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX" "$(panes_dir)"
 }
 
 # --- wait ------------------------------------------------------------------
@@ -1592,29 +980,7 @@ cmd_wait() {
   # a journal is how an orchestrator stalls with work still outstanding.
   local handoffs rows
   handoffs="$(handoffs_dir "$run")"
-  rows="$(
-    {
-        cat <<'PY'
-import os, sys
-
-from herdr_team.handoff import dispatched, journal_malformed
-
-handoffs, run = sys.argv[1], sys.argv[2]
-
-bad = journal_malformed(handoffs, run)
-for line_no, text in bad:
-    sys.stderr.write("wait: journal line %d is not 3 or 4 columns: %s\n"
-                      % (line_no, text))
-if bad:
-    sys.exit(1)
-
-for task, rec in sorted(dispatched(handoffs, run).items()):
-    path = os.path.join(handoffs, "%s-%s.md" % (task, rec["dispatch"]))
-    if not os.path.exists(path):
-        print("%s\t%s\t%s" % (task, rec["dispatch"], rec["agent"] or ""))
-PY
-    } | herdr_py - "$handoffs" "$run"
-  )" || exit $?
+  rows="$(herdr_py -m herdr_team.wait "$handoffs" "$run")" || exit $?
 
   if [ -z "$rows" ]; then
     warn "wait: nothing outstanding under ${run} — collect --plan reads the table"
@@ -1865,41 +1231,7 @@ loop_next_exec() {
 # judgement. The wave prints that table and stops at 3 rather than sending a
 # second executor at a Task that already claims to be done.
 loop_routes() {
-  {
-    cat <<'PY'
-import sys
-
-from herdr_team.plan import plan_rows
-
-plan, table = sys.argv[1], sys.argv[2]
-
-parsed = plan_rows(plan)
-if parsed["findings"]:
-    for finding in parsed["findings"]:
-        sys.stderr.write("loop: %s\n" % finding)
-    sys.exit(1)
-
-rows = {r["task"]: r for r in parsed["rows"]}
-for line in table.splitlines():
-    parts = line.split()
-    if len(parts) < 2 or parts[1] != "ready":
-        continue
-    row = rows.get(parts[0]) or {}
-    # `-` rather than an empty field, because the wave reads this line with
-    # `IFS=$'\t' read` and a tab is IFS whitespace there: two in a row collapse
-    # into one delimiter, so a row with no provider but a `tier_reason` would
-    # hand the reason over as the provider and spawn the pane on `cc` with the
-    # row's own sentence as its `--tier-reason`. The placeholder is read back to
-    # empty at the one place that decides a tier.
-    provider = row.get("provider") or "-"
-    # Whitespace-collapsed: this is one tab-separated field on a line the wave
-    # splits on tabs, and a reason written as two lines in the plan would
-    # otherwise arrive as extra columns and be read as a lane or a provider.
-    reason = " ".join(str(row.get("tier_reason") or "").split())
-    lane = "rev" if provider == "cc" and (row.get("blocks") or []) else "exec"
-    print("%s\t%s\t%s\t%s" % (parts[0], lane, provider, reason))
-PY
-  } | herdr_py - "$1" "$2"
+  herdr_py -m herdr_team.loop "$1" "$2"
 }
 
 # loop_gate_text <code> — the last line of the trace, one short phrase per gate.
@@ -2359,29 +1691,7 @@ cmd_surface() {
   # No Run is an empty directory, not a guessed one: the header below says
   # `unknown` rather than reading some other Run's journal for this agent.
   if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
-  header="$(
-    {
-        cat <<'PY'
-import sys
-
-from herdr_team.handoff import dispatched
-
-handoffs, run, agent = sys.argv[1], sys.argv[2], sys.argv[3]
-rows = sorted((t, r["dispatch"])
-              for t, r in dispatched(handoffs, run).items()
-              if r["agent"] == agent)
-print("Run: %s" % (run or "unknown"))
-for task, dispatch in rows:
-    print("Task: %s" % task)
-    print("Dispatch: %s" % dispatch)
-if not rows:
-    print("Task: unknown")
-    print("Dispatch: unknown")
-    sys.stderr.write("surface: no journal line under %s names %s\n"
-                      % (run or "(no Run)", agent))
-PY
-    } | herdr_py - "$handoffs" "$run" "$name"
-  )"
+  header="$(herdr_py -m herdr_team.surface "$handoffs" "$run" "$name")"
   printf 'Agent: %s\n%s\n' "$name" "$header"
 
   local screen=""
@@ -2528,35 +1838,7 @@ cmd_plan() {
     lint)
       shift
       [ -n "${1:-}" ] || die "plan: lint needs a plan file"
-      {
-            cat <<'PY'
-import os, sys
-
-from herdr_team.plan import plan_rows
-
-plan = os.path.abspath(sys.argv[1])
-parsed = plan_rows(plan)
-findings = parsed["findings"]
-for finding in findings:
-    print(finding)
-if not findings:
-    print("%s: ok" % plan)
-# The plan's own shape, last, so it is the line an eye lands on after the
-# findings. Its warnings go to stderr and change no exit code: a deep plan is
-# sometimes correct, and what this reports is economics rather than validity.
-# The measurements stay on stdout for the caller — `report` (T-02) reads a
-# plan's depth and width back out of this line rather than re-deriving them.
-shape = parsed["shape"]
-if shape:
-    for warning in shape["warnings"]:
-        sys.stderr.write("lint: %s\n" % warning)
-    print("depth %d  width %d  tasks %d"
-          % (shape["depth"], shape["width"], shape["tasks"]))
-# Every finding at once, where dispatch stops at the first: a planner fixing
-# its own output should not have to run the check seven times.
-sys.exit(1 if findings else 0)
-PY
-      } | herdr_py - "$1"
+      herdr_py -m herdr_team.lint "$1"
       ;;
     *) die "plan: expected 'lint'" ;;
   esac
@@ -2613,10 +1895,10 @@ next_dispatch() {
   die "dispatch: ${task} has 99 dispatches — that is a loop, not a retry"
 }
 
-# The reader itself lives in `lib/herdr_team/plan.py`, imported by the
-# `python3 -` blocks below that need it: one module is the same single reader
-# with a name, so `plan lint`, `dispatch --from-plan`, `collect --plan` and
-# `loop` cannot disagree about a plan.
+# The reader itself lives in `lib/herdr_team/plan.py`, imported by the modules
+# below that need it: one module is the same single reader with a name, so
+# `plan lint`, `dispatch --from-plan`, `collect --plan` and `loop` cannot
+# disagree about a plan.
 
 # plan_body <plan> <task> <run> <force> — the body for a task named in a plan's
 # `## Tasks` block. Prints it on stdout; exits 3 when a blocker is unmet.
@@ -2625,75 +1907,7 @@ next_dispatch() {
 # plan file itself. The plan lives in the main checkout, which outlives any
 # worktree, so an absolute path stays readable from every pane.
 plan_body() {
-  {
-    cat <<'PY'
-import glob, os, sys
-
-from herdr_team.handoff import handoff_meta, unproven
-from herdr_team.plan import plan_rows
-
-plan, task, run, handoffs, force = sys.argv[1:6]
-plan = os.path.abspath(plan)
-
-# A malformed plan fails whole, before any pane is spawned, so the linter and
-# the dispatcher can never disagree about whether a document is dispatchable.
-parsed = plan_rows(plan)
-if parsed["findings"]:
-    sys.exit("dispatch: %s" % parsed["findings"][0])
-
-by_id = {r["task"]: r for r in parsed["rows"]}
-row = by_id.get(task)
-if row is None:
-    sys.exit("dispatch: %s has no row for %s" % (plan, task))
-
-# Settled, for this Run only. Task ids restart every Run and handoff filenames
-# carry no Run, so the frontmatter is the only thing that scopes them. This
-# stays out of plan_rows: it is the dispatch gate, not a property of the
-# document.
-settled = set()
-for path in glob.glob(os.path.join(handoffs, "*.md")):
-    meta = handoff_meta(path)
-    if meta is None or meta.get("run") != run:
-        continue
-    # 'succeeded' at 'reported' is a claim, not a result: it does not settle.
-    if meta.get("outcome") != "succeeded" or meta.get("evidence") != "verified":
-        continue
-    # The blocker's own `verify`, out of its row: the gate and `collect --plan`
-    # ask `unproven()` the same question about the same handoff on purpose, so
-    # the two cannot reach opposite verdicts about one file. 'verified' is the
-    # agent's word for a check; this is the check itself, and a Task whose
-    # commands do not carry it is not settled here either. Stricter than this
-    # gate used to be, deliberately: `--force` is the way past it.
-    blocker = by_id.get(meta.get("task"))
-    if unproven(meta, (blocker or {}).get("verify") or ""):
-        continue
-    settled.add(meta.get("task"))
-
-unmet = [b for b in row.get("blocks", []) if b not in settled]
-if unmet:
-    if force != "1":
-        sys.stderr.write(
-            "dispatch: %s is blocked on %s (no verified handoff under run %s)\n"
-            "  retry is human-gated: pass --force to dispatch anyway\n"
-            % (task, " ".join(unmet), run))
-        sys.exit(3)
-    sys.stderr.write(
-        "dispatch: --force: %s dispatched over unmet %s\n"
-        % (task, " ".join(unmet)))
-
-verify = row.get("verify") or ""
-body = ['Read %s, section "### %s". Do that task and nothing else.' % (plan, task)]
-files = row.get("files") or []
-if files:
-    body.append("Files in scope: %s" % " ".join(files))
-if verify:
-    body.append(
-        "Your verification command is:\n\n  %s\n\n"
-        "Run it, record it in commands: with the exit code you observed, and\n"
-        "only then claim evidence: verified." % verify)
-print("\n\n".join(body))
-PY
-  } | herdr_py - "$1" "$2" "$3" "$(handoffs_dir "$3")" "$4"
+  herdr_py -m herdr_team.dispatch "$1" "$2" "$3" "$(handoffs_dir "$3")" "$4"
 }
 
 cmd_dispatch() {

@@ -2,8 +2,8 @@
 
 `plan lint`, `dispatch --from-plan`, `collect --plan` and `loop` all have to
 agree about what a plan says, and two readers that disagreed about a plan would
-be a silent unblock. This module is that one reader, so `team.sh`'s `python3 -`
-blocks import it instead of each carrying a copy of it.
+be a silent unblock. This module is that one reader, so the modules behind each
+verb import it instead of each carrying a copy of it.
 """
 
 from __future__ import annotations

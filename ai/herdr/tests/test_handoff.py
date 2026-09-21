@@ -138,6 +138,44 @@ def test_command_entries_quoted_object() -> None:
     assert command_entries(raw) == [{"cmd": VERIFY, "exit": 0}]
 
 
+# A command carrying a quote is written YAML-double-quoted, and the quote inside
+# it is written `\"`: taking the quotes off and stopping there reads a command
+# nobody ran, and the handoff reads UNVERIFIED for as long as it is kept. This
+# is the shape a verify with `grep -c "…"` in it always arrives in.
+QUOTED = 'test "$(grep -c "<<\'PY\'" ai/herdr/team.sh)" -eq 0'
+
+
+def test_command_entries_unescapes_a_double_quoted_command() -> None:
+    raw = "\n  - cmd: %s\n    exit: 0" % json.dumps(QUOTED)
+    assert command_entries(raw) == [{"cmd": QUOTED, "exit": 0}]
+
+
+def test_command_entries_unescapes_a_doubled_backslash() -> None:
+    raw = '\n  - cmd: "a \\\\ b"\n    exit: 0'
+    assert command_entries(raw) == [{"cmd": "a \\ b", "exit": 0}]
+
+
+def test_an_escaped_command_proves_the_verify_it_spells() -> None:
+    raw = "\n  - cmd: %s\n    exit: 0" % json.dumps(QUOTED)
+    assert unproven(meta_of(raw), QUOTED) is None
+
+
+def test_command_entries_unescapes_a_single_quoted_command() -> None:
+    """Single-quoted YAML has one escape, `''` for a quote."""
+    cmd = "echo 'x'"
+    raw = "\n  - cmd: '%s'\n    exit: 0" % cmd.replace("'", "''")
+    assert command_entries(raw) == [{"cmd": cmd, "exit": 0}]
+    assert unproven(meta_of(raw), cmd) is None
+
+
+def test_a_quoted_command_json_cannot_read_keeps_its_backslash() -> None:
+    """`\\s` is a YAML escape JSON has no rule for, and a grep needs it kept."""
+    cmd = "grep -c \\s+ f"
+    raw = '\n  - cmd: "%s"\n    exit: 0' % cmd
+    assert command_entries(raw) == [{"cmd": cmd, "exit": 0}]
+    assert unproven(meta_of(raw), cmd) is None
+
+
 def test_command_entries_unreadable_shapes_are_none() -> None:
     assert command_entries("not a list") is None
     assert command_entries('[{"cmd": ') is None

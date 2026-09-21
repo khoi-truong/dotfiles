@@ -260,3 +260,27 @@ jobs:
       - name: Verify the Python types are clean
         working-directory: ai/herdr
         run: uvx --with pytest==9.1.1 mypy@2.3.1 --strict
+
+      # Nothing above reads a module the way the interpreter that will run it
+      # does. `team.sh` calls whatever `python3` is on PATH, which on macOS is
+      # `/usr/bin/python3` — 3.9 — and an alias is an assignment: `State =
+      # tuple[str, str | None, str]` is evaluated at import, where `|` is a
+      # TypeError on 3.9, so every verb importing that module exits 1 without
+      # running. `from __future__ import annotations` defers annotations and
+      # nothing else. mypy@2.3.1 refuses to target below 3.10, so it cannot
+      # stand in for this either.
+      #
+      # The whole package, through `pkgutil` rather than a list of names, so a
+      # module added later is covered without a second edit. Last in the job
+      # because it is the only step that fetches an interpreter; uv caches it
+      # after the first run.
+      - name: Verify the modules import under Python 3.9
+        working-directory: ai/herdr
+        run: |
+          PYTHONPATH=lib uv run --no-project --python 3.9 python -c '
+          import pkgutil
+          import herdr_team
+
+          for name in sorted(m.name for m in pkgutil.iter_modules(herdr_team.__path__)):
+              __import__("herdr_team." + name)
+          '
