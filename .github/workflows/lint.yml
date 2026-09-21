@@ -32,6 +32,11 @@ defaults:
   run:
     shell: bash
 
+# Every tool version pinned in this file — markdownlint-cli2, actionlint,
+# zizmor and editorconfig-checker — is mirrored in scripts/ci/lint-local.sh,
+# along with the two scripts/ci/check-*.sh below. The two files are the only
+# places these are named, so bump them in the same change: a pin that
+# disagrees is a green local run that CI then fails.
 jobs:
   scripts:
     name: Lint shell and zsh scripts
@@ -44,6 +49,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # Cheapest step first: this is a grep over the checkout, so a CLAUDE.md
+      # rule violation is reported before shellcheck has read a script.
+      - name: Check for CLAUDE.md rule violations
+        run: bash scripts/ci/check-rules.sh
 
       - name: Verify shell scripts pass shellcheck
         run: |
@@ -120,6 +130,60 @@ jobs:
               with open(path, "rb") as f:
                   tomllib.load(f)
           '
+
+      - name: Check for malformed or duplicate brew/Brewfile entries
+        run: bash scripts/ci/check-brewfile.sh
+
+      # Removing a line from brew/Brewfile uninstalls nothing by itself — but
+      # `brew/setup.sh --cleanup` runs `brew bundle cleanup`, which uninstalls
+      # everything the file does not list. Say so on the PR that removes it,
+      # while the removal is still one revert away. Last in the job because it
+      # is the one step here that needs the network.
+      - name: Report brew/Brewfile entries removed by this pull request
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # "type name" per entry, quotes removed and any parens dropped, in a
+          # stable order. The same entry types, the same optional `brew("name")`
+          # parens and the same two quote styles as
+          # scripts/ci/check-brewfile.sh, so the two agree on what an entry is.
+          # Validating the line is that script's job, and it runs earlier in
+          # this job, so a malformed one never reaches here.
+          pairs() {
+            local entry_types='tap|brew|cask|mas|vscode|whalebrew|go|cargo|uv'
+            sed -nE \
+              -e "s/^[[:space:]]*(${entry_types})[[:space:]]*[(]?\"([^\"]+)\"[)]?.*/\1 \2/p" \
+              -e "s/^[[:space:]]*(${entry_types})[[:space:]]*[(]?'([^']+)'[)]?.*/\1 \2/p" \
+              | sort -u
+          }
+
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show "FETCH_HEAD:brew/Brewfile" >"$RUNNER_TEMP/Brewfile.base" 2>/dev/null; then
+            echo "No brew/Brewfile on $BASE_REF — nothing to compare against."
+            exit 0
+          fi
+
+          removed="$(comm -23 \
+            <(pairs <"$RUNNER_TEMP/Brewfile.base") \
+            <(pairs <brew/Brewfile))"
+          [ -n "$removed" ] || exit 0
+
+          # One line: a workflow command cannot carry a raw newline.
+          echo "::warning title=Brewfile entries removed::$(printf '%s' "$removed" | tr '\n' ' ')"
+          {
+            echo "### brew/Brewfile entries removed by this pull request"
+            echo
+            echo "brew bundle cleanup — which brew/setup.sh --cleanup runs —"
+            echo "uninstalls anything absent from brew/Brewfile. Confirm each of"
+            echo "these is meant to go:"
+            echo
+            echo '```'
+            printf '%s\n' "$removed"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
 
   workflows:
     name: Lint GitHub Actions workflows

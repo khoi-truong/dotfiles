@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(./setup.sh:*)",
+      "Bash(*/setup.sh:*)",
+      "Bash(bash setup.sh:*)",
+      "Bash(bash ./setup.sh:*)",
+      "Bash(bash */setup.sh:*)",
+      "Bash(bash -x setup.sh:*)",
+      "Bash(bash -x ./setup.sh:*)",
+      "Bash(bash -x */setup.sh:*)",
+      "Bash(sh setup.sh:*)",
+      "Bash(sh ./setup.sh:*)",
+      "Bash(sh */setup.sh:*)",
+      "Bash(zsh setup.sh:*)",
+      "Bash(zsh ./setup.sh:*)",
+      "Bash(zsh */setup.sh:*)",
+      "Bash(source setup.sh:*)",
+      "Bash(source ./setup.sh:*)",
+      "Bash(source */setup.sh:*)",
+      "Bash(brew bundle:*)",
+      "Bash(mise use -g:*)",
+      "Bash(mise use --global:*)",
+      "Bash(mise install:*)",
+      "Bash(defaults write:*)",
+      "Bash(sudo:*)"
+    ]
+  }
+}
