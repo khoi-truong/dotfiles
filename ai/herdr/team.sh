@@ -114,13 +114,19 @@ command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml p
 # command does — so the shell's own `DOTFILES` is still the one every path
 # below is relative to.
 #
-# The caller's own `HERDR_TEAM_EXEC_CAP` is read first, and held under a name of
-# its own. After the `eval` below this shell cannot tell a value the caller
-# exported from the one the reader emitted for `limits.exec_per_run`, and the
-# two are not the same statement: the caller's is this Run saying it can carry
-# one more executor, the file's is the machine's default for every Run. A lane's
-# bound is `lane_bound`'s to answer, and this is the reading it needs.
+# Two knobs are read first and held under names of their own, because the reader
+# emits a name already set in the environment with its own value untouched and
+# the `eval` below would leave this shell unable to tell the caller's word from
+# the file's. They are not the same statement either way:
+#
+#   `HERDR_TEAM_EXEC_CAP` — the caller's is this Run saying it can carry one more
+#   executor, where the file's is the bound written beside the role. A lane's
+#   bound is `lane_bound`'s to answer, and this is the reading it needs.
+#
+#   `HERDR_TEAM_PRO_FALLBACK_MAX` — the caller's is a decision made for this
+#   spawn, where the emitted one is the guard on the profile's own fallback.
 _ENV_EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-}"
+_ENV_PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-}"
 case "${1:-}" in
   config | -h | --help | help | "") ;;
   *)
@@ -149,14 +155,6 @@ esac
 # the root at a throwaway directory, which is the same override it always was.
 ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
 DETECT_TIMEOUT="${HERDR_TEAM_DETECT_TIMEOUT:-60}"
-EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
-
-# `EXEC_CAP` is `limits.exec_per_run`, and it is now the *last* word on the exec
-# lane rather than the only one: the caller's `HERDR_TEAM_EXEC_CAP` and then
-# `role.exec.max_per_run` are asked first (see `lane_bound`). The order is what
-# keeps `HERDR_TEAM_EXEC_CAP=3 team.sh …` behaving as it always did — a Run that
-# says it can carry another worktree outranks a default written for every Run —
-# while leaving a role free to state a bound for the lanes the knob never named.
 HANDOFF_MAX="${HERDR_TEAM_HANDOFF_MAX:-150}"
 CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
 
@@ -198,6 +196,12 @@ PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-}"
 # further the window is from full, the cheaper the mistake. Overridden in the
 # environment, it is emitted back untouched and reaches `bad_knob`, which is
 # where "70% is not a whole number" is said.
+#
+# This is the floor and not the answer for a spawn: `spawn` asks the profile it
+# resolved, which states the guard on its own fallback, so a profile guarded
+# more tightly than the one the reader picked for this name falls back less. What
+# is left here is the number for a config that guards nothing, and the `:-` for a
+# reader that emitted nothing at all.
 PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
 
 # The cache `ai/claude/statusline.sh` writes on every render of a Pro session's
@@ -616,16 +620,17 @@ lane_col() {
 #
 # The number is the role's `max_per_run`: how many panes of that lane one Run
 # may hold, stated beside the role so that a lane's bound is a line of
-# `team.toml` rather than a constant in this file. The exec lane has two more
-# names for the same number, and the order they are asked in is the point:
+# `team.toml` rather than a constant in this file. The exec lane has a second
+# name for the same number — the caller's `HERDR_TEAM_EXEC_CAP`, whose value the
+# reader has already written onto `role.exec.max_per_run` — and the column is
+# read first, so what the environment said is what the refusal prints as its
+# source:
 #
 #   1. the caller's `HERDR_TEAM_EXEC_CAP`, a Run saying it can carry another
 #      worktree. Nothing a file says outranks that, and it is why the knob works
 #      the same across a config that states a bound of its own.
 #   2. `role.exec.max_per_run`, the exec lane's line — the same column every
 #      other lane is bounded by, and four of them under `preset.all-cheap`.
-#   3. `limits.exec_per_run`, the machine's default, for a config whose exec
-#      role states no bound of its own.
 #
 # Where the number came from is printed beside it because every refusal below
 # names it: "the cap is 4" is a number nobody can act on, where "the cap is 4
@@ -638,14 +643,9 @@ lane_bound() {
   if [ -n "$cap" ]; then
     from="role.${role}.max_per_run in ai/herdr/team.toml"
   fi
-  if [ "$lane" = exec ]; then
-    if [ -n "$_ENV_EXEC_CAP" ]; then
-      cap="${_ENV_EXEC_CAP}"
-      from="HERDR_TEAM_EXEC_CAP"
-    elif [ -z "$cap" ]; then
-      cap="${EXEC_CAP}"
-      from="limits.exec_per_run in ai/herdr/team.toml"
-    fi
+  if [ "$lane" = exec ] && [ -n "$_ENV_EXEC_CAP" ]; then
+    cap="${_ENV_EXEC_CAP}"
+    from="HERDR_TEAM_EXEC_CAP"
   fi
   printf '%s\t%s\n' "$cap" "$from"
 }
@@ -858,6 +858,7 @@ cmd_spawn() {
   # that will not parse, so the `||` here is the shape of "not launchable".
   local p_launch="" p_launch_args="" p_url="" p_key=""
   local p_fallback="" p_fallback_on="" p_requires_reason="" _res=""
+  local p_model="" p_model_arg="" p_quota_max_pct="" p_guard_credential=""
   _res="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config resolve profile "$provider")" ||
     die "spawn: ${provider} is not a profile this machine can launch (the reader's refusal is above) — --provider takes a [profile.*] name from ai/herdr/team.toml."
   eval "$(printf '%s\n' "$_res" | sed 's/^/p_/')"
@@ -970,11 +971,34 @@ cmd_spawn() {
       # should be the one to spend. Unknown and over-the-line answer the same
       # way for the reason `quota-advice.sh` states — absence of data is not
       # evidence of headroom.
+      # The threshold, and whose window it is measured on: the guard on this
+      # profile's own fallback, resolved with the profile above — a line of
+      # `[fallback.<profile>]` in ai/herdr/team.toml, so a second fallback
+      # guarded more tightly than the reader's own pick is that file's answer
+      # rather than a second constant here. The caller's
+      # `HERDR_TEAM_PRO_FALLBACK_MAX` outranks it and is read as it was written,
+      # which is what lets `bad_knob` below say "70% is not a whole number"
+      # rather than a number this shell corrected for it. Where the number came
+      # from is named in the refusals, because "the cap is 70%" is not a line
+      # anyone can go and edit.
+      local fb_max="" fb_where="" fb_guard=""
+      if [ -n "$_ENV_PRO_FALLBACK_MAX" ]; then
+        fb_max="${_ENV_PRO_FALLBACK_MAX}"
+        fb_where="HERDR_TEAM_PRO_FALLBACK_MAX"
+      elif [ -n "$p_quota_max_pct" ]; then
+        fb_max="${p_quota_max_pct}"
+        fb_where="fallback.${provider}.guard.quota_max_pct in ai/herdr/team.toml"
+      else
+        fb_max="${PRO_FALLBACK_MAX}"
+        fb_where="the fallback guard in ai/herdr/team.toml"
+      fi
+      [ -z "$p_guard_credential" ] ||
+        fb_guard=", on the ${p_guard_credential} window"
       # Both limits, before either is read, and both of them: a malformed one is
       # a gate rather than a default, because a fallback decided under a
       # threshold nobody can read is the same silent Pro spend as one decided
       # from a cache nobody can read.
-      knob="$(bad_knob HERDR_TEAM_PRO_FALLBACK_MAX "$PRO_FALLBACK_MAX")"
+      knob="$(bad_knob HERDR_TEAM_PRO_FALLBACK_MAX "$fb_max")"
       [ -n "$knob" ] || knob="$(bad_knob HERDR_TEAM_PRO_QUOTA_MAX_AGE "$PRO_QUOTA_MAX_AGE")"
       if [ -n "$knob" ]; then
         gate "spawn: ${knob} is not a whole number, and a limit nobody can read is not a limit — a fallback decided under it is the silent Pro spend cost.md's checklist forbids. Fix the setting, pass --skip-provider-check to launch ${provider} anyway, or fix the key."
@@ -983,8 +1007,8 @@ cmd_spawn() {
       if [ -z "$used" ]; then
         gate "spawn: the Pro 5h window is unknown — ${PRO_QUOTA_CACHE} is missing, stale, or names a window that has already reset — and a fallback decided from a cache nobody can read is the silent Pro spend cost.md's checklist forbids. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or let a Pro session render its status line to refresh that cache."
       fi
-      if [ "$used" -ge "$PRO_FALLBACK_MAX" ]; then
-        gate "spawn: the Pro 5h window is ${used}% used, at or over the ${PRO_FALLBACK_MAX}% a fallback is allowed at (HERDR_TEAM_PRO_FALLBACK_MAX) — Pro is what a full window cannot spare, and this decision is a human's. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or wait for the window to reset."
+      if [ "$used" -ge "$fb_max" ]; then
+        gate "spawn: the Pro 5h window is ${used}% used, at or over the ${fb_max}% a fallback is allowed at (${fb_where})${fb_guard} — Pro is what a full window cannot spare, and this decision is a human's. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or wait for the window to reset."
       fi
       # The chain the profile carries, walked for the first target this machine
       # can actually launch. A `to` naming a profile that ships disabled, or one
@@ -1016,7 +1040,7 @@ cmd_spawn() {
       # that walked past its own ceiling would spend the one credential the
       # ceiling exists to protect.
       provider_ceiling "$provider"
-      warn "spawn: running on ${provider} instead — the Pro 5h window is ${used}%, under the ${PRO_FALLBACK_MAX}% a fallback is allowed at, and the pane record says it fell back (status and report read it)."
+      warn "spawn: running on ${provider} instead — the Pro 5h window is ${used}%, under the ${fb_max}% a fallback is allowed at (${fb_where})${fb_guard}, and the pane record says it fell back (status and report read it)."
     fi
   fi
 
@@ -1097,8 +1121,19 @@ cmd_spawn() {
   # harness's own binary) and its arguments, resolved together by the reader —
   # omp's `--config` among them, expanded from the `{dotfiles}` its harness
   # states so a worktree gets the worktree's own executor.yml.
+  # A profile that names a model says so on the command line, in the form its
+  # harness takes it: `model = "gpt-5-codex"` on `[profile.cdx]` and `model_arg =
+  # "-m"` on `[harness.codex]`. Both halves are the file's, so a profile that
+  # names no model launches exactly as it did — which is what `ccd` does, and
+  # what the case reading `zsh -ic 'ccd'` pins. Both halves have to be there:
+  # a harness that states no `model_arg` has no way to be told one, so a profile
+  # on it launches without the model its layer named rather than with a bare
+  # word the CLI would take for a subcommand.
   local launch="$p_launch"
   [ -z "$p_launch_args" ] || launch="${launch} ${p_launch_args}"
+  if [ -n "$p_model" ] && [ -n "$p_model_arg" ]; then
+    launch="${launch} ${p_model_arg} ${p_model}"
+  fi
 
   herdr pane run "$pane" \
     "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_ROOT=${ROOT}; zsh -ic '${launch}'" \

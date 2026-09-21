@@ -440,6 +440,27 @@ def test_a_broken_registry_keeps_the_last_good_cache(tmp_path: Path) -> None:
 
 
 @needs_shell
+def test_a_broken_registry_warns_once_rather_than_on_every_start(
+    tmp_path: Path,
+) -> None:
+    # The stamp beside the cache. Without it every start forks python3 to be told
+    # the same thing: a cost paid by every shell rather than by the edit. With
+    # it, the warning follows the file — edit the registry and the next start
+    # asks again, because a different file is a different question.
+    root = isolated(tmp_path)
+    start(root, "cc-providers")
+    registry = root / "ai/providers.toml"
+    registry.write_text("[provider.deepseek\nbroken = \n")
+    first = start(root, "cc-providers")
+    second = start(root, "cc-providers")
+    assert "keeping the last good cache" in first.stderr
+    assert second.stderr == ""
+    registry.write_text("[provider.deepseek\nstill broken = \n")
+    third = start(root, "cc-providers")
+    assert "keeping the last good cache" in third.stderr
+
+
+@needs_shell
 def test_a_shell_starts_with_no_cache_and_no_registry_at_all(tmp_path: Path) -> None:
     # Worst case, and still not fatal: no cache, and nothing to build one from.
     # The shell has no provider launchers and says so once; `cc` — the Pro login,

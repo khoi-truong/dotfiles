@@ -27,8 +27,7 @@ schema = 1
 
 # --- the limits, and where the state lives ---------------------------------
 #
-# `exec_per_run` is the discipline limit: how many executors one orchestrator
-# may hold at once. `detect_timeout_s` covers a cold start plus an `op read`.
+# `detect_timeout_s` covers a cold start plus an `op read`.
 # `handoff_max_lines` is protocol.md's "over 150 lines is a defect", counted
 # rather than enforced, because by the time anyone could object the handoff is
 # already the only record of what the agent did. `plan_max_paths` is where a
@@ -37,9 +36,12 @@ schema = 1
 # `clear_confirm_timeout_s` is how long a clear may spend proving a pane took
 # its name back: a rename that holds answers on the first read pair, so this is
 # only ever reached by a pane that lost its name.
+#
+# The discipline limit — how many executors one orchestrator may hold at once —
+# is not here. It is `role.exec.max_per_run` below, beside the profile that
+# spends it, and `HERDR_TEAM_EXEC_CAP` is the environment's word on that key.
 
 [limits]
-exec_per_run = 2
 detect_timeout_s = 60
 clear_confirm_timeout_s = 15
 handoff_max_lines = 150

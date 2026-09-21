@@ -4060,30 +4060,31 @@ cfg_checkout() {
   chmod +x "$1/ai/herdr/team.sh"
 }
 
-# 152. AC5. `limits.exec_per_run` is a number in ai/herdr/team.toml now, and the
-#      environment still wins over it: the reader emits a name it finds already
-#      set there with that environment's own value, so the `eval` above binds
-#      what it always bound. What changed is which of the two answered, and
-#      `--sources` is how a reader asks: the file for a default, the variable
-#      that did it for an override — the name rather than a bare "env", because
-#      five knobs come from the environment and "some override happened" is not
-#      an answer to which one to go and look at.
-team_of "${TEAM}" config get limits.exec_per_run
+# 152. AC5. The discipline limit is `role.exec.max_per_run` in ai/herdr/team.toml
+#      now — beside the profile that spends it rather than in `[limits]` beside
+#      the timeouts — and the environment still wins over it: the reader emits a
+#      name it finds already set there with that environment's own value, so the
+#      `eval` above binds what it always bound. What changed is which of the two
+#      answered, and `--sources` is how a reader asks: the file for a default,
+#      the variable that did it for an override — the name rather than a bare
+#      "env", because five knobs come from the environment and "some override
+#      happened" is not an answer to which one to go and look at.
+team_of "${TEAM}" config get role.exec.max_per_run
 if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "2" ]; then
-  ok "152 limits.exec_per_run still answers 2 on the shipped files"
+  ok "152 role.exec.max_per_run still answers 2 on the shipped files"
 else
-  no "152 limits.exec_per_run still answers 2 on the shipped files" \
+  no "152 role.exec.max_per_run still answers 2 on the shipped files" \
     "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
 fi
 team_of "${TEAM}" config show --sources
 if [ "${code}" -eq 0 ] &&
-  grep -qE '^limits\.exec_per_run = 2  # .*team\.toml$' "${TMP}/out"; then
+  grep -qE '^role\.exec\.max_per_run = 2  # .*team\.toml$' "${TMP}/out"; then
   ok "152b and --sources credits the file, not the reader's own default"
 else
   no "152b and --sources credits the file, not the reader's own default" \
-    "$(grep -n 'exec_per_run' "${TMP}/out" | tr '\n' '|')"
+    "$(grep -n 'max_per_run' "${TMP}/out" | tr '\n' '|')"
 fi
-HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config get limits.exec_per_run
+HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config get role.exec.max_per_run
 if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "3" ]; then
   ok "152c while HERDR_TEAM_EXEC_CAP=3 still overrides it"
 else
@@ -4092,11 +4093,11 @@ else
 fi
 HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config show --sources
 if [ "${code}" -eq 0 ] &&
-  grep -q '^limits.exec_per_run = 3  # HERDR_TEAM_EXEC_CAP$' "${TMP}/out"; then
+  grep -q '^role\.exec\.max_per_run = 3  # HERDR_TEAM_EXEC_CAP$' "${TMP}/out"; then
   ok "152d and --sources names the variable that did it"
 else
   no "152d and --sources names the variable that did it" \
-    "$(grep -n 'exec_per_run' "${TMP}/out" | tr '\n' '|')"
+    "$(grep -n 'max_per_run' "${TMP}/out" | tr '\n' '|')"
 fi
 
 # 153. AC6, fail closed. A local layer that will not parse used to be a file
@@ -4454,10 +4455,10 @@ called 1 "^pane run .*zsh -ic 'fake-agent'\$" \
   "159d launched with the fixture's own launcher, a script on PATH"
 
 # 160. The lane bound, and the number it is read from. `role.exec.max_per_run`
-#      and `limits.exec_per_run` are both 2 in the shipped files, so the pair
-#      says nothing on its own; the refusal's own words are what distinguishes
-#      them, and it names the role's line. Then the same Run, the same two
-#      panes and the same row under `preset.all-cheap` — whose only word is
+#      is 2 in the shipped files now, and the refusal is where that shows: it
+#      names the role's own line rather than a cap in `[limits]`, because the
+#      role's line is the number. Then the same Run, the same two panes and the
+#      same row under `preset.all-cheap` — whose only word is
 #      `role.exec.max_per_run = 4` — draws the pane it would not draw before.
 #      Nothing else in that preset moved, so what let the third pane through is
 #      the number on the role.

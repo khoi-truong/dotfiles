@@ -38,10 +38,13 @@ twice, paying the overhead twice for work nothing can run in parallel.
   tier: what holds it here is correctness, not budget.
 - **`omp`** — the task needs web or docs lookup. A **capability** axis, not a
   cheaper `ccd`: Claude Code's web search does not work on a non-Pro provider,
-  so research goes here regardless of price. The row states it and the route
-  table answers: `needs = "web"` matches `when = { needs = "web" }` in
-  `ai/herdr/team.toml` and lands the row on the research role, whose `profiles`
-  are `["omp"]`. It is **never a fallback for `ccd`** either, stated as
+  so research goes here regardless of price. A row asks for it by naming it, and
+  `provider = "omp"` wins over everything the route table would have said,
+  because a row's own provider always does. The route table is what answers a
+  row that leaves the provider out: `needs = "web"` matches
+  `when = { needs = "web" }` in `ai/herdr/team.toml` and lands that row on the
+  research role, whose `profiles` are `["omp"]`. It is **never a fallback for
+  `ccd`** either, stated as
   `never = ["omp"]` on `[fallback.ccd]` in the same file so that `config lint`
   catches a chain that tries it: it is a different agent spending a DeepSeek
   key of its own (`ai/omp/models.yml`), so falling back to it saves nothing on

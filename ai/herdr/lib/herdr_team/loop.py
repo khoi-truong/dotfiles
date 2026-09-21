@@ -53,14 +53,25 @@ def _route(cfg: config.Config | None, row: dict[str, Any]) -> dict[str, str]:
     (`config lint`, `doctor`) are where that failure belongs, and `team.sh` has
     already refused to start on one by the time a loop runs. The fallback is the
     answer this file gave before there was a route table.
+
+    A configuration that resolves and then refuses this row is the same answer
+    for the same reason: `route` refuses a row naming a profile no layer defines,
+    which is a plan defect rather than a broken machine, and a loop that stopped
+    on it would leave the rows behind it undispatched. `spawn` refuses the same
+    row with the file to fix, one wave later and with the reason in front of the
+    human who can act on it.
     """
+    fallback = {
+        "role": "exec",
+        "lane": "exec",
+        "profile": str(row.get("provider") or ""),
+    }
     if cfg is None:
-        return {
-            "role": "exec",
-            "lane": "exec",
-            "profile": str(row.get("provider") or ""),
-        }
-    return cfg.route(row)
+        return fallback
+    try:
+        return cfg.route(row)
+    except config.ConfigError:
+        return fallback
 
 
 def lane_for(provider: str, blocks: list[str]) -> str:

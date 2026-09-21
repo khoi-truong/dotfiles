@@ -154,8 +154,8 @@ def test_env_quotes_a_value_that_would_otherwise_expand() -> None:
 def test_a_numeric_override_that_is_not_a_number_is_a_finding() -> None:
     found = config.load(env={"HERDR_TEAM_EXEC_CAP": "two"}, dotfiles=DOTFILES).lint()
     assert found == [
-        "HERDR_TEAM_EXEC_CAP=two is not a whole number, and limits.exec_per_run "
-        "is a limit `team.sh` compares as a number"
+        "HERDR_TEAM_EXEC_CAP=two is not a whole number, and "
+        "role.exec.max_per_run is a limit `team.sh` compares as a number"
     ]
 
 
@@ -175,9 +175,9 @@ def test_an_override_reaches_the_value_a_spawn_reads() -> None:
     # a reader whose `env` emitted 9 while `get` printed 2 would be two answers
     # to one question, and `resolve` and `route` read the document.
     capped = config.load(env={"HERDR_TEAM_EXEC_CAP": "9"}, dotfiles=DOTFILES)
-    assert capped.get("limits.exec_per_run") == 9
+    assert capped.get("role.exec.max_per_run") == 9
     assert ("HERDR_TEAM_EXEC_CAP", "9") in capped.env_pairs()
-    assert capped.source("limits.exec_per_run") == "HERDR_TEAM_EXEC_CAP"
+    assert capped.source("role.exec.max_per_run") == "HERDR_TEAM_EXEC_CAP"
 
 
 def test_an_override_that_is_not_a_number_is_a_finding_and_not_a_limit() -> None:
@@ -185,10 +185,10 @@ def test_an_override_that_is_not_a_number_is_a_finding_and_not_a_limit() -> None
     # a document that took it would have `resolve` and `route` reading a limit
     # the shell refuses to compare.
     typo = config.load(env={"HERDR_TEAM_EXEC_CAP": "two"}, dotfiles=DOTFILES)
-    assert typo.get("limits.exec_per_run") == 2
+    assert typo.get("role.exec.max_per_run") == 2
     assert typo.lint() == [
-        "HERDR_TEAM_EXEC_CAP=two is not a whole number, and limits.exec_per_run "
-        "is a limit `team.sh` compares as a number"
+        "HERDR_TEAM_EXEC_CAP=two is not a whole number, and "
+        "role.exec.max_per_run is a limit `team.sh` compares as a number"
     ]
 
 
@@ -201,7 +201,7 @@ def test_the_plan_maximum_is_not_exported() -> None:
 
 def test_get_expands_a_placeholder() -> None:
     assert shipped().get("paths.root") == str(DOTFILES / ".herdr")
-    assert shipped().get("limits.exec_per_run") == 2
+    assert shipped().get("limits.handoff_max_lines") == 150
 
 
 def test_get_returns_the_default_for_a_key_no_layer_set() -> None:
@@ -211,7 +211,7 @@ def test_get_returns_the_default_for_a_key_no_layer_set() -> None:
 
 def test_show_names_the_layer_a_value_came_from() -> None:
     lines = shipped().show(sources=True)
-    assert "limits.exec_per_run = 2  # %s" % TEAM in lines
+    assert "role.exec.max_per_run = 2  # %s" % TEAM in lines
     assert "paths.root = %s/.herdr  # %s" % (DOTFILES, TEAM) in lines
 
 
@@ -225,23 +225,57 @@ def test_show_indexes_a_list_of_tables() -> None:
 
 
 def test_resolve_profile_ccd() -> None:
-    profile = shipped().profile("ccd")
-    assert profile["harness"] == "claude"
-    assert profile["credential"] == "deepseek"
-    assert profile["protocol"] == "anthropic"
-    assert profile["launch"] == "ccd"
-    assert profile["model"] == "deepseek-flash"
-    assert profile["model_arg"] == "--model"
-    assert profile["reset"] == "/clear"
-    assert profile["cost"] == "cheap"
-    assert profile["ceiling"] == "4"
-    assert profile["key"] == "env:CLAUDE_CODE_DEEPSEEK_API_KEY"
-    assert profile["url"] == "https://api.deepseek.com/anthropic"
-    assert profile["fallback"] == "cc"
-    assert profile["fallback_on"] == "key-missing"
-    assert profile["guard_credential"] == "anthropic-pro"
-    assert profile["quota_max_pct"] == "70"
-    assert profile["never"] == "omp"
+    # The whole answer, key set included: an emitted key is a promise that
+    # `team.sh` evals it, and the launch is the only thing this verb is asked
+    # for. `harness`, `credential`, `reset`, `cost`, `ceiling` and `never` are
+    # the profile *table*'s columns — `settle` reads them there, one call for
+    # every profile at once — and a copy of them here would be a second answer
+    # to keep in step with that one.
+    assert shipped().profile("ccd") == {
+        "launch": "ccd",
+        "launch_args": "",
+        # No `model` on the profile and `--model` on the harness: the harness
+        # says how a model is passed, the profile says which one, and this
+        # profile names none — the launcher's own `cc_provider` injection is
+        # what puts `deepseek-flash` in front of the CLI.
+        "model": "",
+        "model_arg": "--model",
+        "requires_reason": "false",
+        "key": "env:CLAUDE_CODE_DEEPSEEK_API_KEY",
+        "url": "https://api.deepseek.com/anthropic",
+        "fallback": "cc",
+        "fallback_on": "key-missing",
+        "guard_credential": "anthropic-pro",
+        "quota_max_pct": "70",
+    }
+
+
+def test_resolve_profile_carries_a_model_to_the_launch(tmp_path: Path) -> None:
+    # The half of the profile's answer that is not a threshold: a profile that
+    # *does* name a model has to reach the command line, or `[profile.cdx]`'s
+    # `gpt-5-codex` would be a word only this file knows. The one profile that
+    # names one ships disabled — codex until its spike passes, and its provider
+    # entry with it — so a trusted overlay turns both on for the length of this
+    # case, and the harness supplies the flag the CLI takes a model with.
+    registry = tmp_path / "providers.toml"
+    login = '[provider.openai]\nprotocol = "login"\nharnesses = ["codex"]\nceiling = 4'
+    registry.write_text(
+        (DOTFILES / "ai/providers.toml")
+        .read_text()
+        .replace("%s\nenabled = false" % login, "%s\nenabled = true" % login, 1)
+    )
+    overlay = tmp_path / "team.toml"
+    overlay.write_text(
+        "[harness.codex]\nenabled = true\n\n[profile.cdx]\nenabled = true\n"
+    )
+    profile = config.load(
+        layers=[config.Layer(TEAM, True), config.Layer(overlay, True)],
+        env={},
+        providers_path=registry,
+        dotfiles=DOTFILES,
+    ).profile("cdx")
+    assert profile["model"] == "gpt-5-codex"
+    assert profile["model_arg"] == "-m"
 
 
 def test_resolve_profile_omp_has_no_key_to_probe() -> None:
@@ -257,10 +291,14 @@ def test_resolve_profile_omp_has_no_key_to_probe() -> None:
 
 def test_resolve_profile_cc_is_premium_and_has_to_say_why() -> None:
     profile = shipped().profile("cc")
-    assert profile["cost"] == "premium"
     assert profile["requires_reason"] == "true"
-    assert profile["caps"] == "web review"
+    # The Pro login reads no key ref and is injected nothing: `cc` unsets the
+    # provider environment and runs the CLI as the user's own login, so both
+    # fields `spawn` probes on are empty, and an empty `fallback` says nothing
+    # chains off the one profile that is already the expensive end of the table.
     assert profile["key"] == ""
+    assert profile["url"] == ""
+    assert profile["fallback"] == ""
 
 
 def test_resolve_refuses_a_profile_that_ships_disabled() -> None:
@@ -398,9 +436,17 @@ def test_route_takes_a_row_with_nothing_at_all() -> None:
     assert shipped().route({}) == {"role": "exec", "lane": "exec", "profile": "ccd"}
 
 
-def test_route_fills_in_a_provider_the_config_does_not_know() -> None:
-    route = shipped().route({"provider": "cx", "verify": "pytest -q"})
-    assert route == {"role": "exec", "lane": "exec", "profile": "ccd"}
+def test_route_refuses_a_row_that_names_a_provider_the_config_does_not_know() -> None:
+    # `cdd` for `ccd` is the typo this is about, and the failure is the reason
+    # the profile is a word half the printed sentences are spelled with: filling
+    # in the default here would put the row on a profile its author never wrote,
+    # and it would look like the row the config *was* asked for. Refused with the
+    # name and where profiles live, which is what a caller has to fix; `spawn`
+    # refuses the same name for the same reason, one wave later.
+    with pytest.raises(config.ConfigError) as raised:
+        shipped().route({"provider": "cdd", "verify": "pytest -q"})
+    assert "the row names cdd" in str(raised.value)
+    assert "no layer defines a profile of that name" in str(raised.value)
 
 
 def test_route_reads_needs_as_words_or_as_a_list() -> None:
@@ -457,13 +503,13 @@ def test_requires_reason_is_read_off_the_profile_the_row_names() -> None:
 
 def test_a_later_layer_wins(tmp_path: Path) -> None:
     overlay = tmp_path / "team.toml"
-    overlay.write_text("[limits]\nexec_per_run = 6\n")
+    overlay.write_text("[limits]\ndetect_timeout_s = 30\n")
     config_with = config.load(
         layers=[config.Layer(TEAM, True), config.Layer(overlay, True)],
         env={},
         dotfiles=DOTFILES,
     )
-    assert config_with.get("limits.exec_per_run") == 6
+    assert config_with.get("limits.detect_timeout_s") == 30
     assert config_with.get("limits.handoff_max_lines") == 150
     assert config_with.lint() == []
 
@@ -556,8 +602,8 @@ def test_a_preset_still_has_to_validate() -> None:
 def test_an_untrusted_layer_may_set_limits_roles_and_routes(tmp_path: Path) -> None:
     overlay = tmp_path / "team.toml"
     overlay.write_text(
-        "[limits]\nexec_per_run = 6\n\n"
-        '[role.exec]\nprofiles = ["omp"]\n\n'
+        "[limits]\ndetect_timeout_s = 30\n\n"
+        '[role.exec]\nprofiles = ["omp"]\nmax_per_run = 6\n\n'
         '[[route]]\nrole = "research"\n'
     )
     config_with = config.load(
@@ -566,7 +612,8 @@ def test_an_untrusted_layer_may_set_limits_roles_and_routes(tmp_path: Path) -> N
         dotfiles=DOTFILES,
     )
     assert config_with.lint() == []
-    assert config_with.get("limits.exec_per_run") == 6
+    assert config_with.get("limits.detect_timeout_s") == 30
+    assert config_with.get("role.exec.max_per_run") == 6
     assert config_with.route({"needs": "web"})["role"] == "research"
 
 
@@ -619,8 +666,22 @@ def test_an_untrusted_layer_may_not_name_a_premium_profile() -> None:
     ]
 
 
+def test_an_untrusted_route_may_not_land_on_a_premium_role() -> None:
+    # The hole a reader that stopped at `route.profile` left: this route names no
+    # profile, it names a role, and the role it names launches `cc` — the same
+    # attack as the fixture above, through the other key a route has for saying
+    # where a row goes. The finding is about what the route landed on rather than
+    # what it wrote, which is why it is a `_cheap_only` finding at all.
+    assert findings("untrusted-route-role.toml", trusted=False) == [
+        "%s: route[0].role.profiles names cc, whose cost is premium — an "
+        "untrusted layer may name only cheap profiles, so it can never spend "
+        "the Pro login" % (FIXTURES / "untrusted-route-role.toml")
+    ]
+
+
 def test_the_same_file_is_fine_from_a_trusted_layer() -> None:
     assert findings("untrusted-premium.toml", trusted=True) == []
+    assert findings("untrusted-route-role.toml", trusted=True) == []
 
 
 def test_an_untrusted_layer_may_not_shrink_never() -> None:
@@ -689,7 +750,11 @@ def test_every_fixture_is_something_lint_refuses() -> None:
         "unknown-key.toml",
     ):
         assert findings(name), "%s lints clean, so it pins nothing" % name
-    for name in ("untrusted-premium.toml", "never-shrinks.toml"):
+    for name in (
+        "untrusted-premium.toml",
+        "untrusted-route-role.toml",
+        "never-shrinks.toml",
+    ):
         assert findings(name, trusted=False), name
 
 
@@ -769,6 +834,32 @@ def test_lint_reports_and_exits_non_zero(
     assert "unknown key provider_cap" in capsys.readouterr().out
 
 
+def test_a_literal_key_in_the_registry_reaches_config_lint(tmp_path: Path) -> None:
+    # The registry's own findings are part of the document's, and this is the
+    # verb that has to carry them: `config lint` is the only one that sees both
+    # files, so it is the only place a secret written into ai/providers.toml can
+    # be refused before the shell cache defines a launcher around it. A profile
+    # names its `credential` here, so the entry behind that name has already
+    # been parsed by the time a finding is raised about it — reporting one file
+    # clean while the other is not would be the reader's answer drifting from
+    # the shell's.
+    registry = tmp_path / "providers.toml"
+    registry.write_text(
+        (DOTFILES / "ai/providers.toml")
+        .read_text()
+        .replace(
+            'key = "env:CLAUDE_CODE_DEEPSEEK_API_KEY"', 'key = "sk-not-a-reference"', 1
+        )
+    )
+    found = config.load(
+        layers=[config.Layer(TEAM, True)],
+        env={},
+        providers_path=registry,
+        dotfiles=DOTFILES,
+    ).lint()
+    assert any("is not a reference" in finding for finding in found), found
+
+
 # --- the command line -------------------------------------------------------
 
 
@@ -844,7 +935,7 @@ def test_main_get_prints_one_value(
 ) -> None:
     monkeypatch.setenv(config.ENV_CONFIG, str(TEAM))
     monkeypatch.setenv("DOTFILES", str(DOTFILES))
-    assert config.main(["get", "limits.exec_per_run"]) == 0
+    assert config.main(["get", "role.exec.max_per_run"]) == 0
     assert capsys.readouterr().out == "2\n"
 
 
@@ -886,9 +977,13 @@ def test_merge_leaves_a_sibling_alone() -> None:
     assert into == {"limits": {"exec_per_run": 6, "handoff_max_lines": 150}}
 
 
-def test_leaves_are_dotted_and_in_the_order_they_are_written() -> None:
-    node = {"b": 1, "a": {"d": 2, "c": 3}}
-    assert list(config.leaves(node)) == ["b", "a.d", "a.c"]
+def test_leaves_are_dotted_and_a_list_of_tables_is_one_leaf() -> None:
+    node: dict[str, Any] = {
+        "b": 1,
+        "a": {"d": 2, "c": 3},
+        "route": [{"role": "review"}],
+    }
+    assert list(config.leaves(node)) == ["a.c", "a.d", "b", "route"]
 
 
 def test_expand_reads_a_default_still_containing_a_reference() -> None:

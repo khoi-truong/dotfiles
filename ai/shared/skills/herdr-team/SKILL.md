@@ -56,10 +56,12 @@ artifact, and settles. A long-lived planning pane's only asset is accumulated
 context, which rule 5 already says to distrust.
 
 Pool roles match by prefix, and two limits bound them — numbers in those files,
-not here. **Per Run: `role.exec.max_per_run` executors** (2 as shipped,
-falling back to `limits.exec_per_run` where a role states none, with
-`HERDR_TEAM_EXEC_CAP` over both) — the discipline limit, so one tab cannot take
-the machine, and the number a plan's width is read against. **Per provider,
+not here. **Per Run: a role's own `max_per_run`** (2 on `role.exec` and 1 on
+`role.review` as shipped, and a role that states none — `spec`, `plan`,
+`research` — is bounded by the credential's ceiling alone, which is why the
+bound sits beside the role rather than in one global knob; `HERDR_TEAM_EXEC_CAP`
+is the environment's word on the exec lane's number) — the discipline limit, so
+one tab cannot take the machine, and the number a plan's width is read against. **Per provider,
 across every Run: one credential's `ceiling` in `ai/providers.toml`** (4 as
 shipped, and `HERDR_TEAM_PROVIDER_CAP` over every ceiling) — the resource
 limit, because what is contended is auth: one DeepSeek key, one Pro login, and

@@ -97,7 +97,15 @@ KEY_REFS = ("env:", "op://")
 
 # cc_provider's own rule in ai/claude/providers.zsh, restated here because a
 # short that fails it is a launcher that never gets defined.
+# `launcher.short` is a command name the cache defines, so it is letters and
+# digits: `<short>`, `<short>c` and `<short>r` are functions in the shell.
 SHORT_RE = re.compile(r"^[a-z0-9]+$")
+# A provider name and a model key, which are the two things that leave this file
+# as words in a shell: the name is `cc_provider`'s first argument, and a model key
+# is a `key=value` field on that same line. `-` is allowed and `.` is not, which
+# is `cc_provider`'s own regex — the cache is sourced, so a name or a key the
+# parser would read as syntax is a command nobody wrote.
+NAME_RE = re.compile(r"^[a-z0-9-]+$")
 
 _LINE_RE = re.compile(r"\(at line (\d+), column (\d+)\)")
 
@@ -251,12 +259,18 @@ def lint(
     for name in sorted(entries):
         entry = entries[name]
         where = "provider.%s" % name
-        found.extend("%s: %s" % (where, reason) for reason in _lint_entry(entry))
+        found.extend("%s: %s" % (where, reason) for reason in _lint_entry(entry, name))
     return found
 
 
-def _lint_entry(entry: dict[str, Any]) -> list[str]:
+def _lint_entry(entry: dict[str, Any], name: str) -> list[str]:
     found: list[str] = []
+    if not NAME_RE.match(name):
+        found.append(
+            "%r is not [a-z0-9-]+ — the name leaves this file as an argument to "
+            "the `cc_provider` line the shell sources, so anything the shell "
+            "would read as syntax is a command nobody wrote" % name
+        )
     unknown = sorted(set(entry) - ENTRY_KEYS)
     if unknown:
         found.append("unknown key %s" % ", ".join(unknown))
@@ -310,6 +324,11 @@ def _lint_models(models: Any) -> list[str]:
         return ["models must be a table of name → model id"]
     found = []
     for key in sorted(models):
+        if not isinstance(key, str) or not NAME_RE.match(key):
+            found.append(
+                "models.%s is not [a-z0-9-]+ — a model key is a field name on "
+                "the `cc_provider` line, where the shell reads it as syntax" % key
+            )
         if not isinstance(models[key], str) or not models[key]:
             found.append("models.%s must be a model id" % key)
     return found
@@ -441,7 +460,7 @@ def _launcher_call(name: str, entry: dict[str, Any], where: Any) -> str | None:
         # A launcher is a `cc_provider` call, and `cc_provider` defines claude
         # commands. An entry for another harness has no url to inject anyway.
         return None
-    findings = _lint_entry(entry)
+    findings = _lint_entry(entry, name)
     if findings:
         raise RegistryError(
             where,
@@ -457,9 +476,15 @@ def _launcher_call(name: str, entry: dict[str, Any], where: Any) -> str | None:
     if launcher.get("label"):
         fields.append(("label", launcher["label"]))
     fields.append(("short", short))
+    # Both halves are quoted: the value because a url or a model id may hold
+    # anything, and the key because this line is sourced — `NAME_RE` is what says
+    # a key is a plain word, and the quoting is what makes the shell agree.
     return "cc_provider %s %s" % (
         name,
-        " ".join("%s=%s" % (key, shlex.quote(str(value))) for key, value in fields),
+        " ".join(
+            "%s=%s" % (shlex.quote(key), shlex.quote(str(value)))
+            for key, value in fields
+        ),
     )
 
 

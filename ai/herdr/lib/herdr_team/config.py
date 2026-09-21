@@ -67,6 +67,8 @@ from pathlib import Path
 from typing import Any, Iterator, NamedTuple
 
 from providers import RegistryError, read_toml
+from providers import enabled as provider_enabled
+from providers import lint as lint_providers
 from providers import load as load_providers
 
 __all__ = ["Config", "ConfigError", "Layer", "default_layers", "load", "main"]
@@ -88,7 +90,7 @@ _DERIVED_DOTFILES = Path(__file__).resolve().parents[4]
 # no variable: it looks like a knob.
 _ENV_KEYS: tuple[tuple[str, str], ...] = (
     ("HERDR_TEAM_ROOT", "paths.root"),
-    ("HERDR_TEAM_EXEC_CAP", "limits.exec_per_run"),
+    ("HERDR_TEAM_EXEC_CAP", "role.exec.max_per_run"),
     ("HERDR_TEAM_DETECT_TIMEOUT", "limits.detect_timeout_s"),
     ("HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT", "limits.clear_confirm_timeout_s"),
     ("HERDR_TEAM_HANDOFF_MAX", "limits.handoff_max_lines"),
@@ -124,8 +126,10 @@ _ROOT_KEYS = frozenset(
 )
 # Key → the smallest value that means anything. `clear_confirm_timeout_s` may be
 # 0: a clear that gives the name no time to be lost is a legitimate choice.
+# `exec_per_run` is not here: the number of executors one Run may hold is the
+# exec role's own `max_per_run`, a bound stated beside the role it bounds —
+# `HERDR_TEAM_EXEC_CAP` is mapped onto that key rather than onto a second one.
 _LIMIT_MIN = {
-    "exec_per_run": 1,
     "detect_timeout_s": 1,
     "clear_confirm_timeout_s": 0,
     "handoff_max_lines": 1,
@@ -336,15 +340,20 @@ def load(
         given = environment.get(name)
         if given is None or (name in _NUMERIC_ENV and not _whole(given)):
             continue
-        section, _, leaf = key.partition(".")
-        document.setdefault(section, {})[leaf] = (
-            int(given) if name in _NUMERIC_ENV else given
-        )
+        document_set(document, key, int(given) if name in _NUMERIC_ENV else given)
         sources[key] = name
 
     registry = load_registry(providers_path)
     findings = untrusted_findings(untrusted, document, trusted)
     findings += schema_findings(document, registry)
+    # The registry's own findings, about the entries this document names: a
+    # profile's `credential` and its ceiling are read here, so a key written
+    # literally in ai/providers.toml is a secret in git that `config lint` — the
+    # one verb that sees both files — has to refuse rather than report as fine
+    # while the shell cache quietly defines no launcher for it. Same entries,
+    # already loaded: `providers lint` is a second reader of one file, not a
+    # second parse of it.
+    findings += lint_providers(providers_path, registry)
     findings += env_findings(environment)
     return Config(document, sources, findings, registry, where, environment)
 
@@ -406,16 +415,6 @@ def merge(into: dict[str, Any], overlay: dict[str, Any]) -> None:
             into[key] = copy.deepcopy(value)
 
 
-def leaves(node: dict[str, Any], prefix: str = "") -> Iterator[str]:
-    """Every leaf path of a document, dotted, in the order it is written."""
-    for key, value in node.items():
-        path = prefix + key
-        if isinstance(value, dict):
-            yield from leaves(value, path + ".")
-        else:
-            yield path
-
-
 # --- what an untrusted layer may do ----------------------------------------
 
 
@@ -439,16 +438,18 @@ def untrusted_findings(
     comparison needs is the list as the user left it.
     """
     profiles = document.get("profile") or {}
+    roles = document.get("role") or {}
     shipped = trusted.get("fallback") or {}
     found: list[str] = []
     for label, overlay in untrusted:
-        found.extend(_untrusted_body(overlay, profiles, shipped, label, ""))
+        found.extend(_untrusted_body(overlay, profiles, roles, shipped, label, ""))
     return found
 
 
 def _untrusted_body(
     overlay: dict[str, Any],
     profiles: dict[str, Any],
+    roles: dict[str, Any],
     fallback: dict[str, Any],
     label: str,
     prefix: str,
@@ -465,7 +466,7 @@ def _untrusted_body(
             found.extend(_untrusted_roles(value, profiles, label, path))
             continue
         if key == "route":
-            found.extend(_untrusted_routes(value, profiles, label, path))
+            found.extend(_untrusted_routes(value, profiles, roles, label, path))
             continue
         if key == "fallback" and isinstance(value, dict):
             found.extend(_untrusted_fallbacks(value, profiles, fallback, label, path))
@@ -475,7 +476,12 @@ def _untrusted_body(
                 if isinstance(body, dict):
                     found.extend(
                         _untrusted_body(
-                            body, profiles, fallback, label, "%s.%s." % (path, name)
+                            body,
+                            profiles,
+                            roles,
+                            fallback,
+                            label,
+                            "%s.%s." % (path, name),
                         )
                     )
             continue
@@ -501,7 +507,7 @@ def _untrusted_roles(
 
 
 def _untrusted_routes(
-    routes: Any, profiles: dict[str, Any], label: str, path: str
+    routes: Any, profiles: dict[str, Any], roles: dict[str, Any], label: str, path: str
 ) -> list[str]:
     if not isinstance(routes, list):
         return [_refused(label, path)]
@@ -515,6 +521,24 @@ def _untrusted_routes(
             found.extend(
                 _cheap_only(route["profile"], profiles, label, "%s.profile" % where)
             )
+        # A route names a *role* too, and a role names the profiles it launches:
+        # `role = "review"` reaches `cc` in the shipped file without a premium
+        # profile appearing anywhere in this layer, so the names a route lands
+        # on are walked or the rule has a hole the width of the roster. Read
+        # from the merged table, so a project that has legally retargeted a role
+        # to a cheap profile is not refused for routing to the role it retargeted.
+        if "role" in route:
+            role = roles.get(str(route["role"]))
+            if isinstance(role, dict):
+                for field in ("profiles", "profile"):
+                    found.extend(
+                        _cheap_only(
+                            role.get(field),
+                            profiles,
+                            label,
+                            "%s.role.%s" % (where, field),
+                        )
+                    )
         for key in route:
             if key not in _ROUTE_KEYS:
                 found.append(_refused(label, "%s.%s" % (where, key)))
@@ -1041,7 +1065,7 @@ def _is_int(value: Any) -> bool:
     """True for an int, and for a bool-free int only.
 
     `isinstance(True, int)` is True in Python and TOML has no `limits.true = 1`,
-    so `exec_per_run = true` would compare as 1 and read as a limit nobody set.
+    so `plan_max_paths = true` would compare as 1 and read as a limit nobody set.
     """
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -1080,6 +1104,26 @@ def document_value(document: dict[str, Any], key: str) -> Any:
             return None
         node = node[part]
     return node
+
+
+def document_set(document: dict[str, Any], key: str, value: Any) -> None:
+    """Write one dotted key, making the tables above it.
+
+    The reader's only writer, and the environment layer's: a name in `_ENV_KEYS`
+    is a path, and `role.exec.max_per_run` is three of them — a table has to
+    exist before its leaf can be written, and a `partition(".")` that stopped at
+    the first dot would write the literal key `exec.max_per_run` into `[role]`,
+    which nothing reads and no lint reports.
+    """
+    parts = key.split(".")
+    node = document
+    for part in parts[:-1]:
+        child = node.get(part)
+        if not isinstance(child, dict):
+            child = {}
+            node[part] = child
+        node = child
+    node[parts[-1]] = value
 
 
 # --- the expansion of a value ----------------------------------------------
@@ -1300,7 +1344,7 @@ class Config:
                 % (name, body.get("harness"))
             )
         entry = self.registry.get(str(body.get("credential"))) or {}
-        if not entry.get("enabled", True):
+        if not provider_enabled(entry):
             return (
                 "profile %s is disabled by its %s credential — a provider entry "
                 "ships disabled until its launch injection is verified"
@@ -1312,9 +1356,12 @@ class Config:
         """One profile, flattened and resolved, ready for `team.sh` to eval.
 
         Everything a `spawn` needs to decide, in one place, so that no verb has
-        to reach for the document a second time: the command, whether a key
-        probe applies (`key` is set or it is not), the ceiling, the reset
-        command, and the chain to walk when the key is missing.
+        to reach for the document a second time: what to launch and with what,
+        whether a key probe applies (`key` is set or it is not), where a missing
+        one goes, and which credential's window bounds that fallback. What is
+        not here is a field nothing reads — an emitted key is a promise that a
+        shell reads it, and a promise kept by nothing is the reader's answer
+        drifting out of step with the one `team.sh` asks for.
         """
         self.clean()
         why = self.usable(name)
@@ -1328,12 +1375,12 @@ class Config:
         args = list(harness.get("launch_args") or []) + list(
             body.get("launch_args") or []
         )
+        # `model` is the profile's own word and nothing else. The registry's
+        # `models.default` is what `cc_provider` injects into a launcher's
+        # environment; handing it back here as well would put a second copy of
+        # one decision on a command line, as `--model deepseek-flash` beside a
+        # launcher that already sets it — a flag the profile never asked for.
         return {
-            "name": name,
-            "harness": str(body.get("harness") or ""),
-            "kind": str(harness.get("kind") or ""),
-            "credential": str(body.get("credential") or ""),
-            "protocol": str(entry.get("protocol") or ""),
             "launch": _expand(
                 str(
                     body.get("launch")
@@ -1344,28 +1391,15 @@ class Config:
                 self.env,
             ),
             "launch_args": " ".join(_expand(str(arg), self.env) for arg in args),
-            "model": _expand(
-                str(
-                    body.get("model")
-                    or (entry.get("models") or {}).get("default")
-                    or ""
-                ),
-                self.env,
-            ),
+            "model": _expand(str(body.get("model") or ""), self.env),
             "model_arg": str(harness.get("model_arg") or ""),
-            "reset": str(harness.get("reset") or ""),
-            "cost": str(body.get("cost") or "cheap"),
             "requires_reason": _render(body.get("requires_reason", False)),
-            "caps": " ".join(str(cap) for cap in body.get("caps") or []),
-            "enabled": "true",
-            "ceiling": _render(entry.get("ceiling", "")),
             "key": str(entry.get("key") or ""),
             "url": str(entry.get("url") or ""),
             "fallback": " ".join(str(ref) for ref in chain.get("to") or []),
             "fallback_on": " ".join(str(item) for item in chain.get("on") or []),
             "guard_credential": str(guard.get("credential") or ""),
             "quota_max_pct": _render(guard.get("quota_max_pct", "")),
-            "never": " ".join(str(ref) for ref in chain.get("never") or []),
         }
 
     def profiles_table(self) -> list[str]:
@@ -1421,10 +1455,25 @@ class Config:
         field is for — but it does not choose the lane on its own any more: the
         lane is the role's prefix, and the role comes from the table above, with
         the row's provider's own cost as one of the conditions.
+
+        A name no layer defines is refused rather than treated as absent: the
+        profile is what a pane record, a ceiling count and half the sentences
+        `team.sh` prints are spelled with, so quietly answering the default for
+        a name the config does not know is a row running somewhere its author
+        did not write. `spawn` refuses the same name with the file to fix, and
+        that is where an unknown provider has always been caught.
         """
         self.clean()
         profiles = self.document.get("profile") or {}
         named = str(row.get("provider") or "").strip()
+        if named and named not in profiles:
+            raise ConfigError(
+                "route",
+                "the row names %s, and no layer defines a profile of that name — "
+                "a provider is a [profile.*] entry in ai/herdr/team.toml, and a "
+                "row naming one this config does not know is refused rather than "
+                "run on the default" % named,
+            )
         profile = named if named in profiles else ""
         cost = (
             str((profiles.get(profile) or {}).get("cost") or "cheap") if profile else ""
@@ -1653,22 +1702,42 @@ def _needs(row: dict[str, Any]) -> list[str]:
     return []
 
 
-def flatten(node: Any, prefix: str = "") -> Iterator[tuple[str, Any]]:
+def flatten(
+    node: Any, prefix: str = "", indexed: bool = True
+) -> Iterator[tuple[str, Any]]:
     """Every leaf of a document as `(dotted path, value)`.
 
     Lists of tables — the route table is the one that matters — are indexed so
     that each route is a line of its own; a list of scalars stays one value,
     rendered as JSON, because that is how it was written and how it reads back.
+    `indexed=False` is `leaves`: one walk with the one difference the two
+    callers need, rather than two walks to keep in step.
     """
     if isinstance(node, dict):
         for key in sorted(node):
-            yield from flatten(node[key], "%s%s." % (prefix, key))
+            yield from flatten(node[key], "%s%s." % (prefix, key), indexed)
         return
-    if isinstance(node, list) and node and all(isinstance(item, dict) for item in node):
+    if (
+        indexed
+        and isinstance(node, list)
+        and node
+        and all(isinstance(item, dict) for item in node)
+    ):
         for index, item in enumerate(node):
-            yield from flatten(item, "%s[%d]." % (prefix[:-1], index))
+            yield from flatten(item, "%s[%d]." % (prefix[:-1], index), indexed)
         return
     yield prefix[:-1], node
+
+
+def leaves(node: dict[str, Any]) -> Iterator[str]:
+    """The paths a layer wrote, for `sources`: `flatten` with lists unindexed.
+
+    A layer's `[[route]]` array is one leaf — `route` — because that is what the
+    layer wrote and what `sources` is keyed by. `show` is the caller that wants
+    its entries, and its paths, apart.
+    """
+    for path, _ in flatten(node, indexed=False):
+        yield path
 
 
 def _render(value: Any) -> str:

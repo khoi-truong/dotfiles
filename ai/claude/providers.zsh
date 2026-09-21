@@ -112,38 +112,89 @@ function cc-providers {
 # previous cache stays exactly as it was, so a registry nobody can parse costs
 # a line on stderr rather than the `ccd` command. With no cache at all the
 # shell still starts, without the provider launchers.
+#
+# One warning, not one per start: a failure leaves a stamp beside the cache, and
+# the next start retries only once one of the two files it reads has moved past
+# it. A registry that will not parse therefore costs a python3 per edit rather
+# than per shell. The interpreter is the python3 PATH holds — the one
+# herdr_team's reader runs — or /usr/bin/python3 where the Command Line Tools
+# are installed: on a machine without them that path is a shim whose only job is
+# to say so, and a shim is not worth a fork at every start.
 
 typeset -g _cc_cache_dir=${XDG_CACHE_HOME:-${HOME}/.cache}/dotfiles
 typeset -g _cc_cache=${_cc_cache_dir}/providers.zsh
+# Beside the cache, written when a regeneration fails and removed when one
+# works. `: >file` sets its mtime with no subprocess.
+typeset -g _cc_stamp=${_cc_cache}.failed
+
+# _cc_python_path — the interpreter to generate with, on stdout, or non-zero.
+#
+# `$commands` is the hash zsh keeps of PATH, so asking whether there is a
+# python3 costs a lookup and never a fork; the `xcode-select` probe is paid for
+# only on a machine whose PATH has none, and only when a regeneration is
+# actually due.
+function _cc_python_path {
+  (( $+commands[python3] )) && { print -r -- ${commands[python3]}; return 0 }
+  xcode-select -p >/dev/null 2>&1 && { print -r -- /usr/bin/python3; return 0 }
+  return 1
+}
+
+# _cc_registry_newer <file> — has the registry or the generator moved past it?
+#
+# Naming the two files rather than the directory around them is the point: a
+# pull rewrites a file in place and leaves the directory's own mtime alone, so a
+# directory test would miss exactly the change this is for.
+function _cc_registry_newer {
+  [[ ${DOTFILES}/ai/providers.toml -nt $1 ]] ||
+    [[ ${DOTFILES}/ai/herdr/lib/providers.py -nt $1 ]]
+}
 
 # _cc_cache_refresh — rewrite the cache from the registry, atomically.
 function _cc_cache_refresh {
-  local tmp=${_cc_cache}.$$ line
+  local tmp=${_cc_cache}.$$ line py=""
   [[ -d $_cc_cache_dir ]] || mkdir -p "$_cc_cache_dir" 2>/dev/null || return 1
-  if ! PYTHONPATH=${DOTFILES}/ai/herdr/lib /usr/bin/python3 -m providers zsh \
-      >"$tmp" 2>&1; then
-    IFS= read -r line <"$tmp"
+  if ! py="$(_cc_python_path)"; then
+    print -u2 "cc_provider: no python3 to generate ${_cc_cache} from ai/providers.toml"
+    print -u2 "             — provider launchers are unavailable in this shell"
+    : >"$_cc_stamp"
+    return 1
+  fi
+  # The temp file this shell may die holding: INT is the one signal a shell sits
+  # in the middle of a write under, and the trap is cleared at every exit below.
+  trap 'rm -f "$tmp" "${tmp}.err"' INT
+  # stderr goes to its own file, not into the cache: a python3 warning on the way
+  # to a perfectly good cache would be sourced as zsh by the next line.
+  if ! PYTHONPATH=${DOTFILES}/ai/herdr/lib "$py" -m providers zsh \
+      >"$tmp" 2>"${tmp}.err"; then
+    IFS= read -r line <"${tmp}.err"
     print -u2 "cc_provider: cannot regenerate ${_cc_cache}: ${line:-no output}"
     print -u2 "             keeping the last good cache; fix ai/providers.toml"
     print -u2 "             and start a new shell"
-    rm -f "$tmp"
+    rm -f "$tmp" "${tmp}.err"
+    : >"$_cc_stamp"
+    trap - INT
     return 1
   fi
   if ! zsh -n "$tmp" 2>/dev/null; then
     print -u2 "cc_provider: generated cache is not valid zsh — keeping the last good one"
-    rm -f "$tmp"
+    rm -f "$tmp" "${tmp}.err"
+    : >"$_cc_stamp"
+    trap - INT
     return 1
   fi
   mv -f "$tmp" "$_cc_cache"
+  rm -f "${tmp}.err" "$_cc_stamp"
+  trap - INT
 }
 
-# The registry, or the generator in ai/herdr/lib. Naming the file rather than
-# the directory around it is the point: a pull rewrites a file in place and
-# leaves the directory's own mtime alone, so a directory test would miss
-# exactly the change this is for.
-if [[ ! -r $_cc_cache ]] \
-  || [[ ${DOTFILES}/ai/providers.toml -nt $_cc_cache ]] \
-  || [[ ${DOTFILES}/ai/herdr/lib/providers.py -nt $_cc_cache ]]; then
-  _cc_cache_refresh
+if [[ ! -r $_cc_cache ]] || _cc_registry_newer "$_cc_cache"; then
+  # A stamp older than both files says the last attempt failed on exactly what
+  # is on disk now, and that its warning has been printed. Anything else — no
+  # stamp, or an edit since — is worth one more try.
+  if [[ -e $_cc_stamp ]] && ! _cc_registry_newer "$_cc_stamp"; then
+    :
+  else
+    _cc_cache_refresh
+  fi
 fi
 [[ -r $_cc_cache ]] && source "$_cc_cache"

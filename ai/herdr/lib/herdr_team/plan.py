@@ -61,7 +61,7 @@ def _max_paths() -> int:
     that read the configuration for what it is.
     """
     try:
-        value = config.load().get("limits.plan_max_paths")
+        value = config.load(dotfiles=_CHECKOUT).get("limits.plan_max_paths")
     except config.ConfigError:
         return FAT_FILES
     return value if isinstance(value, int) and value >= 1 else FAT_FILES
@@ -298,17 +298,28 @@ def _tiers(by_id: dict[str, Any]) -> list[str]:
     parser can tell the two apart, so refusing would refuse correct plans —
     which is how a check stops being read.
 
-    A configuration that cannot be read draws no warning at all, for the reason
-    `_max_paths` falls back to its own default: the reader's own failure is
-    reported by the verbs that read the configuration for what it is, and a
-    `plan lint` that refused to run because `team.local.toml` has a typo would
-    be a plan nobody could lint.
+    A configuration that cannot be read draws one warning about the check it
+    stopped making, and not silence: no row can be measured against a profile
+    nobody can read, and a plan that reads clean because the checker fell over
+    is exactly the plan an author stops looking at. It still does not refuse to
+    run — the reader's own failure is the verbs' to report, and a `plan lint`
+    that stopped because `team.local.toml` has a typo would be a plan nobody
+    could lint — so the failure is named once, for the whole plan.
     """
+    why = ""
     try:
         cfg: config.Config | None = config.load(dotfiles=_CHECKOUT)
-    except config.ConfigError:
+    except config.ConfigError as exc:
         cfg = None
+        why = str(exc)
     out: list[str] = []
+    if cfg is None:
+        out.append(
+            "no tier_reason check — the configuration does not resolve (%s), so "
+            "no row can be measured against a profile and a premium row missing "
+            "its reason passes here to be refused by spawn: fix that file and "
+            "lint again" % why
+        )
     for tid in sorted(by_id):
         row = by_id[tid]
         provider = str(row.get("provider") or "")

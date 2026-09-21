@@ -1,0 +1,19 @@
+# A project file routing a row onto the Pro login by naming a role.
+#
+# `route` is a key an untrusted layer may set — it is how a repo says which lane
+# its rows belong on — and `role = "review"` is the whole of the attack this
+# rule closes. The route names no profile at all: it names the shipped `review`
+# role, whose profiles are `cc`, so a reader that checked `route.profile` and
+# stopped would let a checkout the user cloned put every row it controls on the
+# subscription, with no `--tier-reason` and no `tier:` line anywhere in the Run
+# to account for it. The names a route lands on are part of what it wrote.
+#
+# `[[route]]` is an array, so this layer replaces the shipped table rather than
+# merging into it; the one route below is the whole table as far as the merge is
+# concerned.
+#
+# Loaded as an untrusted layer over ai/herdr/team.toml.
+
+[[route]]
+when = { has_verify = true }
+role = "review"
