@@ -1544,7 +1544,7 @@ mkdir -p "${TMP}/realzsh"
 cat >"${TMP}/realzsh/zsh" <<SH
 #!/usr/bin/env bash
 [ "\$1" = "-ic" ] || exit 9
-exec "${REAL_ZSH}" -ic "_cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
+exec "${REAL_ZSH}" -ic "typeset -ga _cc_prov_names; typeset -gA _cc_prov; _cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
 SH
 chmod +x "${TMP}/realzsh/zsh"
 
@@ -2736,7 +2736,7 @@ chmod +x "${TMP}/loop/git"
 cat >"${TMP}/loop/zsh" <<SH
 #!/usr/bin/env bash
 [ "\$1" = "-ic" ] || exec "${REAL_ZSH}" "\$@"
-exec "${REAL_ZSH}" -ic "_cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
+exec "${REAL_ZSH}" -ic "typeset -ga _cc_prov_names; typeset -gA _cc_prov; _cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
 SH
 chmod +x "${TMP}/loop/zsh"
 
