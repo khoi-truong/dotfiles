@@ -740,16 +740,80 @@ echo
 echo "verify ↔ commands:"
 
 # One `commands:` shape per case. Each is the string a handoff puts after
-# `commands: ` — the default, which proves plan-ok's verify, is case 46.
+# `commands: ` — the default, which proves plan-ok's verify, is case 46 — or,
+# for the block-list shapes, what it puts under it: the value `handoff` writes
+# verbatim, leading newline and all.
 BAD_EXIT='[{"cmd": "shellcheck -x ai/setup.sh", "exit": 1}]'
 OTHER_CMD='[{"cmd": "shellcheck -x README.md", "exit": 0}]'
 PRE_CONTRACT='[{cmd: "shellcheck -x ai/setup.sh", exit: 0}]'
+BLOCK_CMDS='
+  - cmd: "shellcheck -x ai/setup.sh"
+    exit: 0'
+FLUSH_CMDS='
+- cmd: "shellcheck -x ai/setup.sh"
+  exit: 0'
+NO_EXIT_CMDS='
+  - cmd: "shellcheck -x ai/setup.sh"'
+STRAY_CMDS='
+  - shellcheck -x ai/setup.sh'
+ROOTED_CMDS='
+  - cmd: "set -o pipefail; npx markdownlint-cli2 /opt/checkout/README.md | tail -1"
+    exit: 0'
+OTHER_PATH_CMDS='
+  - cmd: "set -o pipefail; npx markdownlint-cli2 /opt/checkout/OTHER.md | tail -1"
+    exit: 0'
 
 # 46. The contract holding: the handoff names the row's verify at exit 0.
 reset
 handoff T-01 "${RUN}" succeeded verified D-01
 expect_collect 0 '^T-01 +done +D-01' "46 a proved verify is done" \
   --plan "${FIXTURES}/plan-ok.md"
+
+# 46b. The same claim in the other shape. The frontmatter is a YAML document
+#      and a list in one is written as a block list, which is what the agent
+#      that found this wrote: a `cc` pane's handoff carrying valid YAML, the
+#      same data, and — before this — UNPARSED, downgrading a Task whose verify
+#      demonstrably passed to `review`.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "${BLOCK_CMDS}"
+expect_collect 0 '^T-01 +done +D-01' "46b a block-list commands: proves the verify too" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 46c. The same block list at the key's own column. YAML allows both and an
+#      agent writing by hand produces either, so both read the same here.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "${FLUSH_CMDS}"
+expect_collect 0 '^T-01 +done +D-01' \
+  "46c a block list at the key's own column reads the same" --plan "${FIXTURES}/plan-ok.md"
+
+# 46d. An entry with no exit: code. Widening the contract to a second shape is
+#      not weakening it — the pair of fields is still what proves a claim, so
+#      this is UNVERIFIED rather than done, exactly as case 47 is.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "${NO_EXIT_CMDS}"
+expect_collect 0 '^T-01 +review +D-01 +UNVERIFIED' \
+  "46d a block-list entry with no exit: reads UNVERIFIED" --plan "${FIXTURES}/plan-ok.md"
+
+# 46e. The one argument spelled from the root. plan-ok's T-02 verify names
+#      `README.md`; T-05's handoff — the real one this task was found in — ran
+#      the same command with the plan's path absolute, because `.omc/` is not in
+#      the worktree the executor was standing in. The check cannot know the two
+#      spellings name one file; it accepts a token that extends the verify's
+#      token, which is the loosest reading that still has to match every word.
+reset
+handoff T-01 "${RUN}" succeeded verified
+handoff T-02 "${RUN}" succeeded verified D-01 "${ROOTED_CMDS}"
+expect_collect 3 '^T-02 +done +D-01' \
+  "46e a path spelled from the root still names the verify" --plan "${FIXTURES}/plan-ok.md"
+
+# 46f. The limit of 46e: a path that does not end in the file the verify names
+#      is a different command, and proves nothing. Without this the widening
+#      would be "any command with a path in it".
+reset
+handoff T-01 "${RUN}" succeeded verified
+handoff T-02 "${RUN}" succeeded verified D-01 "${OTHER_PATH_CMDS}"
+expect_collect 0 '^T-02 +review +D-01 +UNVERIFIED' \
+  "46f a different path is not the verify" --plan "${FIXTURES}/plan-ok.md"
 
 # 47. The same command at a non-zero exit proves nothing. This is the case the
 #     mutation check deletes the `"exit": 0` requirement to break.
@@ -778,6 +842,15 @@ handoff T-01 "${RUN}" succeeded verified D-01 "$PRE_CONTRACT"
 expect_collect 0 '^T-01 +review +D-01 +UNPARSED' "50 an unquoted-key commands line is UNPARSED" \
   --plan "${FIXTURES}/plan-ok.md"
 
+# 50b. A block list, but of strings rather than of the objects the contract
+#      names: a shape this reader does not know. Accepting a second shape that
+#      is spelled out is not accepting a third that is not — the agent that
+#      wrote this meant something, and a human has to look at it.
+reset
+handoff T-01 "${RUN}" succeeded verified D-01 "${STRAY_CMDS}"
+expect_collect 0 '^T-01 +review +D-01 +UNPARSED' "50b a block list of strings is UNPARSED" \
+  --plan "${FIXTURES}/plan-ok.md"
+
 # 51. An empty verify is the planner's own choice: nothing to check, done
 #     stands — even with no commands line to check against, which is 49's shape
 #     read as a result. Nothing actionable follows, so the exit is 3.
@@ -800,8 +873,9 @@ else
 fi
 
 # 53. The prompt's golden line is the contract this check reads: quoted keys on
-#     one line, and a value json.loads accepts. A multi-line value would break
-#     the line-oriented frontmatter parser, which is why it stays one line.
+#     one line, and a value json.loads accepts. The one-line shape is a choice,
+#     not a limit of the reader — 46b is the same claim carried as a block list,
+#     and 53b is the prompt telling the agent it may write either.
 cmds="$(grep -m1 '^commands: ' "${FIXTURES}/golden/T-01-dispatch.prompt" | sed 's/^commands: //')"
 if [ -n "$cmds" ] && printf '%s' "$cmds" | python3 -c '
 import json, sys
@@ -815,6 +889,40 @@ else
   no "53 the golden prompt's commands: line is JSON the check can read" \
     "value: ${cmds:-<none>}"
 fi
+
+# 53b. The other half of the fix. A reader that accepts the shape an agent
+#      writes is only half a contract; the prompt has to say the shape is
+#      accepted, where the agent writing the handoff will read it. Case 1 diffs
+#      the emitted prompt against this file, so what is asserted here is what
+#      the next pane is handed.
+GOLDEN="${FIXTURES}/golden/T-01-dispatch.prompt"
+if grep -q '^  commands:$' "${GOLDEN}" &&
+  grep -q '^    - cmd: "\.\.\."$' "${GOLDEN}" &&
+  grep -q '^      exit: 0$' "${GOLDEN}" &&
+  grep -q '^  files_changed:$' "${GOLDEN}" &&
+  grep -q 'The list fields' "${GOLDEN}"; then
+  ok "53b the prompt states the block list beside the inline shape"
+else
+  no "53b the prompt states the block list beside the inline shape" \
+    "$(grep -c 'block list' "${GOLDEN}") mention(s) of a block list"
+fi
+
+# 53c. Every list field at once, as T-05's handoff has them: the frontmatter a
+#      `cc` agent actually wrote, read without a rewrite, `files_changed:`
+#      included — no reader prints that field, and the point is that carrying
+#      it does not cost the row its done.
+reset
+{
+  printf -- '---\n'
+  printf 'run: %s\ntask: T-01\ndispatch: D-01\n' "${RUN}"
+  printf 'outcome: succeeded\nevidence: verified\n'
+  printf 'files_changed:\n  - ai/setup.sh\n  - README.md\n'
+  printf 'artifacts:\n  - .omc/research/one.md\n'
+  printf 'commands:\n  - cmd: "shellcheck -x ai/setup.sh"\n    exit: 0\n'
+  printf -- '---\n\n## What was done\n\nFixture.\n'
+} >"$(handoff_dir "${RUN}")/T-01-D-01.md"
+expect_collect 0 '^T-01 +done +D-01 .*artifacts: \.omc/research/one\.md' \
+  "53c every list field as a block list reads done" --plan "${FIXTURES}/plan-ok.md"
 
 echo
 echo "teardown"
