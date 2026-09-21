@@ -214,7 +214,7 @@ sed -e "s#${FIXTURES}#<FIXTURES>#g" -e "s#${HERDR_TEAM_ROOT}#<ROOT>#g" \
   "${TMP}/out" >"${TMP}/norm"
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
   cp "${TMP}/norm" "${FIXTURES}/golden/T-01-dispatch.prompt"
-  ok "1 golden updated"
+  ok "1b the golden prompt was rewritten from this run"
 elif diff -u "${FIXTURES}/golden/T-01-dispatch.prompt" "${TMP}/norm" >"${TMP}/diff"; then
   ok "1 unblocked dispatch matches the golden prompt"
 else
@@ -1026,7 +1026,7 @@ expect_collect 0 '^T-01 +done +D-01 .*artifacts: \.omc/research/one\.md' \
 echo
 echo "one handoff, one verdict"
 
-# 53b-53g. The block-list shape, and the verdict both readers have to reach.
+# 53d-53j. The block-list shape, and the verdict both readers have to reach.
 # `commands:` and `artifacts:` empty on their own line, one `- ` item per value:
 # what an agent writes once a value stops fitting on one line. The parser
 # normalises it into the inline form every reader below already takes, so the
@@ -1036,15 +1036,15 @@ INLINE_CMDS='[{"cmd": "shellcheck -x ai/setup.sh", "exit": 0}, {"cmd": "git stat
 BLOCK_CMDS=$'\n  - {"cmd": "shellcheck -x ai/setup.sh", "exit": 0}\n  - {"cmd": "git status --short", "exit": 0}'
 BLOCK_ARTS=$'\n  - /abs/path.md'
 
-# 53b. The block list proves the row's verify, and its receipt prints.
+# 53i. The block list proves the row's verify, and its receipt prints.
 reset
 handoff T-01 "${RUN}" succeeded verified D-01 "$BLOCK_CMDS" "$BLOCK_ARTS"
 expect_collect 0 '^T-01 +done +D-01 .*artifacts: /abs/path\.md' \
-  "53b a block-list commands: proves the verify to collect --plan" \
+  "53i a block-list commands: proves the verify to collect --plan" \
   --plan "${FIXTURES}/plan-ok.md"
 
-# 53c. And the same handoff releases the dependent, through the gate.
-expect_exit 0 "53c and the same handoff releases the dependent in dispatch" \
+# 53j. And the same handoff releases the dependent, through the gate.
+expect_exit 0 "53j and the same handoff releases the dependent in dispatch" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 # 53d. Same two commands, written inline, read the same — the normalisation
@@ -1920,7 +1920,7 @@ for key in tab-a tab-b; do
   dispatch_as "$key" "${TMP}/${key}.prompt" --task T-01 --from-plan "${FIXTURES}/plan-ok.md" ||
     code=$?
   if [ "$code" -ne 0 ]; then
-    no "87 ${key} dispatches T-01/D-01 without being refused" \
+    no "87 ${key} dispatches T-01/D-01 into its own Run" \
       "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
   elif grep -q "^You are exec-1, working Task T-01 under Run ${want}\.$" "${TMP}/${key}.prompt" &&
     grep -q '^This is Dispatch D-01\.' "${TMP}/${key}.prompt" &&
@@ -3214,6 +3214,59 @@ loop_on 0 '' "129c one more seat and the same wave spawns" \
 unset FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
 called 1 '^worktree open .* --label exec-0001-1 ' \
   "129d the executor it refused above was drawn"
+
+echo
+echo "the ids"
+
+# case_ids — every id this file labels a case with, as the id and the whole
+# description it is spent on. An id is the leading token of a description handed
+# to one of this file's own helpers, and the helper names are read from the
+# file's function definitions rather than listed here: a helper added later is
+# covered the moment it is written, and a `grep` pattern — an argument to
+# `grep`, which is not a helper — is never read as a description. Continuations
+# are joined first, because a label sits on the line after its call as often as
+# on it, and an environment prefix is stepped over, because `VAR=1 helper` is
+# still a call to `helper`.
+case_ids() {
+  local helpers
+  helpers="$(grep -oE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)' "$0" | sed 's/()$//' | tr '\n' ' ')"
+  awk -v HELPERS="${helpers}" '
+    BEGIN { n = split(HELPERS, h, " "); for (i = 1; i <= n; i++) helper[h[i]] = 1 }
+    {
+      joined = (joined == "" ? $0 : joined " " $0)
+      if ($0 ~ /\\$/) { sub(/\\$/, "", joined); next }
+      cmd = joined
+      sub(/^[ \t]+/, "", cmd)
+      while (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+/)) cmd = substr(cmd, RLENGTH + 1)
+      sub(/[ \t].*$/, "", cmd)
+      if (cmd in helper)
+        while (match(joined, /"[0-9]+[a-z]? [^"]*"/)) {
+          print substr(joined, RSTART, RLENGTH)
+          joined = substr(joined, RSTART + RLENGTH)
+        }
+      joined = ""
+    }
+  ' "$0"
+}
+
+# 130. The ids themselves, which is the one property no case can assert about
+#      its own file. #74 merged two branches that had each spent 53b and 53c, so
+#      each of those named two cases apiece and the collision showed up only in
+#      the label of a line that failed — the second case invisible in the one
+#      place a reader looks when something is wrong. The count floor is here
+#      because the failure this case is most likely to suffer is its own: an
+#      extraction that reads no ids would report a tidy, empty agreement.
+all_ids="$(case_ids | sort -u)"
+n_ids="$(printf '%s\n' "${all_ids}" | wc -l | tr -d ' ')"
+dup_ids="$(printf '%s\n' "${all_ids}" | sed -E 's/^"([0-9]+[a-z]?) .*/\1/' | sort | uniq -d)"
+if [ "${n_ids}" -lt 100 ]; then
+  no "130 every case id is unique" \
+    "${n_ids} ids read from ${0} — the extraction failed, not the file"
+elif [ -n "${dup_ids}" ]; then
+  no "130 every case id is unique" "spent twice: $(printf '%s' "${dup_ids}" | tr '\n' ' ')"
+else
+  ok "130 every case id is unique"
+fi
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
