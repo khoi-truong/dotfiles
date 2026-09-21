@@ -57,6 +57,20 @@ DOTFILES="${DOTFILES:-$(cd "$(dirname "${_self}")/../.." && pwd)}"
 . "${DOTFILES}/lib/common.sh"
 require_macos
 
+# The Python the `python3 -` blocks below import: `lib/herdr_team/`, a module
+# per reader that more than one verb needs. Resolved from `_self` the way
+# DOTFILES is, so a team.sh reached through a shim finds the package beside the
+# file it is running rather than beside the shim.
+HERDR_DIR="$(cd "$(dirname "${_self}")" && pwd)"
+
+# `python3` with that package importable. PYTHONPATH is set on the command
+# rather than exported: the panes `spawn` starts are not this script's children,
+# and a path only its own `python3 -` blocks have a use for has no business in
+# their environment. A caller's own PYTHONPATH is kept, after ours.
+herdr_py() {
+  PYTHONPATH="${HERDR_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 "$@"
+}
+
 # The state root: every Run this checkout has started, and the pointer naming
 # the one this shell is in. Deliberately not `${DOTFILES}/.omc`, which is OMC's
 # own root: an agent writes OMC artifacts of its own under it, and a Run's
@@ -857,355 +871,10 @@ PY
 # Reads outcomes from the handoff files. Never from a transcript: an agent's
 # pane is not the record of what it did.
 
-# handoff_py — the one reader of a handoff's frontmatter, emitted as python
-# source for the same reason plan_parser_py is: `collect`, `collect --plan` and
-# the dispatch gate must agree about what a handoff says.
-handoff_py() {
-  cat <<'PY'
-import json, os
-
-
-def handoff_meta(path):
-    """One handoff's frontmatter, or None when it has none.
-
-    A field's value is everything under its key, not just the rest of the key's
-    own line: the frontmatter is a YAML document, and the shape its own style
-    invites for a list is a block list —
-
-      commands:
-        - cmd: "..."
-          exit: 0
-
-    — which arrives as three lines and is one value. Joining them here, at the
-    one reader every caller goes through, is what keeps `commands:` from
-    reaching a caller as nothing at all.
-    """
-    lines = open(path, encoding="utf-8").read().splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None
-    meta, key = {}, None
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if not line.strip():
-            continue
-        # Indented under the key, or a sequence entry at its own column: YAML
-        # allows the second, and a frontmatter key here never starts with `-`.
-        # The indentation is kept, not stripped: it is what says which item of
-        # a block list a line belongs to.
-        if key is not None and (line[:1] in " \t" or line.lstrip().startswith("-")):
-            meta[key] = meta[key] + "\n" + line.rstrip()
-            continue
-        if ":" in line:
-            k, v = line.split(":", 1)
-            key = k.strip()
-            meta[key] = v.strip()
-    return meta
-
-
-def yaml_block(raw):
-    """A block list's items, each item its own chunk of lines, or None.
-
-    `- ` opens an item and a line indented under it belongs to that item, so
-    `- cmd: …` with `exit: …` beneath it is one item of two lines. None when
-    the text opens no item, or holds a line that is neither an item nor part of
-    one: a caller's way of telling "an empty list" from "a shape I cannot
-    read", which are UNVERIFIED and UNPARSED respectively.
-    """
-    items, cur = [], None
-    for line in raw.splitlines():
-        if not line.strip():
-            continue
-        s = line.strip()
-        if s.startswith("- "):
-            cur = [s[2:].strip()]
-            items.append(cur)
-        elif s == "-":
-            cur = [""]
-            items.append(cur)
-        elif cur is not None and line[:1] in " \t":
-            cur.append(s)
-        else:
-            return None
-    if not items or not any(item[0] for item in items):
-        return None
-    return items
-
-
-def path_list(raw):
-    """The paths in a `files_changed:` or `artifacts:` value, in order.
-
-    Two shapes, and the one a handoff carries without being taught is the YAML
-    block list: the frontmatter is a YAML document, and a list in it is written
-    that way. The comma-separated line the contract block shows is the other.
-
-    Split by hand rather than by json: the value reaches the file through an
-    agent, so quoted and bare paths both have to read, and a field nobody can
-    parse costs a printed path rather than a whole Run — `collect` must not
-    fail over a receipt. Absent is [], which is what the contract says an
-    omitted field means.
-    """
-    raw = (raw or "").strip()
-    if not raw:
-        return []
-    if raw.lstrip().startswith("-"):
-        items = yaml_block(raw)
-        if items is not None:
-            return [item[0].strip().strip('"').strip("'") for item in items if item[0].strip()]
-    if raw.startswith("[") and raw.endswith("]"):
-        raw = raw[1:-1]
-    return [p.strip().strip('"').strip("'") for p in raw.split(",") if p.strip()]
-
-
-def artifacts(meta):
-    """The paths under `artifacts:`, in the order the handoff lists them.
-
-    A receipt, not a copy: these name documents a workflow of the agent's own
-    wrote — `/research`, `/plan` — and nothing here opens one. `run gc` will
-    eventually need the list as an exclusion set; every reader until then only
-    prints it.
-    """
-    return path_list(meta.get("artifacts"))
-
-
-def command_entries(raw):
-    """The `commands:` entries, or None for a shape this file cannot read.
-
-    Two shapes, the same data: the inline JSON the contract block shows, and
-    the YAML block list the frontmatter's own style invites. Accepting the
-    second does not weaken the first — an entry still needs `cmd` and `exit`,
-    an entry that is not a mapping is skipped the way a non-dict JSON entry
-    already was, and a value that is neither shape still reads UNPARSED.
-    """
-    text = raw.strip()
-    if text.startswith("[") or text.startswith("{"):
-        try:
-            entries = json.loads(text)
-        except ValueError:
-            return None
-        return entries if isinstance(entries, list) else []
-    items = yaml_block(raw)
-    if items is None:
-        return None
-    entries = []
-    for item in items:
-        head = item[0].strip()
-        # One layer of YAML quoting off the item first: an agent may wrap the
-        # object it writes, and which it chose says nothing about what it
-        # meant. Whether an item is quoted is not evidence about the Run.
-        for q in ('"', "'"):
-            if len(head) >= 2 and head.startswith(q) and head.endswith(q):
-                head = head[1:-1].strip()
-                break
-        if head.startswith("{"):
-            # The other block spelling: the list is YAML and each item is the
-            # whole inline object the contract block shows. Two agents fixed
-            # this field independently and each accepted the shape it had seen
-            # — one mapping per item, or one object per item — so the reader
-            # takes both. A continuation line under an object is neither shape.
-            if len(item) > 1:
-                return None
-            try:
-                entry = json.loads(head)
-            except ValueError:
-                return None
-            if isinstance(entry, dict):
-                entries.append(entry)
-            continue
-        entry = {}
-        for line in item:
-            if ":" not in line:
-                return None
-            k, v = line.split(":", 1)
-            k, v = k.strip(), v.strip()
-            if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
-                v = v[1:-1]
-            if k == "exit":
-                try:
-                    v = int(v)
-                except ValueError:
-                    pass
-            entry[k] = v
-        if not entry:
-            return None
-        entries.append(entry)
-    return entries
-
-
-def same_cmd(verify, cmd):
-    """True when `cmd` is the verify the plan named, as an agent ran it.
-
-    Substring, not equality, because the command reaches the handoff through an
-    agent: a `cd`, a quote or a `set -o pipefail;` prefix around it is still the
-    same command. Word by word as a second pass, because one argument may be
-    spelled from the root where the plan spelled it relative — which is exactly
-    what the first handoff written against this contract did, the plan's path
-    being `.omc/plans/…` in the plan and absolute in the pane, since `.omc/` is
-    not in the worktree the agent was working in. Both spellings run the same
-    check, so both prove it. A token only extends the verify's token; a
-    different path does not match.
-
-    Loose on purpose — a false positive here must not be able to wedge a Run
-    (see the header) — and the exit code is required alongside the command,
-    never instead of it.
-    """
-    if verify in cmd:
-        return True
-    want, got = verify.split(), cmd.split()
-    for start in range(len(got) - len(want) + 1):
-        if all(g == w or g.endswith(w) for w, g in zip(want, got[start:start + len(want)])):
-            return True
-    return False
-
-
-def journal_row(line):
-    """(task, dispatch, agent) for a journal line this code can read.
-
-    Three columns is the shape written before `wait` needed a pane to block
-    on: it yields agent None, so a journal from before that change keeps
-    counting as `running` and is merely un-waitable. Four is the current
-    shape. Anything else is None — `dispatched` skips it so one bad line
-    cannot hide a whole Run, and `wait` refuses on it instead.
-    """
-    parts = line.split("\t")
-    if len(parts) == 3:
-        return parts[1], parts[2], None
-    if len(parts) == 4:
-        return parts[1], parts[2], parts[3].strip() or None
-    return None
-
-
-def journal_lines(handoffs, run):
-    """Every readable journal line under `run`, as (task, dispatch, agent).
-
-    In file order, retries included: `dispatched` folds these down to the
-    highest Dispatch id per Task, and `report` counts them, so a Run's Dispatch
-    count and its winning Dispatch come off one list rather than off two
-    readers that could disagree about the file.
-
-    No directory at all is no journal, and never the one in the caller's
-    working directory: `surface` asks this with no Run and must not read a
-    `.dispatched` it happens to be standing next to.
-    """
-    rows = []
-    if not handoffs:
-        return rows
-    try:
-        text = open(os.path.join(handoffs, ".dispatched"), encoding="utf-8").read()
-    except OSError:
-        return rows
-    for line in text.splitlines():
-        if not line.strip() or line.split("\t")[0] != run:
-            continue
-        row = journal_row(line)
-        if row is not None:
-            rows.append(row)
-    return rows
-
-
-def abandoned(handoffs, run):
-    """The (task, dispatch) pairs a `teardown` gave up on, as a set.
-
-    One line per outstanding Dispatch of the pane being destroyed, in the
-    journal's own shape, because destroying the pane is exactly what makes the
-    Dispatch unanswerable: the journal line stays — the Dispatch did happen —
-    and the handoff is no longer coming. `teardown` is the only writer.
-
-    Read here and consumed in `dispatched`, so the two verbs that ask what is
-    outstanding inherit it rather than each learning it separately: without
-    this, `wait` blocks on a pane herdr no longer knows and dies naming an
-    agent nobody can resolve, and `collect --plan` reads the Task as `running`
-    for as long as anyone cares to look at a Run that is over.
-    """
-    pairs = set()
-    if not handoffs:
-        return pairs
-    try:
-        text = open(os.path.join(handoffs, ".abandoned"), encoding="utf-8").read()
-    except OSError:
-        return pairs
-    for line in text.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3 or parts[0] != run:
-            continue
-        pairs.add((parts[1], parts[2]))
-    return pairs
-
-
-def dispatched(handoffs, run):
-    """The highest Dispatch id sent per Task under `run`, with its agent.
-
-    A Task with a record here and no handoff for it is still out with an
-    agent. Nothing else on disk distinguishes that from never dispatched —
-    except an abandonment, which is the same absence with the wait removed.
-    """
-    sent = {}
-    gone = abandoned(handoffs, run)
-    for task, dispatch, agent in journal_lines(handoffs, run):
-        if (task, dispatch) in gone:
-            continue
-        if dispatch > sent.get(task, {}).get("dispatch", ""):
-            sent[task] = {"dispatch": dispatch, "agent": agent}
-    return sent
-
-
-def journal_malformed(handoffs, run):
-    """Journal lines under `run` that are neither three nor four columns.
-
-    A line this code cannot read is a Dispatch it cannot wait for, so `wait`
-    names them rather than blocking on the rest: silently waiting for a
-    subset is how an orchestrator loop stalls with work outstanding.
-    """
-    bad = []
-    path = os.path.join(handoffs, ".dispatched")
-    try:
-        text = open(path, encoding="utf-8").read()
-    except OSError:
-        return bad
-    for n, line in enumerate(text.splitlines(), 1):
-        if line.strip() and line.split("\t")[0] == run and journal_row(line) is None:
-            bad.append((n, line))
-    return bad
-
-
-def unproven(meta, verify):
-    """The cause to report instead of `done`, or None when the handoff proves it.
-
-    A handoff's `commands:` is one object per command the agent ran, in either
-    of the shapes the dispatch prompt's contract block now states. `done` needs
-    the row's own `verify` to be one of those commands at exit 0, or the handoff
-    is claiming a check nobody can see; `settled_state` says so rather than
-    showing `done`.
-
-    An empty `verify` is the planner saying no command settles this Task. There
-    is nothing to check, so `done` stands.
-
-    Lives here rather than beside `settled_state`, its first caller, because
-    `report` proves the same claim for its own table: two copies of this rule
-    would eventually show one Run as `done` in one table and `UNVERIFIED` in
-    the other, which is the failure handoff_py exists to make impossible.
-    """
-    if not verify:
-        return None
-    raw = meta.get("commands")
-    if raw is None or not raw.strip():
-        # No commands recorded: absent, or present with nothing under it. That
-        # is absence, not a shape nobody can read, so it reads UNVERIFIED
-        # rather than UNPARSED — and absence is never evidence.
-        return "UNVERIFIED"
-    entries = command_entries(raw)
-    if entries is None:
-        # Neither shape. A human has to be able to tell a shape they cannot
-        # read from a claim that does not hold.
-        return "UNPARSED"
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        if same_cmd(verify, str(entry.get("cmd", ""))) and entry.get("exit") == 0:
-            return None
-    return "UNVERIFIED"
-PY
-}
+# The reader itself lives in `lib/herdr_team/handoff.py`, imported by the
+# `python3 -` blocks below that need it: one module is the same single reader
+# with a name, so `collect`, `collect --plan` and the dispatch gate cannot
+# disagree about what a handoff says.
 
 cmd_collect() {
   local run="" plan=""
@@ -1239,9 +908,11 @@ cmd_collect() {
     hdir="$(handoffs_dir "$run")"
   fi
   {
-    handoff_py
     cat <<'PY'
-import glob, sys
+import glob, os, sys
+
+from herdr_team.handoff import artifacts, handoff_meta
+
 handoffs, runs_root, run = sys.argv[1], sys.argv[2], sys.argv[3]
 # A Run id is R-<date>-<time>: globbing that shape cannot pick up a stray
 # directory under runs/ that is not one.
@@ -1250,7 +921,7 @@ rows, bad = [], []
 for path in sorted(p for d in dirs for p in glob.glob(os.path.join(d, "*.md"))):
     # Through handoff_meta rather than a second copy of its six lines: this
     # table and `collect --plan` reading one handoff two ways is the failure
-    # handoff_py exists to make impossible.
+    # `herdr_team.handoff` exists to make impossible.
     meta = handoff_meta(path)
     if meta is None:
         bad.append((os.path.basename(path), "no frontmatter")); continue
@@ -1279,7 +950,7 @@ for name, why in bad:
 # An unreadable handoff is a failed Dispatch, not a missing one.
 sys.exit(1 if bad else 0)
 PY
-  } | python3 - "$hdir" "${ROOT}/runs" "$run"
+  } | herdr_py - "$hdir" "${ROOT}/runs" "$run"
 }
 
 # cmd_collect_plan <plan> <run> — one row per Task in the plan, not per
@@ -1315,10 +986,11 @@ PY
 # until there is a table to read.
 cmd_collect_plan() {
   {
-    plan_parser_py
-    handoff_py
     cat <<'PY'
-import glob, sys
+import glob, os, sys
+
+from herdr_team.handoff import artifacts, dispatched, handoff_meta, unproven
+from herdr_team.plan import plan_rows
 
 plan, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 plan = os.path.abspath(plan)
@@ -1477,7 +1149,7 @@ if any(s == "failed" for _, s, _, _, _ in out):
     sys.exit(2)
 sys.exit(3)
 PY
-  } | python3 - "$1" "$2" "$(handoffs_dir "$2")"
+  } | herdr_py - "$1" "$2" "$(handoffs_dir "$2")"
 }
 
 # --- report ----------------------------------------------------------------
@@ -1537,10 +1209,11 @@ cmd_report() {
     die "report: no Run ${run} under ${ROOT}/runs — team.sh run list"
 
   {
-    plan_parser_py
-    handoff_py
     cat <<'PY'
 import glob, json, os, sys
+
+from herdr_team.handoff import handoff_meta, journal_lines, unproven
+from herdr_team.plan import plan_rows
 
 root, run, handoffs = sys.argv[1], sys.argv[2], sys.argv[3]
 write = sys.argv[4] == "1"
@@ -1862,7 +1535,7 @@ else:
         fh.write(json.dumps(metrics, sort_keys=True) + "\n")
     print("metrics.jsonl: appended %s" % run)
 PY
-  } | python3 - "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX" "$(panes_dir)"
+  } | herdr_py - "${ROOT}" "$run" "$(handoffs_dir "$run")" "$write" "$HANDOFF_MAX" "$(panes_dir)"
 }
 
 # --- wait ------------------------------------------------------------------
@@ -1921,9 +1594,10 @@ cmd_wait() {
   handoffs="$(handoffs_dir "$run")"
   rows="$(
     {
-      handoff_py
-      cat <<'PY'
+        cat <<'PY'
 import os, sys
+
+from herdr_team.handoff import dispatched, journal_malformed
 
 handoffs, run = sys.argv[1], sys.argv[2]
 
@@ -1939,7 +1613,7 @@ for task, rec in sorted(dispatched(handoffs, run).items()):
     if not os.path.exists(path):
         print("%s\t%s\t%s" % (task, rec["dispatch"], rec["agent"] or ""))
 PY
-    } | python3 - "$handoffs" "$run"
+    } | herdr_py - "$handoffs" "$run"
   )" || exit $?
 
   if [ -z "$rows" ]; then
@@ -2192,9 +1866,10 @@ loop_next_exec() {
 # second executor at a Task that already claims to be done.
 loop_routes() {
   {
-    plan_parser_py
     cat <<'PY'
 import sys
+
+from herdr_team.plan import plan_rows
 
 plan, table = sys.argv[1], sys.argv[2]
 
@@ -2224,7 +1899,7 @@ for line in table.splitlines():
     lane = "rev" if provider == "cc" and (row.get("blocks") or []) else "exec"
     print("%s\t%s\t%s\t%s" % (parts[0], lane, provider, reason))
 PY
-  } | python3 - "$1" "$2"
+  } | herdr_py - "$1" "$2"
 }
 
 # loop_gate_text <code> — the last line of the trace, one short phrase per gate.
@@ -2686,9 +2361,10 @@ cmd_surface() {
   if [ -n "$run" ]; then handoffs="$(handoffs_dir "$run")"; fi
   header="$(
     {
-      handoff_py
-      cat <<'PY'
+        cat <<'PY'
 import sys
+
+from herdr_team.handoff import dispatched
 
 handoffs, run, agent = sys.argv[1], sys.argv[2], sys.argv[3]
 rows = sorted((t, r["dispatch"])
@@ -2704,7 +2380,7 @@ if not rows:
     sys.stderr.write("surface: no journal line under %s names %s\n"
                       % (run or "(no Run)", agent))
 PY
-    } | python3 - "$handoffs" "$run" "$name"
+    } | herdr_py - "$handoffs" "$run" "$name"
   )"
   printf 'Agent: %s\n%s\n' "$name" "$header"
 
@@ -2853,8 +2529,11 @@ cmd_plan() {
       shift
       [ -n "${1:-}" ] || die "plan: lint needs a plan file"
       {
-        plan_parser_py
-        cat <<'PY'
+            cat <<'PY'
+import os, sys
+
+from herdr_team.plan import plan_rows
+
 plan = os.path.abspath(sys.argv[1])
 parsed = plan_rows(plan)
 findings = parsed["findings"]
@@ -2877,7 +2556,7 @@ if shape:
 # its own output should not have to run the check seven times.
 sys.exit(1 if findings else 0)
 PY
-      } | python3 - "$1"
+      } | herdr_py - "$1"
       ;;
     *) die "plan: expected 'lint'" ;;
   esac
@@ -2934,372 +2613,10 @@ next_dispatch() {
   die "dispatch: ${task} has 99 dispatches — that is a loop, not a retry"
 }
 
-# plan_parser_py — the one reader of a plan's `## Tasks` block, emitted as
-# python source so `dispatch` and every later caller run the same code. Two
-# readers that disagreed about a plan would be a silent unblock.
-plan_parser_py() {
-  cat <<'PY'
-import json, os, re, sys
-
-# What a plan's *shape* is measured against. Every number here is a starting
-# guess and the warnings that use them say so: a plan file cannot say how long
-# a Task takes, so these are proxies, and a proxy that fails a correct plan is
-# a check that stops being run. Depth and width are properties of the document
-# no individual row can state; the granularity pair are the two proxies the
-# document does carry, and both are what `team.sh report` (T-02) replaces with
-# observed numbers — which is why they live here, together, rather than beside
-# the checks that read them.
-DEPTH_MAX = 4          # the longest chain of `blocks` edges a plan should have
-WIDTH_MIN = 2          # Tasks a plan should be able to run at once ...
-WIDTH_MIN_TASKS = 3    # ... once it has this many Tasks to run at all
-THIN_LINES = 8         # non-blank lines a chained row needs to earn its Dispatch
-FAT_FILES = 8          # paths a row may name before its verify stops localizing
-
-
-def _cycles(by_id):
-    """Every cycle in `blocks`, as a list of id paths ending where it began."""
-    colour, stack, found = {}, [], []
-
-    def walk(tid):
-        colour[tid] = 1
-        stack.append(tid)
-        for b in sorted(by_id[tid].get("blocks") or []):
-            if b not in by_id:
-                continue
-            if colour.get(b) == 1:
-                found.append(stack[stack.index(b):] + [b])
-            elif colour.get(b) is None:
-                walk(b)
-        stack.pop()
-        colour[tid] = 2
-
-    for tid in sorted(by_id):
-        if colour.get(tid) is None:
-            walk(tid)
-    return found
-
-
-def _masks_exit(verify):
-    """True when `verify` pipes without `set -o pipefail` leading.
-
-    A pipeline exits with its last stage's status, so `… | tail -1` exits 0
-    whatever the check did. An executor observes 0 and claims `evidence:
-    verified` on something that cannot fail, which turns the one invariant
-    the protocol rests on into a rubber stamp. Narrow, and it will flag a
-    deliberate pipeline — the remedy is `set -o pipefail; …`, correct anyway.
-    """
-    if verify.lstrip().startswith("set -o pipefail"):
-        return False
-    quote = ""
-    for ch in verify:
-        if quote:
-            if ch == quote:
-                quote = ""
-        elif ch in "'\"":
-            quote = ch
-        elif ch == "|":
-            return True
-    return False
-
-
-def _section_bodies(text):
-    """The prose under each `### T-nn`, keyed by Task id.
-
-    Bounded at the next heading of any level rather than at the next `###`:
-    the `## ` a document may carry after the tasks block ends the sections,
-    and a body that ran on into it would make every row look long enough to
-    be worth a Dispatch of its own.
-
-    One reader for both jobs that need a section — the row/section agreement
-    check compares the ids, the thin-row proxy counts the lines — because two
-    readers of one heading is how they come to disagree about whether it is
-    there at all.
-    """
-    out = {}
-    heads = list(re.finditer(r"^(#{1,6})[ \t]+(.*)$", text, re.M))
-    for i, head in enumerate(heads):
-        if head.group(1) != "###":
-            continue
-        words = head.group(2).split()
-        # The slice runs to the next heading of any level, so a section with
-        # nothing under it reads as the empty string rather than as the next
-        # section's prose: the thin-row count is then zero, which is what a
-        # Task stating its work elsewhere actually costs.
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        if words and re.match(r"^T-\d{2}$", words[0]):
-            out[words[0]] = text[head.end():end]
-    return out
-
-
-def _levels(by_id):
-    """The longest chain of `blocks` edges ending at each Task, as a length.
-
-    The walk `_cycles` already makes, asking a different question of the same
-    graph. Cycle-safe: a back edge is a finding of its own, and following it
-    here would be a recursion that never returns rather than a second report
-    of one defect. A row this code has no entry for is not an edge — `blocks`
-    naming a row that does not exist is a finding too.
-    """
-    level = {}
-
-    def walk(tid, path):
-        if tid in level:
-            return level[tid]
-        path = path | {tid}
-        best = 0
-        for b in by_id[tid].get("blocks") or []:
-            if b in by_id and b not in path:
-                best = max(best, walk(b, path))
-        level[tid] = best + 1
-        return level[tid]
-
-    for tid in sorted(by_id):
-        walk(tid, frozenset())
-    return level
-
-
-def _chain(by_id, level):
-    """One longest chain of `blocks` edges, first Task to last.
-
-    Reconstructed by stepping back from the deepest Task to a blocker one
-    level shallower, lowest id first at each step, so a plan with two equally
-    long chains names the same one every run: a warning that named a different
-    chain each time would read as two different problems.
-    """
-    if not level:
-        return []
-    cur = sorted(level, key=lambda t: (-level[t], t))[0]
-    chain = [cur]
-    while True:
-        step = sorted(b for b in (by_id[cur].get("blocks") or [])
-                      if b in level and level[b] == level[cur] - 1)
-        if not step:
-            return list(reversed(chain))
-        cur = step[0]
-        chain.append(cur)
-
-
-def _chained_twin(by_id, tid, path):
-    """A row at the other end of a `blocks` edge that names the same path.
-
-    Either direction is the same defect: a row queued behind another on one
-    file, and a row the other waits on, are two Dispatches doing one task's
-    work. The clause is what keeps the thin warning honest — a small
-    independent Task is fine, and only the chained one is worth merging.
-    """
-    for other in sorted(by_id):
-        if other == tid or path not in (by_id[other].get("files") or []):
-            continue
-        if other in (by_id[tid].get("blocks") or []) or \
-                tid in (by_id[other].get("blocks") or []):
-            return other
-    return None
-
-
-def _granularity(by_id, bodies):
-    """Warnings for rows unlikely to be worth a Dispatch of their own.
-
-    A Dispatch has fixed overhead — a prompt, a handoff, a wave of the
-    orchestrator loop, and a worktree when the pool has to grow — so a Task
-    too small to cover it costs more than it returns, and a Task too broad to
-    have its failure localized costs a whole retry. Nothing here can measure
-    either, so both are proxies, and the text names the number as a guess
-    because a threshold nobody knows is a guess reads as a measurement.
-
-    A trailing slash is the only way a plan file says "tree" rather than
-    "file", so that is what the directory check reads: asking the filesystem
-    would make the answer depend on what is checked out beside the plan.
-    """
-    out, pairs = [], set()
-    for tid in sorted(by_id):
-        body = bodies.get(tid)
-        # A row with no section is a finding of its own, and a proxy measured
-        # against a body that is not there would be a second report of it.
-        if body is None:
-            continue
-        files = [f for f in (by_id[tid].get("files") or []) if isinstance(f, str) and f]
-        dirs = [f for f in files if f.endswith("/")]
-        if dirs:
-            out.append(
-                "%s names %s, a directory — no verify can localize a "
-                "failure inside one, so a retry re-does all of it"
-                % (tid, dirs[0]))
-        elif len(files) > FAT_FILES:
-            out.append(
-                "%s names %d paths, over the %d a verify can localize a "
-                "failure in — a retry would re-do all of them (%d is a "
-                "starting guess, not a measurement)"
-                % (tid, len(files), FAT_FILES, FAT_FILES))
-        lines = len([l for l in body.splitlines() if l.strip()])
-        if len(files) != 1 or lines >= THIN_LINES:
-            continue
-        twin = _chained_twin(by_id, tid, files[0])
-        # Once per pair: both ends of a chain are thin by the same measure,
-        # and naming the same merge twice reads as two problems.
-        if twin and frozenset((tid, twin)) not in pairs:
-            pairs.add(frozenset((tid, twin)))
-            sized = "%d non-blank line%s" % (lines, "" if lines == 1 else "s")
-            out.append(
-                "%s is %s and shares %s with %s, which it is chained "
-                "to — two Dispatches doing one task's work; merge them "
-                "(%d non-blank lines is a starting guess, not a "
-                "measurement)" % (tid, sized, files[0], twin, THIN_LINES))
-    return out
-
-
-def _tiers(by_id):
-    """Rows claiming the expensive tier with nothing saying why.
-
-    The test is verifiability: a row whose `verify` command can catch a wrong
-    answer is a `ccd` row, and `cc` is for the work no command settles — the
-    row shapes later work, it is a spec, or it is a review (cost.md). So a `cc`
-    row that has a `verify` reads one of two ways, and both want the same thing
-    written down: a row that is really `ccd` and is mislabelled, or a row that
-    is really `cc` for a reason the plan has not stated. `tier_reason` is where
-    that reason goes — and `spawn --provider cc` refuses without one, so a plan
-    that omits it is a plan whose Dispatches are refused, or worse, quietly run
-    on the wrong credential.
-
-    A warning and never a finding, because the second reading is legitimate:
-    a review row has a `verify` (it runs the suite) and is still `cc`. No
-    parser can tell the two apart, so refusing would refuse correct plans —
-    which is how a check stops being read.
-    """
-    out = []
-    for tid in sorted(by_id):
-        row = by_id[tid]
-        if (row.get("provider") or "") != "cc":
-            continue
-        if not (row.get("verify") or "").strip():
-            continue
-        if str(row.get("tier_reason") or "").strip():
-            continue
-        out.append(
-            "%s is cc with a verify — a command settles this row, so it is a "
-            "ccd row unless it shapes later work, is a spec, or is a review; "
-            "say which with a \"tier_reason\" string, or run it on ccd "
-            "(cost.md)" % tid)
-    return out
-
-
-def _shape(by_id, bodies):
-    """A plan's depth, width and task count, and what they earn in warnings.
-
-    Depth is the longest chain of `blocks` edges, which is the number of
-    Dispatches a Run has to take one at a time; width is the most Tasks any
-    one level holds, which is the most it can ever have out at once. The
-    second is why the executor cap is not the limit on a plan: nothing here
-    branches, so a second executor cannot be used however many are idle.
-    """
-    level = _levels(by_id)
-    counts = {}
-    for lv in level.values():
-        counts[lv] = counts.get(lv, 0) + 1
-    depth = max(level.values()) if level else 0
-    width = max(counts.values()) if counts else 0
-    tasks = len(level)
-    chain = _chain(by_id, level)
-
-    warnings = []
-    if depth > DEPTH_MAX:
-        warnings.append(
-            "depth %d is over the %d a plan should stay under — shape the work "
-            "wide, not deep: depth is where these systems fail (protocol.md). "
-            "Longest chain: %s" % (depth, DEPTH_MAX, " -> ".join(chain)))
-    if tasks >= WIDTH_MIN_TASKS and width < WIDTH_MIN:
-        warnings.append(
-            "width %d on %d Tasks — no two of them can run at once, so a "
-            "second executor cannot help this plan whatever the cap says "
-            "(%d is the width to shape for)" % (width, tasks, WIDTH_MIN))
-    warnings.extend(_granularity(by_id, bodies))
-    warnings.extend(_tiers(by_id))
-    return {"depth": depth, "width": width, "tasks": tasks,
-            "chain": chain, "warnings": warnings}
-
-
-def plan_rows(plan):
-    """Read a plan's `## Tasks` block.
-
-    Returns {"rows", "sections", "findings", "shape"} and raises nothing: the
-    caller decides whether to stop at the first finding (dispatch) or report
-    them all (plan lint). `findings` are human-readable and carry no prefix, so
-    a caller can name itself.
-
-    `shape` is None until the rows parse, and then the plan's own measurements
-    with the warnings they earn — a property of the whole document that no row
-    can state, which is why it is computed here rather than by each caller.
-    Warnings are not findings and no caller may fail on one: a deep plan is
-    sometimes correct, and a linter that refuses correct plans stops being run.
-    """
-    out = {"rows": [], "sections": [], "findings": [], "shape": None}
-    say = out["findings"].append
-    try:
-        text = open(plan, encoding="utf-8").read()
-    except OSError as e:
-        say("cannot read plan: %s" % e)
-        return out
-
-    m = re.search(r"^## Tasks\s*\n+```json\n(.*?)\n```", text, re.S | re.M)
-    if not m:
-        say("%s has no '## Tasks' json block" % plan)
-        return out
-    try:
-        rows = json.loads(m.group(1))
-    except ValueError as e:
-        say("task block is not valid JSON: %s" % e)
-        return out
-    if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
-        say("%s: the task block must be a list of objects" % plan)
-        return out
-
-    out["rows"] = rows
-    bodies = _section_bodies(text)
-    out["sections"] = sorted(bodies)
-    sections = set(out["sections"])
-
-    by_id = {}
-    for r in rows:
-        missing = [k for k in ("task", "files", "verify", "blocks") if k not in r]
-        if missing:
-            say("row %s is missing %s" % (r.get("task", "(unnamed)"), " ".join(missing)))
-        if r.get("task"):
-            # Two rows under one id are two Dispatches at one Task in one wave:
-            # `collect --plan` emits a `ready` line per row, so the loop seats
-            # both and two panes take the same section on two branches. Caught
-            # here so every reader refuses it, rather than in the one that
-            # happened to notice.
-            if r["task"] in by_id:
-                say("%s has two rows for %s: one Task, one row" % (plan, r["task"]))
-            by_id[r["task"]] = r
-
-    # A row and its prose section must agree, in both directions: a row with no
-    # section dispatches an executor to read nothing, and a section with no row
-    # is work nobody will ever be sent to do.
-    for tid in sorted(by_id):
-        if tid not in sections:
-            say("%s has a row for %s but no '### %s' section" % (plan, tid, tid))
-    orphans = sorted(sections - set(by_id))
-    if orphans:
-        say("%s has sections with no row: %s" % (plan, " ".join(orphans)))
-
-    for tid in sorted(by_id):
-        dangling = sorted(b for b in (by_id[tid].get("blocks") or []) if b not in by_id)
-        if dangling:
-            say("%s blocks on %s, which has no row" % (tid, " ".join(dangling)))
-
-    for cycle in _cycles(by_id):
-        say("blocks has a cycle: %s" % " -> ".join(cycle))
-
-    for tid in sorted(by_id):
-        if _masks_exit(by_id[tid].get("verify") or ""):
-            say("%s: verify pipes without a leading 'set -o pipefail', so its "
-                "exit code is the last stage's and the check cannot fail" % tid)
-
-    out["shape"] = _shape(by_id, bodies)
-
-    return out
-PY
-}
+# The reader itself lives in `lib/herdr_team/plan.py`, imported by the
+# `python3 -` blocks below that need it: one module is the same single reader
+# with a name, so `plan lint`, `dispatch --from-plan`, `collect --plan` and
+# `loop` cannot disagree about a plan.
 
 # plan_body <plan> <task> <run> <force> — the body for a task named in a plan's
 # `## Tasks` block. Prints it on stdout; exits 3 when a blocker is unmet.
@@ -3309,10 +2626,11 @@ PY
 # worktree, so an absolute path stays readable from every pane.
 plan_body() {
   {
-    plan_parser_py
-    handoff_py
     cat <<'PY'
-import glob
+import glob, os, sys
+
+from herdr_team.handoff import handoff_meta, unproven
+from herdr_team.plan import plan_rows
 
 plan, task, run, handoffs, force = sys.argv[1:6]
 plan = os.path.abspath(plan)
@@ -3375,7 +2693,7 @@ if verify:
         "only then claim evidence: verified." % verify)
 print("\n\n".join(body))
 PY
-  } | python3 - "$1" "$2" "$3" "$(handoffs_dir "$3")" "$4"
+  } | herdr_py - "$1" "$2" "$3" "$(handoffs_dir "$3")" "$4"
 }
 
 cmd_dispatch() {

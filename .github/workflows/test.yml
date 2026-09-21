@@ -77,3 +77,80 @@ jobs:
         env:
           HERDR_TESTS_STRICT: "1"
         run: bash ai/herdr/tests/run.sh
+
+  python:
+    name: Check the herdr Python
+    needs: detect-changes
+    if: needs.detect-changes.outputs.herdr == 'true'
+    # Linux, unlike the job above: the four checks below read `ai/herdr/lib/`
+    # and `ai/herdr/tests/`, which are standard-library Python, and `team.sh` —
+    # the only thing that needs macOS — is not involved in any of them. The gate
+    # is the same one that job uses, because the filter it reads covers the same
+    # files; nothing here is worth a run on a PR that cannot have changed them.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # uv comes from mise on a laptop; a runner has no mise, so it is installed
+      # here. `pipx` because this repo's CI already runs a pinned Python tool that
+      # way (lint.yml's zizmor), and because `astral-sh/setup-uv` would be one
+      # more third-party action to review and keep current — against three lines
+      # that do the same job with no action at all. (This repo already trusts
+      # `dorny/paths-filter`, so it is not the first; the point is that a
+      # toolchain this small does not need the indirection.) This pin is uv's own
+      # and is the only one here that scripts/ci/lint-local.sh does not mirror: it
+      # has mise. The three below are that script's pins, and the four uvx lines
+      # are that script's four commands, verbatim.
+      - name: Set up uv
+        env:
+          UV_VERSION: "0.12.10"
+        run: |
+          pipx install "uv==${UV_VERSION}"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+
+      # Four cold `uvx` invocations per run download ruff, mypy, pytest and their
+      # dependencies into `~/.cache/uv`, which a fresh runner does not have. The
+      # key is this file's own hash because this file is where the four pins live:
+      # bumping one is exactly the change that has to miss, and the restore-keys
+      # below re-use the other three tools' layers while it does. `actions/*` pins
+      # to a major tag here by policy (zizmor.yml's ref-pin for trusted
+      # publishers), the same as the checkouts above.
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}-${{ github.sha }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}-
+            uv-${{ runner.os }}-
+
+      # From `ai/herdr`: ruff, mypy and pytest all read `pyproject.toml` from
+      # the directory they are run in, and that is where it is.
+      - name: Check for Python lint findings
+        working-directory: ai/herdr
+        run: uvx ruff@0.16.8 check .
+
+      - name: Verify Python files are formatted
+        working-directory: ai/herdr
+        run: uvx ruff@0.16.8 format --check .
+
+      # `--with pytest` because the tests import it, and an import mypy cannot
+      # resolve makes the test function under each decorator untyped — which
+      # would put the tests outside `strict` to spare them a dependency they do
+      # not have at runtime. That is also why `ai/herdr/pyproject.toml` carries
+      # no `ignore_missing_imports` for pytest: the fix is here, not there.
+      - name: Verify the Python types are clean
+        working-directory: ai/herdr
+        run: uvx --with pytest==9.1.1 mypy@2.3.1 --strict
+
+      # The unit tests for the two modules `team.sh` imports. The suite above is
+      # the end-to-end half and does not run here — it needs macOS.
+      - name: Run the Python unit tests
+        working-directory: ai/herdr
+        run: uvx pytest@9.1.1
