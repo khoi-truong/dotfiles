@@ -116,6 +116,14 @@ command — a criterion satisfied by reading something is not a gate.
 Keep tasks serial unless they touch genuinely disjoint files. Two tasks editing
 one file concurrently means one merges onto work it never saw.
 
+`plan lint` prints `depth D  width W  tasks N` and warns on both, because both
+are costs. Depth is the Dispatches the Run must take one at a time; width is the
+most it can ever have out at once, so a plan deeper than 4 or — once it has 3
+tasks — narrower than 2 is a queue wearing a plan's shape. Task size is the same
+argument one level down: a Dispatch has fixed overhead — a prompt, a pane, a
+handoff, a collect — so a task is worth a row when it is worth a Dispatch, and
+two chained rows on one file are one task written twice.
+
 ## What consumes this
 
 `ai/herdr/team.sh` — `dispatch --from-plan` builds an executor's prompt from a

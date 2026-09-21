@@ -2015,7 +2015,7 @@ loop_wave() {
   #    the thing it exists to check.
   if [ "${#waiting[@]}" -gt 0 ] && [ "$spawn" -eq 1 ]; then
     local -a still=()
-    local i name branch src st spawned=""
+    local i name branch src st spawned="" pv="" pload="" reserved=""
     # Counted the way `spawn` counts it, and counted once: the panes held are
     # the ones this Run can still settle, so a wave cannot seat a third
     # executor on a cap of two and another tab's executors are not in the way of
@@ -2027,6 +2027,21 @@ loop_wave() {
     live_exec="$(printf '%s\n' "$held" | count_lines)"
     for i in "${!waiting[@]}"; do
       IFS=$'\t' read -r lane tid provider <<<"${waiting[$i]}"
+      # An unattended loop never takes a provider's last seat. The ceiling is a
+      # credential shared with every other tab on the machine, and a loop that
+      # spends down to it holds what it took for the Run's life — it never
+      # settles — so a second orchestrator would find the key exhausted with
+      # nobody at a keyboard to free it. One seat is left for a human spawning
+      # by hand, who is there to decide. A ceiling of 1 reserves nothing: that
+      # is a setting that means one pane, not none.
+      pv="${provider:-ccd}"
+      pload="$(provider_load_for "$pv" | cut -d'|' -f1)"
+      if [ "$PROVIDER_CAP" -gt 1 ] && [ "$pload" -ge $((PROVIDER_CAP - 1)) ]; then
+        still+=("${waiting[$i]}")
+        printf '%s\n' "$reserved" | grep -qxF "$pv" ||
+          reserved="${reserved:+${reserved} }${pv}"
+        continue
+      fi
       name=""
       branch=""
       if [ "$lane" = rev ]; then
@@ -2081,7 +2096,10 @@ loop_wave() {
   done
   if [ -n "$ready_list" ] && [ "${#seats[@]}" -eq 0 ]; then
     printf '%s\n' "$table"
-    if [ "$spawn" -eq 1 ]; then
+    if [ "$spawn" -eq 1 ] && [ -n "${reserved:-}" ]; then
+      printf 'loop: %s ready and no pane free for them — %s is one pane below its ceiling of %s (HERDR_TEAM_PROVIDER_CAP) and the loop leaves that seat for a human; spawn it by hand, settle a pane, or raise the ceiling\n' \
+        "$ready_list" "$reserved" "$PROVIDER_CAP"
+    elif [ "$spawn" -eq 1 ]; then
       printf 'loop: %s ready and no pane free for them — this Run holds %s (cap %s executors per Run, HERDR_TEAM_EXEC_CAP); settle one, or raise the cap\n' \
         "$ready_list" \
         "$(printf '%s' "${held:-none}" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/ $//')" \
@@ -2798,6 +2816,13 @@ def plan_rows(plan):
         if missing:
             say("row %s is missing %s" % (r.get("task", "(unnamed)"), " ".join(missing)))
         if r.get("task"):
+            # Two rows under one id are two Dispatches at one Task in one wave:
+            # `collect --plan` emits a `ready` line per row, so the loop seats
+            # both and two panes take the same section on two branches. Caught
+            # here so every reader refuses it, rather than in the one that
+            # happened to notice.
+            if r["task"] in by_id:
+                say("%s has two rows for %s: one Task, one row" % (plan, r["task"]))
             by_id[r["task"]] = r
 
     # A row and its prose section must agree, in both directions: a row with no

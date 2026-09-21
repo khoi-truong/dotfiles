@@ -444,6 +444,12 @@ expect_lint 1 'sections with no row: T-02' "26 a section with no row" plan-orpha
 expect_lint 1 "verify pipes without a leading 'set -o pipefail'" \
   "27 a verify whose exit code is masked" plan-masking-verify.md
 
+# 27b. Two rows under one id. Everything else about the plan is well-formed —
+#      the section exists, nothing dangles — so nothing but this check stands
+#      between the plan and two panes on one section.
+expect_lint 1 'has two rows for T-01: one Task, one row' \
+  "27b two rows under one task id" plan-dupe.md
+
 # 28. The passing case. plan-ok's piped verify leads with `set -o pipefail`,
 #     which is exactly the shape the check is meant to allow.
 expect_lint 0 ': ok$' "28 a well-formed plan passes" plan-ok.md
@@ -3175,6 +3181,39 @@ else
   no "128g and calls that pane unknown rather than crashing on it" \
     "$(tr '\n' '|' <"${TMP}/out")"
 fi
+
+# 129. The loop never takes a provider's last seat. Three `ccd` panes are live
+#       under another Run, so the ceiling of 4 has one left; a `--spawn` wave
+#       with a ready `ccd` row stops at 6 rather than spending it. The Run's own
+#       cap is not what refuses this — it holds no executor at all — which is
+#       what makes the case about the ceiling. A loop that spent it would hold
+#       it for the Run's life, since it never settles, and a second tab would
+#       find the credential exhausted with nobody at a keyboard to free it.
+loop_fresh "exec-a1 working" "exec-a2 working" "exec-a3 working"
+record exec-a1 ccd "${RA}"
+record exec-a2 ccd "${RA}"
+record exec-a3 ccd "${RA}"
+loop_on 6 '^loop: T-01 ready and no pane free for them — ccd is one pane below its ceiling of 4' \
+  "129 a --spawn wave leaves the provider's last seat alone" \
+  --plan "${FIXTURES}/plan-ok.md" --spawn feat/loop
+called 0 '^worktree open' "129b and nothing was created for the row it left"
+
+# 129c. The seat is reserved, not forbidden: raise the ceiling by one and the
+#       same wave draws the pane it refused above. A guard that refused either
+#       way would read the same in 129 and be a cap of three wearing a four.
+loop_fresh "exec-a1 working" "exec-a2 working" "exec-a3 working"
+record exec-a1 ccd "${RA}"
+record exec-a2 ccd "${RA}"
+record exec-a3 ccd "${RA}"
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+HERDR_TEAM_PROVIDER_CAP=5
+export FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
+loop_on 0 '' "129c one more seat and the same wave spawns" \
+  --plan "${FIXTURES}/plan-ok.md" --spawn feat/loop
+unset FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
+called 1 '^worktree open .* --label exec-0001-1 ' \
+  "129d the executor it refused above was drawn"
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
