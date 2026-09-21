@@ -122,7 +122,7 @@ has accepted it. The fourth column is `wait`'s.
 or below width 2 once a plan has 3 Tasks: depth is the Dispatches the Run must
 take one at a time, width the most it can ever have out at once.
 
-`ai/herdr/fixtures/run-tests.sh` covers all of this: `shellcheck` and `bash -n`
+`ai/herdr/tests/run.sh` covers all of this: `shellcheck` and `bash -n`
 do not see inside the embedded python, so it is the parser's only check.
 
 ## The `wait` verb
@@ -150,7 +150,7 @@ escapes the gap `events.subscribe` leaves by not replaying.
 stated nowhere and was not probed — probing means killing a pane in the user's
 session. The code assumes it **may** block until `--timeout`, so before
 blocking it stats each outstanding handoff once and returns if one appeared
-since the journal was read: correct under either answer, with `run-tests.sh`
+since the journal was read: correct under either answer, with `tests/run.sh`
 case 44 staging that window so the guard cannot go dead. An agent that dies
 without writing a handoff is uncovered; `--timeout` is the only recovery.
 

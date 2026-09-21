@@ -416,7 +416,7 @@ is the whole point: task ids restart at `T-01` every Run and handoff filenames
 carry no Run, so a gate that only globs the directory unblocks work with a
 previous Run's result. `--force` overrides it, because retry is human-gated and
 a gate with no key is a trap. A plan with no json block dispatches exactly as
-before. `ai/herdr/fixtures/run-tests.sh` is the only check the embedded parser
+before. `ai/herdr/tests/run.sh` is the only check the embedded parser
 gets — `shellcheck` cannot see inside a heredoc — so run it after touching it.
 
 `plan lint <plan.md>` checks a plan against that format before anything is
@@ -553,9 +553,9 @@ backup) and `module_dir`.
 trailing whitespace — except in `*.md` and `*.diff`. C-family and Python use 4
 spaces; Makefiles use tabs. Markdown is linted per `.markdownlint-cli2.jsonc`.
 
-There is no build or test suite; this repo is shell scripts and config files.
-Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`. CI runs on every
-push to `main` and every pull request:
+There is no build or repo-wide test suite; this repo is shell scripts and config
+files. Verify changes with `bash -n` (or `shellcheck`) and `zsh -n`. CI runs on
+every push to `main` and every pull request:
 
 - `lint.yml` — `shellcheck -x`, `zsh -n`, markdownlint, editorconfig-checker,
   JSON and TOML validation, actionlint and zizmor.
@@ -563,6 +563,9 @@ push to `main` and every pull request:
 - `smoke.yml` — on macOS, when the shell config, `setup.sh`, `lib/` or a plist
   changed: lints the plists, then links the zsh config into a throwaway `HOME`
   and fails on any stderr output or a warm start over 1.5 s.
+- `test.yml` — on macOS, when `ai/herdr/` or `lib/` changed: the herdr suite.
+  It runs with `HERDR_TESTS_STRICT=1`, so a skip the runner could have
+  prevented fails the job instead of reporting a green suite that never asked.
 - `pr-title.yml` — Conventional Commits title; warns past 50 characters,
   fails past 72.
 

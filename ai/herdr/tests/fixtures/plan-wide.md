@@ -11,8 +11,8 @@ warns about nothing at all.
 [
   {"task": "T-01", "provider": "ccd", "files": ["ai/herdr/team.sh"],
    "verify": "shellcheck -x ai/herdr/team.sh", "blocks": []},
-  {"task": "T-02", "provider": "ccd", "files": ["ai/herdr/fixtures/run-tests.sh"],
-   "verify": "shellcheck -x ai/herdr/fixtures/run-tests.sh", "blocks": []},
+  {"task": "T-02", "provider": "ccd", "files": ["ai/herdr/tests/run.sh"],
+   "verify": "shellcheck -x ai/herdr/tests/run.sh", "blocks": []},
   {"task": "T-03", "provider": "ccd", "files": ["ai/shared/skills/herdr-team/SKILL.md"],
    "verify": "set -o pipefail; npx markdownlint-cli2 ai/shared/skills/herdr-team/SKILL.md | tail -1",
    "blocks": []},

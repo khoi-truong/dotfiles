@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — the acceptance checks for `team.sh dispatch --from-plan`,
+# run.sh — the acceptance checks for `team.sh dispatch --from-plan`,
 # `collect --plan`, `wait`, `report` and `teardown`.
 #
 # Static checks do not see inside team.sh's embedded python, and this
@@ -8,7 +8,7 @@
 # `dispatched`, `journal_lines`, `unproven`, `cmd_wait`, `cmd_report` or the
 # teardown guard:
 #
-#   bash ai/herdr/fixtures/run-tests.sh
+#   bash ai/herdr/tests/run.sh
 #
 # Every case points HERDR_TEAM_ROOT at a throwaway directory, so nothing here
 # reads or writes the live .herdr/ — which would also shift the next-dispatch
@@ -17,6 +17,18 @@
 # a pass. The `teardown` cases go further and register a real throwaway worktree
 # under ${TMP}: the guard is a `git` question, so a fixture that answered it
 # would be testing the fixture.
+#
+# A `herdr` stub answering "no session" is put on PATH before any case runs:
+# team.sh will not start without one, and this suite has to run where herdr is
+# not installed. The comment on it, a few lines below, says why a stub and not
+# the real thing.
+#
+# HERDR_TESTS_STRICT=1 makes a skip a failure — see `sk`, `sk_declared` and
+# `strict_run` below. CI sets it, because the nine cases the teardown and spawn
+# sections gate on a git worktree are the whole of two guards: a runner that
+# could not cut one would otherwise report a green suite that never asked
+# whether teardown refuses unpushed work. The declared skips are pinned in
+# `declared_ok` for the same reason, one case at a time.
 set -uo pipefail
 
 # The tree under test is the tree this file is part of, resolved from its own
@@ -27,13 +39,35 @@ set -uo pipefail
 # right. Exported because team.sh reads it for the same root.
 DOTFILES="$(cd "$(dirname "$0")/../../.." && pwd)"
 export DOTFILES
-FIXTURES="${DOTFILES}/ai/herdr/fixtures"
+FIXTURES="${DOTFILES}/ai/herdr/tests/fixtures"
 TEAM="${DOTFILES}/ai/herdr/team.sh"
 RUN="R-fixture-0001"
 OTHER="R-fixture-9999"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
+
+# team.sh refuses to start without herdr on PATH — `command -v herdr` sits in its
+# first twenty lines, before any verb — and a runner has none. Installing one
+# there is not an option: herdr is a private tool, and a job that installed a
+# build of it would be testing that build's protocol rather than this repo's.
+# Every case that asks herdr a question puts a stub of its own in front of this
+# one, so what is left for this stub to answer is a case that forgot to, and the
+# tools-at-startup check itself. It answers the way a machine with no session
+# answers — non-zero, on stderr — so such a case fails on what it asserted
+# rather than on a missing binary.
+#
+# Prepended, not appended: the `wait`, `surface`, `settle`, `spawn` and `loop`
+# sections each build a stub directory of their own and prepend that later, and
+# a directory prepended later outranks this one.
+mkdir -p "${TMP}/nohdr"
+cat >"${TMP}/nohdr/herdr" <<'SH'
+#!/usr/bin/env bash
+printf 'no session\n' >&2
+exit 1
+SH
+chmod +x "${TMP}/nohdr/herdr"
+export PATH="${TMP}/nohdr:${PATH}"
 
 # The state root, and the key standing in for the tab driving it. Every case
 # reads and writes ${HERDR_TEAM_ROOT} and nothing else, so a fixture run never
@@ -77,12 +111,72 @@ use_run "${RUN}"
 HERDR_FIXTURE_HANDOFFS="$(handoff_dir "${RUN}")"
 export HERDR_FIXTURE_HANDOFFS
 
-pass=0 fail=0 skip=0
+pass=0 fail=0 skip=0 holes=0 hole_ids="" declared_ids=""
+
+# The declared skips, pinned. `sk_declared` is a case saying "no run of this
+# suite has ever had this precondition" — a claim about the suite, made by
+# whoever adds the next case, and the kind of claim that quietly stops being true
+# when the case around it changes. Listing them here makes adding one a second
+# edit: a new id that declares itself is a hole nobody has agreed to, and case
+# 132 says so rather than letting a case leave the run through a side door.
+declared_ok="10 45"
 
 ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); }
-# A case the environment cannot run is not a case that passed. Say so.
-sk() { printf '  skip %s\n    %s\n' "$1" "$2"; skip=$((skip + 1)); }
+# A case the environment cannot run is not a case that passed. Say so — and say
+# which of the two kinds of skip it is, because they are not the same finding:
+#
+#   sk           a *hole*. The case asked a question of this machine and the
+#                machine could not answer: nine of them stand on a throwaway
+#                worktree that `git worktree add` refused to cut. On a runner
+#                that supplies git and a `main` to cut from, a hole means the
+#                guard went unasked, not that the guard passed.
+#   sk_declared  not a hole. The case names a precondition no fixture run has,
+#                whatever the machine: 45 needs a live pane, and 10 needs a pty
+#                — the two cases 41-44c and the `wait` stubs exist to stand in
+#                for. Their absence is declared rather than reported.
+#
+# HERDR_TESTS_STRICT=1 (CI) is the difference made mechanical, and only "1"
+# turns it on: off is the default and "0" is off, so an environment that sets it
+# for another reason cannot arm the suite by accident. Without it a skip is
+# informational, which is right on a developer's machine where the point is to
+# be told what did not run. With it, every hole fails case 132 — a runner that
+# skipped the teardown cases and exited 0 would print the same green summary as
+# a runner that asked, for two guards nobody asked about — and so does a
+# declared skip whose id is not in `declared_ok`.
+sk() {
+  printf '  skip %s\n    %s\n' "$1" "$2"
+  skip=$((skip + 1))
+  holes=$((holes + 1))
+  # The id alone — the label's first word — so the failure at case 132 names
+  # "54 55 131" rather than three lines of prose.
+  hole_ids="${hole_ids:+${hole_ids} }${1%% *}"
+}
+sk_declared() {
+  printf '  skip %s\n    %s\n' "$1" "$2"
+  skip=$((skip + 1))
+  declared_ids="${declared_ids:+${declared_ids} }${1%% *}"
+}
+
+# strict_run <label> — case 132, and silent unless HERDR_TESTS_STRICT=1.
+strict_run() {
+  [ "${HERDR_TESTS_STRICT:-0}" = "1" ] || return 0
+  bad=""
+  if [ "${holes}" -ne 0 ]; then
+    bad="${holes} case(s) skipped for a reason this runner can fix: ${hole_ids}"
+  fi
+  for id in ${declared_ids}; do
+    case " ${declared_ok} " in
+      *" ${id} "*) ;;
+      *) bad="${bad}${bad:+; }${id} skipped without being declared in declared_ok" ;;
+    esac
+  done
+  if [ -z "${bad}" ]; then
+    ok "$1"
+  else
+    no "$1" "${bad}"
+  fi
+}
 
 # proven <task> — the `commands:` body that proves plan-ok.md's verify for that
 # task: what an honest handoff carries. It mirrors the fixture plan, so a change
@@ -289,8 +383,10 @@ fi
 
 # 10. No argv, no plan, stdin is a terminal: an error, never a hang. This needs
 #     a real pty for [ -t 0 ] to be true, which an agent pane or a CI runner
-#     may not have — hence the skip rather than a pass. A hang here would be
-#     indistinguishable from a slow dispatch, so the guard is worth the
+#     may not have — hence the skip rather than a pass, and `sk_declared` rather
+#     than `sk`: the pty is the case's precondition and not something a runner
+#     is asked to provide, so its absence is not a hole in the run. A hang here
+#     would be indistinguishable from a slow dispatch, so the guard is worth the
 #     awkwardness.
 out=""
 if [ -t 0 ]; then
@@ -299,7 +395,7 @@ elif [ -e /dev/tty ] && script -q /dev/null true >/dev/null 2>&1; then
   out="$(script -q /dev/null \
     "${TEAM}" dispatch exec-1 --run "${RUN}" --dry-run --task T-01 2>&1 || true)"
 else
-  sk "10 a terminal with no body errors instead of hanging" "no pty available here"
+  sk_declared "10 a terminal with no body errors instead of hanging" "no pty available here"
 fi
 if [ -n "$out" ]; then
   if printf '%s' "$out" | grep -q 'no work description given'; then
@@ -764,8 +860,10 @@ else
     "herdr called with: $(tr '\n' '|' <"${TMP}/herdr-called")"
 fi
 
-# 45. The live case: a real pane, a real agent, a real transition.
-sk "45 a live agent settling returns from wait" \
+# 45. The live case: a real pane, a real agent, a real transition. Declared
+#     rather than a hole — every fixture from 41 to 44c stubs herdr out, and
+#     this is the one that says so rather than pretending the stub answered.
+sk_declared "45 a live agent settling returns from wait" \
   "a fixture run has no herdr session — drive it by hand: team.sh wait while a dispatched agent works"
 
 # 45b. Blocked is not settled, and 5 is how the orchestrator learns there is a
@@ -1185,12 +1283,29 @@ if wt_add a; then
   #      again and not landing. A guard that counts commits, or compares HEAD's
   #      tree to main's, still reads this as unpushed work; 55 is its other
   #      direction, the same shape holding content main has never seen.
-  behind_tree="$(git -C "${DOTFILES}" rev-parse --verify --quiet 'main~1^{tree}')" || behind_tree=""
+  #
+  #     The base is the nearest ancestor of main whose tree differs from main's,
+  #     not `main~1`. `main~1` is only that ancestor when main's tip changed a
+  #     file: land a commit that changes nothing — a merge, a revert, an empty
+  #     commit — and `main~1` carries main's own tree, which is a shape this case
+  #     has no opinion about and would skip over. Asking for the nearest ancestor
+  #     whose tree demonstrably differs is the question the case actually has,
+  #     and it answers `main~1` on a history where that is the answer.
   main_tree="$(git -C "${DOTFILES}" rev-parse --verify --quiet 'main^{tree}')" || main_tree=""
-  if [ -z "${behind_tree}" ] || [ "${behind_tree}" = "${main_tree}" ]; then
+  base=""
+  step=1
+  while [ "${step}" -le 50 ]; do
+    tree="$(git -C "${DOTFILES}" rev-parse --verify --quiet "main~${step}^{tree}")" || break
+    if [ "${tree}" != "${main_tree}" ]; then
+      base="main~${step}"
+      break
+    fi
+    step=$((step + 1))
+  done
+  if [ -z "${main_tree}" ] || [ -z "${base}" ]; then
     sk "131 a squash-merged branch tears down without --force" \
-      "this case stands on a last commit that changed main; this repo's did not"
-  elif wt_add d 'main~1'; then
+      "this case stands on an ancestor of main whose tree differs from main's; this repo has none"
+  elif wt_add d "${base}"; then
     git -C "${WT}" -c commit.gpgsign=false -c user.email=fixture@example.com \
       -c user.name=fixture commit --quiet --no-verify --allow-empty \
       -m "the work, already in main"
@@ -1429,7 +1544,7 @@ mkdir -p "${TMP}/realzsh"
 cat >"${TMP}/realzsh/zsh" <<SH
 #!/usr/bin/env bash
 [ "\$1" = "-ic" ] || exit 9
-exec "${REAL_ZSH}" -ic "_cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
+exec "${REAL_ZSH}" -ic "typeset -ga _cc_prov_names; typeset -gA _cc_prov; _cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
 SH
 chmod +x "${TMP}/realzsh/zsh"
 
@@ -2621,7 +2736,7 @@ chmod +x "${TMP}/loop/git"
 cat >"${TMP}/loop/zsh" <<SH
 #!/usr/bin/env bash
 [ "\$1" = "-ic" ] || exec "${REAL_ZSH}" "\$@"
-exec "${REAL_ZSH}" -ic "_cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
+exec "${REAL_ZSH}" -ic "typeset -ga _cc_prov_names; typeset -gA _cc_prov; _cc_prov_names+=(herdr-fixture); _cc_prov[herdr-fixture:short]=ccd; _cc_prov[herdr-fixture:key]=\$FIXTURE_REF; \$2" "\${@:3}"
 SH
 chmod +x "${TMP}/loop/zsh"
 
@@ -3307,6 +3422,23 @@ elif [ -n "${dup_ids}" ]; then
 else
   ok "130 every case id is unique"
 fi
+
+# 132. The skips, which is what HERDR_TESTS_STRICT exists for. Off by default:
+#      on a developer's machine a skip is the suite telling them what did not
+#      run, and the worktree cases need a git repo to cut one from, so their
+#      absence is expected rather than wrong. Under it, a hole fails the run —
+#      the nine cases behind `wt_add` are the whole of two guards, and a runner
+#      that quietly skipped them would print the same green summary as a runner
+#      that asked. The ids are named in the failure because "which one could not
+#      run here" is the whole diagnosis: 54 to 56 and 131 are `teardown`, 68 to
+#      72 are `spawn`.
+#
+#      A declared skip is not a hole, but it is not free either: it has to be in
+#      `declared_ok`. The suite declaring a precondition is a claim about every
+#      run this file makes, and an unlisted claim would be a case that left the
+#      run without anyone deciding it could — the same green summary, one case
+#      quieter.
+strict_run "132 no case is skipped that this runner could have executed"
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"

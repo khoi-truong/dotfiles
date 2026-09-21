@@ -15,7 +15,7 @@ of its own. Every warning here is a warning: the exit stays 0.
   {"task": "T-03", "provider": "ccd", "files": ["ai/herdr/"],
    "verify": "shellcheck -x ai/herdr/team.sh", "blocks": []},
   {"task": "T-04", "provider": "ccd",
-   "files": ["ai/herdr/team.sh", "ai/herdr/fixtures/run-tests.sh",
+   "files": ["ai/herdr/team.sh", "ai/herdr/tests/run.sh",
              "ai/shared/skills/herdr-team/SKILL.md", "ai/claude/providers.zsh",
              "ai/setup.sh", "README.md", "brew/Brewfile", "lib/common.sh",
              "zsh/functions.zsh"],

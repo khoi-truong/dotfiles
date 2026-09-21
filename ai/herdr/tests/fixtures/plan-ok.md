@@ -1,6 +1,6 @@
 # Fixture plan — two tasks, one dependency
 
-Status: fixture. Not a real plan; `run-tests.sh` dispatches against this file.
+Status: fixture. Not a real plan; `run.sh` dispatches against this file.
 
 ## Tasks
 

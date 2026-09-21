@@ -11,8 +11,8 @@ executor idle throughout — and it is what the linter is here to say out loud.
 [
   {"task": "T-01", "provider": "ccd", "files": ["ai/herdr/team.sh"],
    "verify": "shellcheck -x ai/herdr/team.sh", "blocks": []},
-  {"task": "T-02", "provider": "ccd", "files": ["ai/herdr/fixtures/run-tests.sh"],
-   "verify": "shellcheck -x ai/herdr/fixtures/run-tests.sh", "blocks": ["T-01"]},
+  {"task": "T-02", "provider": "ccd", "files": ["ai/herdr/tests/run.sh"],
+   "verify": "shellcheck -x ai/herdr/tests/run.sh", "blocks": ["T-01"]},
   {"task": "T-03", "provider": "ccd", "files": ["ai/setup.sh"],
    "verify": "shellcheck -x ai/setup.sh", "blocks": ["T-02"]},
   {"task": "T-04", "provider": "ccd", "files": ["ai/claude/providers.zsh"],
