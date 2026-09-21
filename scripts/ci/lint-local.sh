@@ -26,8 +26,8 @@
 # paths (.omc/, .herdr/) are skipped exactly as a clean checkout skips them.
 #
 # Every pin below is the one its workflow uses — lint.yml's for the shell, zsh,
-# markdown, editorconfig, actionlint and zizmor checks, test.yml's for the four
-# Python ones — and this file's steps mirror those files' steps. Bump them
+# markdown, editorconfig, actionlint, zizmor, ruff and mypy checks, test.yml's
+# for pytest — and this file's steps mirror those files' steps. Bump them
 # together: these files are the only places these tools are named, and a version
 # that disagrees is a green local run that CI then fails.
 set -euo pipefail
@@ -279,11 +279,12 @@ check_editorconfig() {
   "$binary" -exclude "$EC_EXCLUDE"
 }
 
-# The four Python checks test.yml's `python` job runs, in that job's order —
-# cheapest first, and the two ruff passes ahead of the two that read every file.
+# lint.yml's `python` job (ruff check, ruff format, mypy), then test.yml's
+# (pytest) — cheapest first, and the two ruff passes ahead of the two that read
+# every file.
 #
-# `uvx` is where the three versions are pinned, and they are the versions that
-# job uses. The runner installs uv itself first (`pipx install uv==…`), because
+# `uvx` is where the three versions are pinned, and they are the versions those
+# jobs use. The runner installs uv itself first (`pipx install uv==…`), because
 # it has no mise; that pin is the one thing here and there that does not match,
 # and it is uv's own version rather than a tool's, so there is nothing for this
 # file to mirror.
@@ -319,9 +320,9 @@ main() {
       ;;
     '')
       # Cheapest first, so a rule violation does not wait on three downloads;
-      # the order matches lint.yml's step order within each job. `python` is the
-      # one check from another workflow, so it is placed by that rule rather than
-      # by step order: it is not free either — uvx fetches three tools the first
+      # the order matches lint.yml's step order within each job. `python` also
+      # runs test.yml's pytest, so it is placed by that rule rather than by step
+      # order: it is not free either — uvx fetches three tools the first
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the four checks that fetch
       # nothing and before the three that fetch more.
