@@ -84,8 +84,9 @@ not only the task's own tests. A task that edits a shell script and verifies
 with `bash ai/herdr/fixtures/run-tests.sh` reads `done`, then fails CI on
 shellcheck or editorconfig — `verified` claimed more than the command proved.
 Chain the lint in: `bash scripts/ci/lint-local.sh && bash
-ai/herdr/fixtures/run-tests.sh` runs the checks CI runs, locally, before the
-tests.
+ai/herdr/fixtures/run-tests.sh` runs CI's shellcheck, zsh and editorconfig
+checks before the tests. It does not run markdownlint, so a task that touches
+Markdown names that check in its `verify` as well.
 
 **This rule is checked now, not just stated.** A task reaches `done` only when
 its winning handoff's `commands:` names the row's own `verify` at `exit: 0` —

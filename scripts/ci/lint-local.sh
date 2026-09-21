@@ -170,9 +170,8 @@ check_zsh() {
   fi
 
   # One invocation per file, deliberately. `zsh -n a.zsh b.zsh` parses only
-  # a.zsh and hands b.zsh to it as $1 — so the workflow's single
-  # `zsh -n "${files[@]}"` step checks one file and silently ignores the rest.
-  # This loop is the check that step means to run.
+  # a.zsh and hands b.zsh to it as $1, so a single call checks one file and
+  # silently ignores the rest. The workflow's step loops the same way.
   for file in "${files[@]}"; do
     if ! zsh -n "$file"; then
       bad+=("$file")
