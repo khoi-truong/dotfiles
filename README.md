@@ -382,7 +382,23 @@ ai/herdr/team.sh surface exec-1                 # what a blocked agent is asking
 ai/herdr/team.sh plan lint .omc/plans/x.md      # check a plan before dispatching
 ai/herdr/team.sh settle <name> reuse|retain|release
 ai/herdr/team.sh teardown <name> [--force]
+ai/herdr/team.sh config show --sources           # resolved settings, and their layers
 ```
+
+**What a role launches is a file, not a `team.sh` edit.** `ai/herdr/team.toml`
+holds the harnesses, the `[profile.*]` entries a role may launch, the `[role.*]`
+roster (prefix, lifetime, cwd, `max_per_run`), the `[[route]]` table that places
+a plan row, the fallback chains and the presets; the credentials behind those
+profiles — url, key, protocol, launcher and the `ceiling` bounding how many
+panes may spend one — are `ai/providers.toml`, their only definition.
+`ai/herdr/team.local.toml` layers over the shipped file for this machine.
+`config lint` checks the result, `config doctor` reports the differences that
+are not errors (this shell's provider against the orchestrator's role), and
+`config show [--sources]` prints the resolved keys and the layer each value came
+from. `HERDR_TEAM_CONFIG=<file>` replaces every layer, which is the way back from
+a local file that will not parse. A new provider is a `[profile.*]` plus a
+`[[route]]` here — `ai/herdr/tests/run.sh` does exactly that with a stub
+launcher, and nothing in `team.sh` names it.
 
 `spawn` opens the worktree with `herdr worktree open`, not `workspace create`,
 so the agent's space is grouped under the `.dotfiles` row and `Open worktree...`
