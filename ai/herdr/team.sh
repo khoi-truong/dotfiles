@@ -31,7 +31,9 @@
 # See ai/shared/skills/herdr-team/ for the protocol these commands implement.
 set -euo pipefail
 
-DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/.." && pwd)}"
+# Two levels up, not one: this file lives in ai/herdr/, so `/..` would name ai/
+# and the source below would look for a lib/common.sh that is not there.
+DOTFILES="${DOTFILES:-$(cd "$(dirname "$0")/../.." && pwd)}"
 . "${DOTFILES}/lib/common.sh"
 require_macos
 
@@ -1647,7 +1649,7 @@ PY
   # finished while the journal above was being read has its handoff on disk
   # already, and that is evidence enough to return on. Could not observe which
   # way herdr behaves here: a fixture run has no live pane, so the guard stays
-  # and is correct under either answer. run-tests.sh case 44 stages this window
+  # and is correct under either answer. tests/run.sh case 44 stages this window
   # (a python3 that writes the handoff after reading the journal) and fails if
   # the guard goes away, which is what keeps it from being dead code.
   local task dispatch agent pane

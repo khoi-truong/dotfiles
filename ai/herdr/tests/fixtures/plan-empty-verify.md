@@ -1,6 +1,6 @@
 # Fixture plan — one task whose verify is deliberately empty
 
-Status: fixture. `plan lint` accepts it; `run-tests.sh` uses it for the case
+Status: fixture. `plan lint` accepts it; `run.sh` uses it for the case
 where an empty `verify` means the planner has said no command settles the Task,
 so a `succeeded`/`verified` handoff is `done` without a `commands:` entry.
 

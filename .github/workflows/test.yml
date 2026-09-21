@@ -1,0 +1,79 @@
+name: Tests
+run-name: "${{ github.workflow }} · ${{ github.event.pull_request.title || github.event.head_commit.message }}"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ai/herdr/**"
+      - "ai/shared/skills/dispatchable-plan/**"
+      - ".github/workflows/test.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ai/herdr/**"
+      - "ai/shared/skills/dispatchable-plan/**"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  herdr:
+    name: Run herdr tests
+    # macOS, at 10x the minutes of a Linux job, because the suite cannot run
+    # anywhere else. `ai/herdr/team.sh` sources lib/common.sh for a reason and
+    # calls `require_macos`, which prints "Skipping team.sh: not macOS." and
+    # exits 0 off Darwin; every case in the suite drives team.sh. On ubuntu the
+    # cases asserting output would fail against a script that had already left,
+    # and the ones asserting an exit code would pass against a no-op — the worst
+    # of both, from a job that reports red for the runner's OS rather than for
+    # the branch. smoke.yml pays the same price for the same reason.
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          # Case 131 reads `main~1`'s tree, so the runner needs history and not
+          # just the tip. `main` itself does not come with it — see below.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # `wt_add` in ai/herdr/tests/run.sh cuts its throwaway worktrees from a
+      # branch named `main`, and case 131 reads `main~1`. A PR checkout is a
+      # detached merge commit with no local branch, so without this the suite
+      # finds no base to cut from: nine cases skip, and under HERDR_TESTS_STRICT
+      # the run fails on them — correctly, but for a precondition the job can
+      # supply in one line.
+      - name: Create the main branch the suite cuts from
+        run: git rev-parse --verify --quiet refs/heads/main >/dev/null || git branch main origin/main
+
+      - name: Verify git, python3 and zsh are on PATH
+        run: |
+          for tool in git python3 zsh; do
+            command -v "$tool" >/dev/null || {
+              echo "::error title=Missing tool::$tool is not on PATH"
+              exit 1
+            }
+          done
+
+      # Strict: a skip is a case that did not run. The runner supplies git and
+      # the tools above, so the only skips left are the two the suite declares —
+      # 45's live herdr pane, which no fixture run has, and 10's pty, which a
+      # runner was never promised. Every other skip fails case 132, which is
+      # what stops a green job from standing in for a guard nobody asked.
+      - name: Run the herdr test suite
+        env:
+          HERDR_TESTS_STRICT: "1"
+        run: bash ai/herdr/tests/run.sh

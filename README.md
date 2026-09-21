@@ -416,7 +416,7 @@ is the whole point: task ids restart at `T-01` every Run and handoff filenames
 carry no Run, so a gate that only globs the directory unblocks work with a
 previous Run's result. `--force` overrides it, because retry is human-gated and
 a gate with no key is a trap. A plan with no json block dispatches exactly as
-before. `ai/herdr/fixtures/run-tests.sh` is the only check the embedded parser
+before. `ai/herdr/tests/run.sh` is the only check the embedded parser
 gets — `shellcheck` cannot see inside a heredoc — so run it after touching it.
 
 `plan lint <plan.md>` checks a plan against that format before anything is

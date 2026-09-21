@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-tests.sh — the acceptance checks for `team.sh dispatch --from-plan`,
+# run.sh — the acceptance checks for `team.sh dispatch --from-plan`,
 # `collect --plan`, `wait`, `report` and `teardown`.
 #
 # Static checks do not see inside team.sh's embedded python, and this
@@ -8,7 +8,7 @@
 # `dispatched`, `journal_lines`, `unproven`, `cmd_wait`, `cmd_report` or the
 # teardown guard:
 #
-#   bash ai/herdr/fixtures/run-tests.sh
+#   bash ai/herdr/tests/run.sh
 #
 # Every case points HERDR_TEAM_ROOT at a throwaway directory, so nothing here
 # reads or writes the live .herdr/ — which would also shift the next-dispatch
@@ -17,6 +17,12 @@
 # a pass. The `teardown` cases go further and register a real throwaway worktree
 # under ${TMP}: the guard is a `git` question, so a fixture that answered it
 # would be testing the fixture.
+#
+# HERDR_TESTS_STRICT=1 makes a skip a failure — see `sk` and `sk_declared`
+# below. CI sets it, because the nine cases the teardown and spawn sections gate
+# on a git worktree are the whole of two guards: a runner that could not cut one
+# would otherwise report a green suite that never asked whether teardown refuses
+# unpushed work.
 set -uo pipefail
 
 # The tree under test is the tree this file is part of, resolved from its own
@@ -27,7 +33,7 @@ set -uo pipefail
 # right. Exported because team.sh reads it for the same root.
 DOTFILES="$(cd "$(dirname "$0")/../../.." && pwd)"
 export DOTFILES
-FIXTURES="${DOTFILES}/ai/herdr/fixtures"
+FIXTURES="${DOTFILES}/ai/herdr/tests/fixtures"
 TEAM="${DOTFILES}/ai/herdr/team.sh"
 RUN="R-fixture-0001"
 OTHER="R-fixture-9999"
@@ -77,12 +83,47 @@ use_run "${RUN}"
 HERDR_FIXTURE_HANDOFFS="$(handoff_dir "${RUN}")"
 export HERDR_FIXTURE_HANDOFFS
 
-pass=0 fail=0 skip=0
+pass=0 fail=0 skip=0 holes=0 hole_ids=""
 
 ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); }
 no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); }
-# A case the environment cannot run is not a case that passed. Say so.
-sk() { printf '  skip %s\n    %s\n' "$1" "$2"; skip=$((skip + 1)); }
+# A case the environment cannot run is not a case that passed. Say so — and say
+# which of the two kinds of skip it is, because they are not the same finding:
+#
+#   sk           a *hole*. The case asked a question of this machine and the
+#                machine could not answer: nine of them stand on a throwaway
+#                worktree that `git worktree add` refused to cut. On a runner
+#                that supplies git and a `main` to cut from, a hole means the
+#                guard went unasked, not that the guard passed.
+#   sk_declared  not a hole. The case names a precondition no fixture run has,
+#                whatever the machine: 45 needs a live pane, and 10 needs a pty
+#                — the two cases 41-44c and the `wait` stubs exist to stand in
+#                for. Their absence is declared rather than reported.
+#
+# HERDR_TESTS_STRICT=1 (CI) is the difference made mechanical. Without it a skip
+# is informational, which is right on a developer's machine where the point is
+# to be told what did not run. With it, every hole fails case 132 — a runner that
+# skipped the teardown cases and exited 0 would print the same green summary as
+# a runner that asked, for two guards nobody asked about.
+sk() {
+  printf '  skip %s\n    %s\n' "$1" "$2"
+  skip=$((skip + 1))
+  holes=$((holes + 1))
+  # The id alone — the label's first word — so the failure at case 132 names
+  # "54 55 131" rather than three lines of prose.
+  hole_ids="${hole_ids:+${hole_ids} }${1%% *}"
+}
+sk_declared() { printf '  skip %s\n    %s\n' "$1" "$2"; skip=$((skip + 1)); }
+
+# strict_run <label> — case 132, and silent unless HERDR_TESTS_STRICT is set.
+strict_run() {
+  [ -n "${HERDR_TESTS_STRICT:-}" ] || return 0
+  if [ "${holes}" -eq 0 ]; then
+    ok "$1"
+  else
+    no "$1" "${holes} case(s) skipped for a reason this runner can fix: ${hole_ids}"
+  fi
+}
 
 # proven <task> — the `commands:` body that proves plan-ok.md's verify for that
 # task: what an honest handoff carries. It mirrors the fixture plan, so a change
@@ -289,8 +330,10 @@ fi
 
 # 10. No argv, no plan, stdin is a terminal: an error, never a hang. This needs
 #     a real pty for [ -t 0 ] to be true, which an agent pane or a CI runner
-#     may not have — hence the skip rather than a pass. A hang here would be
-#     indistinguishable from a slow dispatch, so the guard is worth the
+#     may not have — hence the skip rather than a pass, and `sk_declared` rather
+#     than `sk`: the pty is the case's precondition and not something a runner
+#     is asked to provide, so its absence is not a hole in the run. A hang here
+#     would be indistinguishable from a slow dispatch, so the guard is worth the
 #     awkwardness.
 out=""
 if [ -t 0 ]; then
@@ -299,7 +342,7 @@ elif [ -e /dev/tty ] && script -q /dev/null true >/dev/null 2>&1; then
   out="$(script -q /dev/null \
     "${TEAM}" dispatch exec-1 --run "${RUN}" --dry-run --task T-01 2>&1 || true)"
 else
-  sk "10 a terminal with no body errors instead of hanging" "no pty available here"
+  sk_declared "10 a terminal with no body errors instead of hanging" "no pty available here"
 fi
 if [ -n "$out" ]; then
   if printf '%s' "$out" | grep -q 'no work description given'; then
@@ -764,8 +807,10 @@ else
     "herdr called with: $(tr '\n' '|' <"${TMP}/herdr-called")"
 fi
 
-# 45. The live case: a real pane, a real agent, a real transition.
-sk "45 a live agent settling returns from wait" \
+# 45. The live case: a real pane, a real agent, a real transition. Declared
+#     rather than a hole — every fixture from 41 to 44c stubs herdr out, and
+#     this is the one that says so rather than pretending the stub answered.
+sk_declared "45 a live agent settling returns from wait" \
   "a fixture run has no herdr session — drive it by hand: team.sh wait while a dispatched agent works"
 
 # 45b. Blocked is not settled, and 5 is how the orchestrator learns there is a
@@ -3307,6 +3352,17 @@ elif [ -n "${dup_ids}" ]; then
 else
   ok "130 every case id is unique"
 fi
+
+# 132. The holes, which is what HERDR_TESTS_STRICT exists for. Off by default:
+#      on a developer's machine a skip is the suite telling them what did not
+#      run, and the worktree cases need a git repo to cut one from, so their
+#      absence is expected rather than wrong. Under it, a hole fails the run —
+#      the nine cases behind `wt_add` are the whole of two guards, and a runner
+#      that quietly skipped them would print the same green summary as a runner
+#      that asked. The ids are named in the failure because "which one could not
+#      run here" is the whole diagnosis: 54 to 56 and 131 are `teardown`, 68 to
+#      72 are `spawn`.
+strict_run "132 no case is skipped that this runner could have executed"
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"
