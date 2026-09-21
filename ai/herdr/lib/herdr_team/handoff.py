@@ -3,7 +3,7 @@
 `collect`, `collect --plan`, `wait`, `surface` and the dispatch gate all have to
 agree about what a handoff says, and two readers that disagreed would read one
 Run as `done` in one table and `UNVERIFIED` in the other. This module is that
-one reader, so `team.sh`'s `python3 -` blocks import it instead of each carrying
+one reader, so the modules behind each verb import it instead of each carrying
 a copy of it.
 """
 
@@ -18,6 +18,7 @@ from typing import Any
 Meta = dict[str, str]
 
 __all__ = [
+    "REQUIRED_FIELDS",
     "abandoned",
     "artifacts",
     "command_entries",
@@ -26,11 +27,23 @@ __all__ = [
     "journal_lines",
     "journal_malformed",
     "journal_row",
+    "missing_fields",
     "path_list",
     "same_cmd",
     "unproven",
     "yaml_block",
 ]
+
+# The fields every table here needs before a handoff can be a row. One tuple
+# rather than the literal spelled out in each reader: `collect` and
+# `collect --plan` ask the same question of the same file, and two copies of
+# the list eventually disagree about how many fields a handoff must carry.
+REQUIRED_FIELDS = ("run", "task", "dispatch", "outcome", "evidence")
+
+
+def missing_fields(meta: Meta) -> list[str]:
+    """The required fields a handoff's frontmatter does not state, in order."""
+    return [k for k in REQUIRED_FIELDS if k not in meta]
 
 
 def handoff_meta(path: str) -> Meta | None:
@@ -137,6 +150,35 @@ def artifacts(meta: Meta) -> list[str]:
     return path_list(meta.get("artifacts"))
 
 
+def unquote(v: str) -> str:
+    """A YAML-quoted scalar with its quotes off and its escapes undone.
+
+    One layer of quoting, and then the escapes that layer introduced. A
+    double-quoted scalar writes a quote as `\\"` and a backslash as `\\\\`, and a
+    command carrying a quote — `grep -c "<<'PY'"` is one — is written that way
+    and only that way, so a reader that takes the quotes off and stops has read
+    a command nobody ran. `json.loads` undoes exactly this: YAML's
+    double-quoted style and JSON's string are the same grammar for everything
+    this field holds. A value using an escape JSON does not have (`\\e`, a
+    folded newline) is not JSON, and there the quotes come off and the escapes
+    stay as they were rather than the whole entry reading UNPARSED.
+
+    Single-quoted YAML has one escape, `''` for a quote, undone by hand.
+
+    A value that is not quoted at all arrives unchanged: whether an agent
+    quoted a value says nothing about what it meant.
+    """
+    if len(v) < 2 or v[0] != v[-1] or v[0] not in ("'", '"'):
+        return v
+    if v[0] == "'":
+        return v[1:-1].replace("''", "'")
+    try:
+        unescaped = json.loads(v)
+    except ValueError:
+        return v[1:-1]
+    return unescaped if isinstance(unescaped, str) else v[1:-1]
+
+
 def command_entries(raw: str) -> list[Any] | None:
     """The `commands:` entries, or None for a shape this file cannot read.
 
@@ -162,10 +204,7 @@ def command_entries(raw: str) -> list[Any] | None:
         # One layer of YAML quoting off the item first: an agent may wrap the
         # object it writes, and which it chose says nothing about what it
         # meant. Whether an item is quoted is not evidence about the Run.
-        for q in ('"', "'"):
-            if len(head) >= 2 and head.startswith(q) and head.endswith(q):
-                head = head[1:-1].strip()
-                break
+        head = unquote(head).strip()
         if head.startswith("{"):
             # The other block spelling: the list is YAML and each item is the
             # whole inline object the contract block shows. Two agents fixed
@@ -186,9 +225,7 @@ def command_entries(raw: str) -> list[Any] | None:
             if ":" not in line:
                 return None
             k, v = line.split(":", 1)
-            k, v = k.strip(), v.strip()
-            if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
-                v = v[1:-1]
+            k, v = k.strip(), unquote(v.strip())
             # A separate name for the converted value, because `mapping` holds
             # both: `exit` is an int where every other key is the string it
             # arrived as, which is what `unproven` compares against 0.
