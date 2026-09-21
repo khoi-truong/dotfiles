@@ -3702,8 +3702,8 @@ abandon_outstanding() {
       # journal line names no agent and so matches nothing here: `wait` already
       # skips those for the same reason, and guessing which pane sent one would
       # abandon somebody else's work on a coincidence of ids.
-      [ "$j_run" = "$run" ] && [ "$j_agent" = "$name" ] || continue
-      [ -n "$j_task" ] && [ -n "$j_dispatch" ] || continue
+      if [ "$j_run" != "$run" ] || [ "$j_agent" != "$name" ]; then continue; fi
+      if [ -z "$j_task" ] || [ -z "$j_dispatch" ]; then continue; fi
       [ -e "${dir}/${j_task}-${j_dispatch}.md" ] && continue
       printf '%s\t%s\t%s\t%s\n' "$run" "$j_task" "$j_dispatch" "$name" \
         >>"${dir}/.abandoned"
