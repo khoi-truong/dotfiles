@@ -32,6 +32,7 @@ brew/Brewfile.generated
 .herdr/
 .ruby-lsp/
 __pycache__/
+.venv/
 ai/omp/config.yml.lock
 
 # Local files

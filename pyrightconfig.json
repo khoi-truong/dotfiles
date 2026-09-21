@@ -1,0 +1,5 @@
+{
+  "executionEnvironments": [
+    { "root": "ai/herdr", "extraPaths": ["ai/herdr/lib"] }
+  ]
+}
