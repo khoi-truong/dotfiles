@@ -33,7 +33,7 @@ defaults:
     shell: bash
 
 # Every tool version pinned in this file — markdownlint-cli2, actionlint,
-# zizmor and editorconfig-checker — is mirrored in scripts/ci/lint-local.sh,
+# zizmor, editorconfig-checker, ruff and mypy — is mirrored in scripts/ci/lint-local.sh,
 # along with the two scripts/ci/check-*.sh below. The two files are the only
 # places these are named, so bump them in the same change: a pin that
 # disagrees is a green local run that CI then fails.
@@ -204,3 +204,59 @@ jobs:
 
       - name: Check for workflow security findings
         run: pipx run zizmor==1.30.1 --persona=regular .github/workflows
+
+  python:
+    name: Lint Python files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # uv comes from mise on a laptop; a runner has no mise, so it is installed
+      # here. `pipx` because this file already runs a pinned Python tool that way
+      # (zizmor, above), and `astral-sh/setup-uv` would be one more third-party
+      # action to review and keep current for what three lines do. This pin is
+      # uv's own and the one scripts/ci/lint-local.sh does not mirror: it has mise.
+      # test.yml's `python` job installs uv the same way.
+      - name: Set up uv
+        env:
+          UV_VERSION: "0.12.10"
+        run: |
+          pipx install "uv==${UV_VERSION}"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+
+      # Keyed on this file's hash because this file holds the ruff and mypy pins:
+      # bumping one is exactly the change that has to miss, and the restore-keys
+      # re-use the other tool's layers while it does. `actions/*` pins to a major
+      # tag by policy (zizmor.yml's ref-pin for trusted publishers).
+      - name: Cache uv downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-lint-${{ runner.os }}-${{ hashFiles('.github/workflows/lint.yml') }}-${{ github.sha }}
+          restore-keys: |
+            uv-lint-${{ runner.os }}-${{ hashFiles('.github/workflows/lint.yml') }}-
+            uv-lint-${{ runner.os }}-
+
+      # From `ai/herdr`: ruff and mypy read `pyproject.toml` from the directory
+      # they are run in, and that is where it is.
+      - name: Check for Python lint findings
+        working-directory: ai/herdr
+        run: uvx ruff@0.16.8 check .
+
+      - name: Verify Python files are formatted
+        working-directory: ai/herdr
+        run: uvx ruff@0.16.8 format --check .
+
+      # `--with pytest` because the tests import it, and an import mypy cannot
+      # resolve makes the test function under each decorator untyped — which
+      # would put the tests outside `strict`. That is why
+      # `ai/herdr/pyproject.toml` carries no `ignore_missing_imports` for pytest.
+      - name: Verify the Python types are clean
+        working-directory: ai/herdr
+        run: uvx --with pytest==9.1.1 mypy@2.3.1 --strict

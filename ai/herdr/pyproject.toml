@@ -1,0 +1,49 @@
+# Tool config only. Nothing here is built, packaged or installed: `team.sh`
+# reaches `lib/herdr_team/` through PYTHONPATH, and no runtime dependency is
+# declared because there is none — standard library only. The file exists so
+# that ruff, mypy and pytest, which all look for `pyproject.toml` in the
+# directory they are run from, are configured in one place for both
+# `.github/workflows/test.yml` and `scripts/ci/lint-local.sh`.
+#
+# Every pin for those tools lives in the two files above, which name each other
+# for that reason. Bump them together.
+
+[tool.ruff]
+# The interpreter `ubuntu-24.04` ships, which is what CI runs. Stated rather
+# than sniffed off the developer's own python3, so a rule that only holds on a
+# newer one cannot pass here and fail on the runner.
+target-version = "py312"
+# Vendored Xcode templates and the plan fixtures are data, not source.
+extend-exclude = ["plugins", "tests/fixtures"]
+
+[tool.ruff.lint]
+# Ruff's default set (E4, E7, E9, F) plus import sorting: a move that put 700
+# lines in two new packages is exactly when the import lines stop being read.
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+# `herdr_team` is this checkout, not a dependency: the package is reached
+# through PYTHONPATH and never installed, so nothing else in the resolver can
+# tell the two apart and without this its imports sort in among pytest's.
+known-first-party = ["herdr_team"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# One entry point, so `mypy` with no arguments here checks the same files a
+# bare `uvx mypy` does from this directory in CI and on a laptop.
+files = ["lib", "tests"]
+# Nothing here exempts pytest. The tests import it and mypy is run with it
+# alongside — `uvx --with pytest==… mypy@… --strict` — rather than with
+# `ignore_missing_imports`, because a decorator mypy cannot see makes the test
+# function under it untyped, which would put the tests outside `strict` to spare
+# them a dependency they do not have at runtime.
+
+[tool.pytest.ini_options]
+# `lib/` on the path for the same reason `team.sh` sets PYTHONPATH to it: the
+# package is imported from the checkout, never installed.
+pythonpath = ["lib"]
+testpaths = ["tests"]
+# `tests/fixtures/` holds plan and handoff documents, not tests. Pytest finds
+# nothing to collect there; naming only `test_*.py` keeps it from looking.
+python_files = ["test_*.py"]

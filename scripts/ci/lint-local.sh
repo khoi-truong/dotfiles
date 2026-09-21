@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 #
-# Runs, on demand, `.github/workflows/lint.yml` — so a push costs twenty
-# seconds to learn what CI would report twenty minutes later.
+# Runs, on demand, `.github/workflows/lint.yml` and the Python job in
+# `.github/workflows/test.yml` — so a push costs twenty seconds to learn what CI
+# would report twenty minutes later.
 #
-#   scripts/ci/lint-local.sh            every check in the workflow
+#   scripts/ci/lint-local.sh            every check in those two workflows
 #   scripts/ci/lint-local.sh --quick    the three that need no download
 #
 # `--quick` is shellcheck over `scripts/ci/list-shell-scripts.sh`, `zsh -n`
 # over the workflow's own file set, and editorconfig-checker: the three that
 # fail on the edits that actually happen in this repo. The full run adds
-# markdownlint-cli2, actionlint, zizmor and the two repo-rule scripts, and
-# needs node and uv; a runner has them, a laptop may not.
+# markdownlint-cli2, actionlint, zizmor, the two repo-rule scripts and the four
+# Python checks, and needs node and uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
 # rather than being skipped quietly. A check that cannot fail is worse than no
@@ -24,10 +25,11 @@
 # checked here and is not in a CI run of a commit that predates it. Ignored
 # paths (.omc/, .herdr/) are skipped exactly as a clean checkout skips them.
 #
-# Every pin below is the one lint.yml uses, and this file's steps mirror that
-# file's steps. Bump them together — the two files are the only places these
-# tools are named, and a version that disagrees is a green local run that CI
-# then fails.
+# Every pin below is the one its workflow uses — lint.yml's for the shell, zsh,
+# markdown, editorconfig, actionlint, zizmor, ruff and mypy checks, test.yml's
+# for pytest — and this file's steps mirror those files' steps. Bump them
+# together: these files are the only places these tools are named, and a version
+# that disagrees is a green local run that CI then fails.
 set -euo pipefail
 
 # Mirrors the pins in .github/workflows/lint.yml.
@@ -277,6 +279,37 @@ check_editorconfig() {
   "$binary" -exclude "$EC_EXCLUDE"
 }
 
+# lint.yml's `python` job (ruff check, ruff format, mypy), then test.yml's
+# (pytest) — cheapest first, and the two ruff passes ahead of the two that read
+# every file.
+#
+# `uvx` is where the three versions are pinned, and they are the versions those
+# jobs use. The runner installs uv itself first (`pipx install uv==…`), because
+# it has no mise; that pin is the one thing here and there that does not match,
+# and it is uv's own version rather than a tool's, so there is nothing for this
+# file to mirror.
+#
+# From `ai/herdr`, in a subshell: all three read `pyproject.toml` from the
+# directory they are run in, and that is where it is. From the repo root none of
+# them finds it — `ruff` falls back to its defaults and checks the whole tree,
+# `mypy` has no target to check, and `pytest` collects without `lib/` on the
+# path. Each of those fails for its own reason instead of the real one, which is
+# a red run that names the wrong thing.
+check_python() {
+  require_tool uvx python || return 1
+  (
+    cd ai/herdr || exit 1
+    # `--with pytest` because the tests import it: an unresolved import leaves
+    # every `pytest.mark.parametrize` untyped, and the test function under it
+    # with it. `ai/herdr/pyproject.toml` deliberately carries no
+    # `ignore_missing_imports` for pytest — the fix is here, not there.
+    uvx ruff@0.16.8 check . &&
+      uvx ruff@0.16.8 format --check . &&
+      uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
+      uvx pytest@9.1.1
+  )
+}
+
 main() {
   local -a checks=() failed=()
   local name
@@ -287,8 +320,13 @@ main() {
       ;;
     '')
       # Cheapest first, so a rule violation does not wait on three downloads;
-      # the order matches lint.yml's step order within each job.
-      checks=(rules brewfile shellcheck zsh editorconfig markdown actionlint zizmor)
+      # the order matches lint.yml's step order within each job. `python` also
+      # runs test.yml's pytest, so it is placed by that rule rather than by step
+      # order: it is not free either — uvx fetches three tools the first
+      # time — but uv caches what it fetches, and this run already needs uv for
+      # actionlint and zizmor, so it goes after the four checks that fetch
+      # nothing and before the three that fetch more.
+      checks=(rules brewfile shellcheck zsh editorconfig python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2
