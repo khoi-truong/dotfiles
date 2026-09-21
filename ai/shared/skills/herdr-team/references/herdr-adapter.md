@@ -101,10 +101,16 @@ each has a `succeeded` + `verified` handoff **under the current Run**.
 `--force` overrides with a warning: retry is human-gated, and a gate with no
 key is a trap.
 
-`provider` is advisory: the script does not check a row against a live pane,
-for the reason under The two caps. Body precedence is argv, then `--from-plan`,
-then stdin — stdin only when it is not a terminal, since reading a terminal
-hangs with no prompt, looking like a slow dispatch.
+`provider` is a tier, and the script checks it against the row's own shape
+rather than against a live pane — the count of panes is under The two caps. A
+row with a `verify` is `ccd`; a `cc` row carries a `tier_reason` string saying
+which of the three things no command settles it is, and `plan lint` warns about
+one that does not. `spawn --provider cc` refuses without `--tier-reason
+"<why>"`: nothing there can tell a review from a row that was mislabelled.
+
+Body precedence is argv, then `--from-plan`, then stdin — stdin only when it
+is not a terminal, since reading a terminal hangs with no prompt, looking like
+a slow dispatch.
 
 `collect --plan <plan.md>` reports the other direction: one row per task in the
 plan rather than one per handoff — `done`, `review`, `failed`, `running`,
@@ -118,9 +124,24 @@ that Run's handoff directory — one
 `run<TAB>task<TAB>dispatch<TAB>agent` line, written once `herdr agent prompt`
 has accepted it. The fourth column is `wait`'s.
 
+`dispatch` picks the next id from that journal **and** the handoff files, since
+they are the same claim made twice and they disagree in exactly one case: a
+Dispatch torn down before it could write a handoff is in the journal and in no
+file, so a reader of files alone hands out `D-01` a second time. `teardown`
+appends the pane's outstanding lines to `.abandoned` beside the journal, in the
+same shape, because destroying the pane is what makes them unanswerable — the
+Dispatch happened, the handoff is not coming. `wait` and `collect --plan` skip
+those lines rather than blocking on an agent herdr no longer knows, or reading
+the Task as `running` for as long as anyone cares to look.
+
 `plan lint <plan.md>` prints `depth D  width W  tasks N`, warning above depth 4
 or below width 2 once a plan has 3 Tasks: depth is the Dispatches the Run must
-take one at a time, width the most it can ever have out at once.
+take one at a time, width the most it can ever have out at once. It also warns
+about a `cc` row that has a `verify` and no `tier_reason` — a command settles
+that row, so it is a `ccd` row unless the plan says which of the three
+exceptions it is. Warnings go to stderr behind a `lint:` prefix and change no
+exit code: the tier reading is legitimate for a review, and only the plan's
+author knows which it is.
 
 `ai/herdr/tests/run.sh` covers all of this: `shellcheck` and `bash -n`
 do not see inside the embedded python, so it is the parser's only check.
@@ -165,9 +186,16 @@ they can:
 | 3 | nothing to do | nothing outstanding | nothing dispatchable, nothing running |
 | 4 | — | `--timeout` expired | that, or `--max-waves` reached |
 | 5 | — | an agent went `blocked` — `surface` it | as `wait` |
-| 6 | — | — | a Task is ready, no pane free |
+| 6 | — | — | a Task is ready and no pane took it |
 
 A bad journal or a missing Run is a 1 everywhere.
+
+6 is the gate for a decision only a human can take, and `spawn` returns it for
+the Pro window's two refusals above — nobody knows what the window is, or Pro
+is what a full one cannot spare. Its other refusals (a provider at its ceiling,
+a missing `--tier-reason`, a Run past the executor cap) are 1s. A refusal either
+way names the move: fix the key, wait for the reset, settle a pane, or
+`--skip-provider-check` knowing what it costs.
 
 4 is not 3 because a timeout is a **checkpoint, not a result** (`SKILL.md` rule
 3): "I waited and nothing happened" must be tellable from "there was nothing to
@@ -194,6 +222,12 @@ finished plan, so a wave stops on it only when nothing is outstanding.
   decision back: a turn saved is not worth a worktree made unasked. `rev-`
   panes are a login rather than a worktree and are uncapped: a review queued
   behind a free executor would serialize behind the thing it checks.
+- A wave's `spawn` carries the row's `tier_reason` through as `--tier-reason`,
+  always — so a `cc` row that states its reason can be spawned by the loop, and
+  one that does not is refused, because the loop does not get to pick a tier
+  the plan left unsaid. A refused spawn is exit 6 whatever `spawn` exited with,
+  and stops the wave before it dispatches anything: the refusal's own wording is
+  on stderr, and retrying it every wave would be one refusal per turn forever.
 - `--max-waves <n>` (default 20) bounds the run. Reaching it is a 4, like a
   timeout: the Run did not stop, the loop did.
 - `--timeout <ms>` is each wave's `wait` timeout, milliseconds and at least
@@ -214,6 +248,12 @@ the plan's: a Dispatch with no plan row is an anomaly a plan-only table hides.
 Wall time is approximate: the journal keeps no timestamps, so it is the newest
 handoff's mtime against the Run directory's.
 
+A Task whose pane fell back to `cc` adds a `fallback(s): <task> <from>→<to>`
+line below the table, a `fallback` field on its row and a count in both
+`report.json` and the metrics line — the spend a plan that ran `ccd` did not
+expect, stated rather than left for someone to reconstruct from a pane that is
+gone.
+
 ## The two caps
 
 `HERDR_TEAM_EXEC_CAP` (default 2) is per Run, counted over the panes this Run
@@ -222,11 +262,45 @@ A refusal names the limit it hit and, for the per-Run cap, only panes the
 reader can settle.
 
 `spawn` records each pane in `state/panes/<name>` — name, provider, Run,
-worktree, spawn time — and `settle … release` and `teardown` remove it. The
-provider count reads those files: a provider is not passively readable off a
-screen, and `agent list` is per session, so five sessions would each count only
-their own and spawn to the ceiling. A pane with no record counts as `unknown`:
-an uncounted pane is the one that exhausts a key.
+worktree, spawn time, and the provider it fell back from — and `settle …
+release` and `teardown` remove it. The provider count reads those files: a
+provider is not passively readable off a screen, and `agent list` is per
+session, so five sessions would each count only their own and spawn to the
+ceiling. A pane with no record counts as `unknown`: an uncounted pane is the
+one that exhausts a key. The sixth field is empty for every pane that started
+where it was asked to; a five-field record predates it and reads that way.
+
+## The tier a spawn starts on
+
+`spawn <name> --branch <b> [--provider ccd|cc|omp] [--tier-reason <text>]`
+starts a pane on the tier it was asked for. Two things can move that:
+
+- **`--provider cc` requires `--tier-reason "<why>"`.** `ccd` is the tier for
+  work a command settles, so `cc` is for the work none does — the task shapes
+  later work, it is a spec, or it is a review — and `spawn` cannot tell which of
+  those a pane is. The missing reason is a refusal (exit 1), not a fallback: the
+  other reading is a `ccd` task quietly spending Pro.
+- **A `ccd` spawn whose provider check fails may fall back to `cc`**, on one
+  condition: the Pro 5h window is under `HERDR_TEAM_PRO_FALLBACK_MAX` (70%)
+  according to `${CLAUDE_CONFIG_DIR:-~/.claude}/cache/pro-quota.json` — the
+  cache `ai/claude/statusline.sh` writes and `ai/claude/quota-advice.sh`
+  advises from — and that cache is fresh (`HERDR_TEAM_PRO_QUOTA_MAX_AGE`, 900s)
+  and names a window that has not already reset. Anything else is exit **6**
+  with the reason: no cache, an unreadable one, a stale one, an expired window,
+  or a used percentage at or over the threshold. Unknown is not headroom, and a
+  fallback decided from a cache nobody can read is the silent Pro spend
+  `cost.md`'s checklist forbids — `--skip-provider-check` is the way through,
+  by hand, knowing what it costs. `HERDR_TEAM_PRO_QUOTA_CACHE` points the read
+  elsewhere; the tests set it so a spawn's answer never depends on this
+  machine's window.
+- **`omp` is never that fallback.** It is a different agent spending a DeepSeek
+  key of its own (`ai/omp/models.yml`), so it relieves nothing a fallback exists
+  to relieve.
+
+A fallback that happened is a fact, not a warning: it goes into the pane
+record's sixth field, `status` prints that pane as `ccd→cc`, and `report`
+lists it. A fallback nobody can read back is the silent Pro spend either way —
+the difference a record makes is that the next reader gets to decide.
 
 ## Naming
 

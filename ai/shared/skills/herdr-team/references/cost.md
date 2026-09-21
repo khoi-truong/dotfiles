@@ -29,16 +29,41 @@ twice, paying the overhead twice for work nothing can run in parallel.
   tier: what holds it here is correctness, not budget.
 - **`omp`** — the task needs web or docs lookup. A **capability** axis, not a
   cheaper `ccd`: Claude Code's web search does not work on a non-Pro provider,
-  so research goes here regardless of price.
+  so research goes here regardless of price. It is **never a fallback for
+  `ccd`** either: it is a different agent spending a DeepSeek key of its own
+  (`ai/omp/models.yml`), so falling back to it saves nothing on the credential
+  a fallback would exist to spare, and buys a different agent's habits into
+  work that was dispatched with these ones assumed.
 
 The corollary: a task with no `verify` command is not a `ccd` task yet. Find
 the command, or keep the work on `cc`.
 
-A reviewer sharing the author's model family shares its blind spots, so `cc`
-plan → `ccd` execute → `cc` review is not just cheaper: it is a second opinion.
+A row on `cc` says why, in a `tier_reason` string — the task shapes later work,
+it is a spec, or it is a review. `plan lint` warns about a `cc` row with a
+`verify` and no reason, and `spawn --provider cc` refuses one, because neither
+can tell a review from a row that is simply mislabelled.
+
+## Review is always `cc`
+
+Two reasons, and they stack.
+
+A review is the one stage whose `verify` cannot fail on the thing that matters.
+The `verify` command runs the tests, and the bug a review is for is the one the
+tests do not catch — so a `ccd` review runs the suite, observes 0, and reads
+`verified` on exactly the case it was sent to find. The check is powerless
+there in a way it is not anywhere else in the table.
+
+And a reviewer sharing the author's model family shares its blind spots, so
+`cc` plan → `ccd` execute → `cc` review is not just cheaper: it is a second
+opinion. That is the whole return on spending Pro for it, and it is why quota
+pressure never moves the review down a tier.
 
 ## Checklist
 
-- [ ] Provider asserted at spawn: a silent fallback to Pro is expensive.
+- [ ] Tier stated, not asserted: every `cc` row carries a `tier_reason`, and
+      every `ccd` spawn that fell back to Pro is inside the window a fallback
+      is allowed at and written into the pane record — `status` shows it as
+      `ccd→cc` and `report` lists it. A fallback that isn't recorded is the
+      silent Pro spend this list exists to catch.
 - [ ] Inside both caps: 2 executors per Run, 4 panes per provider machine-wide.
 - [ ] Every Task worth its Dispatch, and every handoff inside its 150 lines.

@@ -264,16 +264,19 @@ reset() {
   use_run "${RUN}"
 }
 
-# record <name> <provider> [run] [worktree] — one pane record, the shape `spawn`
-# writes under state/panes/. A case places the records it wants counted rather
-# than spawning the panes they describe: the ceiling is about how many panes
-# hold one credential, and a case that had to spawn four real panes to stage
-# that would be testing the spawn's worktrees instead.
+# record <name> <provider> [run] [worktree] [fallback] — one pane record, the
+# shape `spawn` writes under state/panes/. A case places the records it wants
+# counted rather than spawning the panes they describe: the ceiling is about how
+# many panes hold one credential, and a case that had to spawn four real panes
+# to stage that would be testing the spawn's worktrees instead. The sixth field
+# is the provider a fallback came from, empty for every pane but one — written
+# empty rather than left off, so a record this file writes is the shape `spawn`
+# writes.
 record() {
   local dir="${HERDR_TEAM_ROOT}/state/panes"
   mkdir -p "$dir"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "${3:--}" "${4:-${TMP}/wt-${1}}" \
-    "2026-01-01T00:00:00Z" >"${dir}/${1}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "${3:--}" \
+    "${4:-${TMP}/wt-${1}}" "2026-01-01T00:00:00Z" "${5:-}" >"${dir}/${1}"
 }
 
 # dispatch <args...> — always --dry-run, so no agent is required. Prints the
@@ -1568,14 +1571,33 @@ spawn_on() {
 #     exist and nothing may be created looking for it: the check runs before the
 #     first mutating call, which is the only reason it can be trusted over the
 #     launch it is protecting.
+#
+#     The code is the gate, 6, not 1: an empty `ccd` key is now the opening of a
+#     question — spend Pro instead, or fix the key — and the answer is a human's,
+#     so the spawn stops at the same gate the loop stops at. Pointed at a quota
+#     cache that is not there, because that is the state a machine with no Pro
+#     session is in and it is the only deterministic answer a test can give: the
+#     real cache belongs to whoever is running the suite.
 printf 'env:HERDR_FIXTURE_KEY HERDR_FIXTURE_KEY empty\n' >"${TMP}/probe"
-spawn_on "${TMP}/spawn" 1 "67 an empty key fails the spawn" \
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/no-pro-quota.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "67 an empty key fails the spawn" \
   exec-7 --branch fixture-t09-absent --provider ccd
 if grep -q 'would launch with HERDR_FIXTURE_KEY empty' "${TMP}/err"; then
   ok "67b the refusal names the variable that was empty"
 else
   no "67b the refusal names the variable that was empty" "$(tr '\n' '|' <"${TMP}/err")"
 fi
+if grep -q 'the Pro 5h window is unknown' "${TMP}/err"; then
+  ok "67d and names the fallback it would not decide without a window"
+else
+  no "67d and names the fallback it would not decide without a window" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+# Unset again, so the cases that follow fail on their own reasons rather than on
+# this one's cache: 68, 70 and 72 reach the provider check with a key that
+# resolves, and a fallback they never take is a path they cannot test.
+unset HERDR_TEAM_PRO_QUOTA_CACHE
 if grep -qE 'worktree open|pane run|agent rename' "${TMP}/herdr-called"; then
   no "67c nothing was created before the check" "$(tr '\n' '|' <"${TMP}/herdr-called")"
 else
@@ -1628,9 +1650,12 @@ if wt_add s; then
   #     runs the probe team.sh actually sends it, and spawn splits what comes
   #     back. Empty fails, set succeeds.
   export HERDR_FIXTURE_PRESENT=fixture-value
-  FIXTURE_REF=env:HERDR_FIXTURE_ABSENT spawn_on "${TMP}/realzsh:${TMP}/spawn" 1 \
+  HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/no-pro-quota.json"
+  export HERDR_TEAM_PRO_QUOTA_CACHE
+  FIXTURE_REF=env:HERDR_FIXTURE_ABSENT spawn_on "${TMP}/realzsh:${TMP}/spawn" 6 \
     "71 the real login shell reports the key empty" \
     exec-7 --branch "${T05_BRANCH}-s" --provider ccd
+  unset HERDR_TEAM_PRO_QUOTA_CACHE
   if grep -q 'would launch with HERDR_FIXTURE_ABSENT empty' "${TMP}/err"; then
     ok "71b and the refusal names the variable the real shell read"
   else
@@ -2957,7 +2982,7 @@ else
     "$(grep -E '^loop: ' "${TMP}/out" | tr '\n' '|')"
 fi
 called 0 '^agent prompt' "115c nothing was dispatched into a pool with no room"
-loop_tail 'gate: exit 6 — a Task is ready and no pane is free — spawn one, or settle one$' \
+loop_tail 'gate: exit 6 — a Task is ready and no pane took it — spawn one, or settle one$' \
   "115d the trace ends at gate 6"
 
 # 116. The other way to 3: a Dispatch is out, and the journal line for it is one
@@ -3168,7 +3193,7 @@ loop_cmd() {
 # pane_field <name> <field> — one field of that pane's record, or nothing when
 # there is no record. Read here rather than through team.sh so a case asserts
 # the file `spawn` wrote rather than what the verb that wrote it can say about
-# it.
+# it. `fallback` is the sixth field, the provider a fallback came from.
 pane_field() {
   local f="${HERDR_TEAM_ROOT}/state/panes/${1}" i
   case "${2:-}" in
@@ -3176,6 +3201,7 @@ pane_field() {
     run) i=3 ;;
     worktree) i=4 ;;
     spawned) i=5 ;;
+    fallback) i=6 ;;
     *) i=1 ;;
   esac
   [ -f "$f" ] || return 0
@@ -3204,7 +3230,7 @@ called 0 '^worktree open' "124c nothing was created for the refused spawn"
 #       unblocked, so a full pool of executors must not be what stops one — and
 #       it does not, with the Run holding its two while this one is drawn.
 spawn_on "${TMP}/loop" 0 "124d a rev- pane is drawn while the Run's cap is full" \
-  rev-t-09 --branch feat/cap-rev --provider cc
+  rev-t-09 --branch feat/cap-rev --provider cc --tier-reason "review — a second model family reads the diff"
 called 1 '^worktree open' "124e and it is the spawn that drew it"
 
 # 125. Criterion 10, and the difference between the two caps in one case. Run A
@@ -3218,7 +3244,7 @@ record exec-a1 ccd "${RA}"
 record exec-a2 ccd "${RA}"
 use_run "${RB}" tab-a
 spawn_on "${TMP}/loop" 0 "125 a cc executor spawns under Run B while Run A holds two ccd executors" \
-  exec-b1 --branch feat/cap-b --provider cc
+  exec-b1 --branch feat/cap-b --provider cc --tier-reason "spec — nobody can verify this yet"
 called 1 '^worktree open' "125b and Run A's two executors did not refuse it"
 if [ "$(pane_field exec-b1 provider)" = cc ] && [ "$(pane_field exec-b1 run)" = "${RB}" ]; then
   ok "125c the pane was recorded with its provider and the Run that drew it"
@@ -3369,6 +3395,291 @@ loop_on 0 '' "129c one more seat and the same wave spawns" \
 unset FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
 called 1 '^worktree open .* --label exec-0001-1 ' \
   "129d the executor it refused above was drawn"
+
+echo
+echo "the tiers: a row a command settles is ccd"
+
+# 133. The tier rule, checked rather than stated. A `cc` row whose `verify`
+#      settles it is a `ccd` row unless it shapes later work, is a spec, or is a
+#      review — and only the plan can say which, so the plan is where the
+#      sentence goes. The fixture holds both readings side by side, and the pair
+#      is the case: T-02 draws the warning, T-03 — same shape, `tier_reason`
+#      filled in — draws none. A check that warned about both would be refusing
+#      `cc` outright, which is how a warning stops being read.
+"${TEAM}" plan lint "${FIXTURES}/plan-cc-tier.md" >"${TMP}/out" 2>"${TMP}/err"
+code=$?
+if [ "$code" -eq 0 ] && grep -q ': ok$' "${TMP}/out" &&
+  grep -qE '^lint: T-02 is cc with a verify' "${TMP}/err"; then
+  ok "133 plan lint warns on a cc row a verify could settle"
+else
+  no "133 plan lint warns on a cc row a verify could settle" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+if [ "$(grep -c 'is cc with a verify' "${TMP}/err")" -eq 1 ]; then
+  ok "133b and stays silent on the row that carries a tier_reason"
+else
+  no "133b and stays silent on the row that carries a tier_reason" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+echo
+echo "spawn: the tier, and the fallback it will not take silently"
+
+# 134. `--provider cc` spends the Pro login, and nothing in a pane name, a Task
+#      id or a Dispatch says why this one needed Pro. `--tier-reason` is that
+#      sentence, and requiring it is the whole check: what it forbids is the
+#      pane nobody can account for afterwards, not the pane on Pro. The refusal
+#      stands before the ceiling and before the worktree, so it leaves nothing
+#      behind to undo.
+spawn_on "${TMP}/spawn" 1 "134 spawn refuses --provider cc with no tier-reason" \
+  exec-t1 --branch feat/tier-none --provider cc
+if grep -q -- '--tier-reason' "${TMP}/err"; then
+  ok "134b and it names the flag the caller has to pass"
+else
+  no "134b and it names the flag the caller has to pass" "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+if grep -qE 'worktree open|pane run' "${TMP}/herdr-called" 2>/dev/null; then
+  no "134c nothing was created for a pane nobody can account for" \
+    "$(tr '\n' '|' <"${TMP}/herdr-called")"
+else
+  ok "134c nothing was created for a pane nobody can account for"
+fi
+
+# The Pro 5h window a fallback is decided from, staged by the case rather than
+# read from the developer's own cache: the real one belongs to whoever is
+# running the suite, and a spawn whose answer depended on it would pass or fail
+# by the clock. The shape is `ai/claude/statusline.sh`'s to write and
+# `ai/claude/quota-advice.sh`'s to read, and team.sh reads the same two fields.
+quota() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, sys, time
+now = time.time()
+five = {"used_percentage": float(sys.argv[2]),
+        "resets_at": now + float(sys.argv[3])}
+json.dump(
+    {"cached_at": now, "rate_limits": {"five_hour": five}},
+    open(sys.argv[1], "w", encoding="utf-8"),
+)
+PY
+}
+
+# 135. The line the fallback may not cross. A full window is not a window the
+#      cheap tier can be moved off: what a wrong answer would cost is Pro quota,
+#      and that is a human's to spend. 6 rather than 1 — nothing is broken, and
+#      the two ways out (fix the key, or pass --skip-provider-check and launch
+#      `ccd` anyway) are both a decision.
+printf 'env:HERDR_FIXTURE_KEY HERDR_FIXTURE_KEY empty\n' >"${TMP}/probe"
+quota "${TMP}/pro-quota-full.json" 90 3600
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-full.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "135 a full Pro window refuses the fallback" \
+  exec-t1 --branch feat/tier-full --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE
+if grep -qE 'the Pro 5h window is 90% used, at or over the' "${TMP}/err"; then
+  ok "135b and the refusal names the window and the threshold it crossed"
+else
+  no "135b and the refusal names the window and the threshold it crossed" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+if grep -qE 'worktree open|pane run' "${TMP}/herdr-called" 2>/dev/null; then
+  no "135c and nothing was created for the pane it would not spend Pro on" \
+    "$(tr '\n' '|' <"${TMP}/herdr-called")"
+else
+  ok "135c and nothing was created for the pane it would not spend Pro on"
+fi
+
+# 135d. A window that has already reset is a number about a window that no
+#       longer exists, so it answers "unknown" exactly as a missing cache does —
+#       absence of data is not evidence of headroom, which is the rule
+#       `quota-advice.sh` states for its own reading of the same field. A cache
+#       that is not there at all is case 67's.
+quota "${TMP}/pro-quota-reset.json" 10 -60
+HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-reset.json"
+export HERDR_TEAM_PRO_QUOTA_CACHE
+spawn_on "${TMP}/spawn" 6 "135d a window that has already reset is unknown, not headroom" \
+  exec-t1 --branch feat/tier-reset --provider ccd
+unset HERDR_TEAM_PRO_QUOTA_CACHE
+if grep -q 'the Pro 5h window is unknown' "${TMP}/err"; then
+  ok "135e and the refusal says a fallback is not decided from a cache nobody can read"
+else
+  no "135e and the refusal says a fallback is not decided from a cache nobody can read" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+if wt_add t; then
+  # 136. Under the threshold and fresh: the work goes on the credential this
+  #      machine already holds, and both halves of that are written down — the
+  #      warning a human reads, and the record `status` and `report` read
+  #      afterwards. An unwritten fallback is the silent Pro spend cost.md's
+  #      checklist forbids, and the pane record is the only durable answer to
+  #      "which credential is that pane on".
+  printf 'env:HERDR_FIXTURE_KEY HERDR_FIXTURE_KEY empty\n' >"${TMP}/probe"
+  quota "${TMP}/pro-quota-room.json" 10 3600
+  HERDR_TEAM_PRO_QUOTA_CACHE="${TMP}/pro-quota-room.json"
+  export HERDR_TEAM_PRO_QUOTA_CACHE
+  spawn_on "${TMP}/spawn" 0 "136 a ccd spawn whose key is empty falls back to cc" \
+    exec-t1 --branch "${T05_BRANCH}-t" --provider ccd
+  unset HERDR_TEAM_PRO_QUOTA_CACHE
+  if grep -qE 'running on cc instead — the Pro 5h window is 10%,' "${TMP}/err"; then
+    ok "136b and says so, naming the window it read"
+  else
+    no "136b and says so, naming the window it read" "$(tr '\n' '|' <"${TMP}/err")"
+  fi
+  # Read off the file rather than through the verb that wrote it: what a later
+  # `status` or `report` can say is bounded by what is on disk here.
+  if [ "$(pane_field exec-t1 provider)" = "cc" ] &&
+    [ "$(pane_field exec-t1 fallback)" = "ccd" ]; then
+    ok "136c the pane record names the provider it asked for and the one it got"
+  else
+    no "136c the pane record names the provider it asked for and the one it got" \
+      "provider=$(pane_field exec-t1 provider) fallback=$(pane_field exec-t1 fallback)"
+  fi
+  # 136d. The same record through the table a human reads. `ccd→cc` is both
+  #       halves in one token: either alone reads as a decision somebody made,
+  #       and the point of the record is that nobody decided this one.
+  loop_fresh "exec-t1 idle"
+  record exec-t1 cc "${RUN}" "" ccd
+  loop_cmd 0 "136d status prints the substitution for a pane that fell back" status
+  if grep -qE '^exec-t1 +- +ccd→cc' "${TMP}/out"; then
+    ok "136e and prints both providers rather than one of them"
+  else
+    no "136e and prints both providers rather than one of them" "$(tr '\n' '|' <"${TMP}/out")"
+  fi
+  git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null
+  git -C "${DOTFILES}" branch -D "${T05_BRANCH}-t" >/dev/null 2>&1
+else
+  sk "136 a ccd spawn whose key is empty falls back to cc" "no throwaway worktree"
+  sk "136b and says so, naming the window it read" "no throwaway worktree"
+  sk "136c the pane record names the provider it asked for and the one it got" \
+    "no throwaway worktree"
+  sk "136d status prints the substitution for a pane that fell back" "no throwaway worktree"
+  sk "136e and prints both providers rather than one of them" "no throwaway worktree"
+fi
+
+echo
+echo "teardown: the Dispatches a dead pane leaves behind"
+
+# The two verbs that used to disagree with the journal about a torn-down pane. A
+# Dispatch that never wrote a handoff is still in `.dispatched`, and the pane
+# that was going to answer it is gone — so `wait` blocked on an agent herdr no
+# longer knows (exit 1, "herdr does not know") and `collect --plan` called the
+# Task `running` for the rest of the Run. The pane record names the Run, so the
+# teardown marks the lines that pane owns as abandoned on its way out, and the
+# id stays spent: the Dispatch did happen, and `report` still counts it.
+#
+# `--force`, because the guard above it is about a worktree and this case is
+# not: the stub below reports the main checkout as the pane's cwd, so there is
+# no worktree to remove and nothing a removal could lose.
+mkdir -p "${TMP}/tiers"
+cat >"${TMP}/tiers/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list") printf '{"result":{"agents":[{"name":"exec-t9","cwd":"${DOTFILES}","workspace_id":"ws-tiers","pane_id":"pane-t9"}]}}\n' ;;
+  *) ;;
+esac
+exit 0
+SH
+chmod +x "${TMP}/tiers/herdr"
+
+# tiers_teardown <label> — teardown of exec-t9 against that stub.
+tiers_teardown() {
+  local label="$1" code=0
+  env PATH="${TMP}/tiers:${PATH}" "${TEAM}" teardown exec-t9 --force \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -eq 0 ] && grep -q 'torn down' "${TMP}/out"; then
+    ok "$label"
+  else
+    no "$label" "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  fi
+}
+
+reset
+record exec-t9 ccd "${RUN}"
+sent "${RUN}" T-01 D-01 exec-t9
+tiers_teardown "137 the pane goes with a Dispatch still out to it"
+abandoned="$(handoff_dir "${RUN}")/.abandoned"
+if [ -f "${abandoned}" ] &&
+  awk -F'\t' '$2 == "T-01" && $3 == "D-01" && $4 == "exec-t9"' "${abandoned}" |
+  grep -q .; then
+  ok "137b and its outstanding Dispatch is marked abandoned"
+else
+  no "137b and its outstanding Dispatch is marked abandoned" \
+    "$(if [ -f "${abandoned}" ]; then tr '\n' '|' <"${abandoned}"; else echo 'no .abandoned'; fi)"
+fi
+if [ "$(grep -c . "$(handoff_dir "${RUN}")/.dispatched")" -eq 1 ]; then
+  ok "137c the Dispatch itself stays in the journal, because it happened"
+else
+  no "137c the Dispatch itself stays in the journal, because it happened" \
+    "$(tr '\n' '|' <"$(handoff_dir "${RUN}")/.dispatched")"
+fi
+
+# 138. `wait` reads the journal through `dispatched()`, so an abandoned line is
+#      no longer outstanding and there is nothing to block on: 3, the same
+#      answer an empty journal gives, and never 1 — there is no agent herdr
+#      could be asked about, and the poison stub on PATH is what says `wait`
+#      knows it.
+wait_on poison 3 "" "138 wait has nothing to wait for once the pane is gone" \
+  --timeout 5000
+if grep -q 'herdr does not know' "${TMP}/err"; then
+  no "138b and it no longer refuses over an agent that is gone" "$(tr '\n' '|' <"${TMP}/err")"
+else
+  ok "138b and it no longer refuses over an agent that is gone"
+fi
+# 138c. The same fold at the other reader. A Task whose Dispatch was abandoned
+#       is ready again — nobody is working on it, and that is a next move rather
+#       than a stall — which is what lets the loop take it up again.
+expect_collect 0 '^T-01 +ready' "138c collect --plan reads the abandoned Task as ready" \
+  --plan "${FIXTURES}/plan-ok.md"
+
+# 139. The id, which is the other half of "abandoned is not deleted". A
+#      re-dispatch after a teardown used to reuse D-01 and land two agents' work
+#      under one id — the never-reuse rule broken by the one verb that is
+#      supposed to enforce it. The journal is where the id is spent, so the
+#      journal is what the next id is chosen against.
+dispatch --task T-01 --from-plan "${FIXTURES}/plan-ok.md" >"${TMP}/out" 2>"${TMP}/err"
+if grep -q '^This is Dispatch D-02\.' "${TMP}/out"; then
+  ok "139 a re-dispatch after a teardown takes the next id, not the dead one"
+else
+  no "139 a re-dispatch after a teardown takes the next id, not the dead one" \
+    "$(grep -n 'Dispatch \|dispatch' "${TMP}/out" "${TMP}/err" | tr '\n' '|')"
+fi
+
+echo
+echo "report: the fallback in the table"
+
+# 140. A fallback that reaches no report is a fallback nobody accounts for, and
+#      `report` is the one verb here that writes what it finds down. The line is
+#      separate from the table's provider column on purpose: that column is the
+#      provider a Task *ran on*, which is one fact, and the substitution is two.
+RPF="R-fixture-0200"
+reset
+use_run "${RPF}"
+sent "${RPF}" T-01 D-01 exec-t1
+record exec-t1 cc "${RPF}" "" ccd
+code=0
+"${TEAM}" report "${RPF}" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "$code" -eq 0 ] && grep -q '^fallback(s): T-01 ccd→cc$' "${TMP}/out"; then
+  ok "140 report names the Task that fell back and both providers"
+else
+  no "140 report names the Task that fell back and both providers" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+# The fielded copy, for the same reading the printed table gets: a later session
+# opening `report.json` should not have to parse the line above out of a table
+# this file no longer prints.
+if python3 - "$(run_dir "${RPF}")/report.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+assert d["totals"]["fallbacks"] == 1, d["totals"]
+row = {r["task"]: r for r in d["tasks"]}["T-01"]
+assert row["fallback"] == "ccd", row
+PY
+then
+  ok "140b report.json counts it and names what the Task fell back from"
+else
+  no "140b report.json counts it and names what the Task fell back from" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
 
 echo
 echo "the ids"

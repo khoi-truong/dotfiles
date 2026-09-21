@@ -13,7 +13,7 @@
 # silently bills the Pro plan. Every spawn here goes through
 # `zsh -ic <wrapper>` instead, and the provider is asserted afterwards.
 #
-#   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp]
+#   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp] [--tier-reason <text>]
 #   team.sh spawn exec-<run-suffix>-N --branch <b>   # 2 per Run, 4 on one provider
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
@@ -101,6 +101,31 @@ EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
 # allowed, never of a key that runs out.
 PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-4}"
 
+# `ccd` is the tier every executable task runs on, so the one case that has to
+# be decided is what a spawn does when the key it needs is not there. Falling
+# back to the Pro login is the alternative that costs money, so it is bounded:
+#
+# `PRO_FALLBACK_MAX` is the 5h window, in percent, a fallback is allowed at.
+# Measured against the same cache `ai/claude/quota-advice.sh` advises from, and
+# below quota-advice's own "Prefer ccd ... on Pro" threshold of 50% on purpose —
+# the further the window is from full, the cheaper the mistake.
+PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
+
+# The cache `ai/claude/statusline.sh` writes on every render of a Pro session's
+# status line, and `ai/claude/quota-advice.sh` reads. Account-wide by design:
+# the windows are, so whichever pane rendered last refreshed them for all of
+# them. `HERDR_TEAM_PRO_QUOTA_CACHE` exists for the tests, which must not have
+# the fallback's answer depend on how much of this machine's window is spent.
+PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json}"
+
+# How old that cache may be and still describe the window it names. The status
+# line refreshes it whenever any Pro pane renders, so an age past this is a
+# window nobody is currently working in — a number from before the last thing
+# this machine did, which is not evidence about what it can afford now. The
+# number is a judgement, not a measurement: it is long enough to survive a
+# thinking pause and short enough to be inside the same 5h window.
+PRO_QUOTA_MAX_AGE="${HERDR_TEAM_PRO_QUOTA_MAX_AGE:-900}"
+
 # protocol.md states the cap on a handoff — "over 150 lines is a defect" — and
 # nothing has ever checked it. `report` counts them. A count rather than a
 # refusal, because by the time anyone could object the handoff is already
@@ -128,6 +153,17 @@ usage() {
 
 # jget <python-expr> — evaluate against the JSON on stdin, bound to `d`.
 jget() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1]) or "")' "$1"; }
+
+# gate <message...> — stop, because the next move is a human's rather than a
+# fix to make here. `die`'s sibling with `die`'s shape and a different code, so
+# it is the code a caller reads: 1 is "this command failed", and 6 is "this
+# command refused to decide" — the same number `loop` returns when a Task is
+# ready and no pane is free, and for the same reason. A caller that would have
+# carried on regardless (a wave, a script) is meant to branch on it.
+gate() {
+  printf '\033[0;31m  ✗\033[0m %s\n' "$*" >&2
+  exit 6
+}
 
 valid_name() {
   printf '%s' "$1" | grep -qE '^[a-z][a-z0-9_-]{0,31}$'
@@ -211,29 +247,32 @@ count_lines() { awk 'NF{n++} END{print n+0}'; }
 # passive. `spawn` writes one and `teardown` removes it — the same script owns
 # both ends of a pane's life, so a record exists while the pane does.
 #
-# Five fields, tab-separated, one line: name, provider, Run, worktree, spawn
-# time. A Run-less shell writes `-` for the third, because an empty field would
-# read as a malformed record rather than as "no Run".
+# Six fields, tab-separated, one line: name, provider, Run, worktree, spawn
+# time, and the provider this pane fell back from. A Run-less shell writes `-`
+# for the third, because an empty field would read as a malformed record rather
+# than as "no Run"; the sixth is empty for every pane but a fallback, which is
+# the only way it can be read as "nothing happened here".
 
 panes_dir() { printf '%s\n' "${ROOT}/state/panes"; }
 
 pane_record() { printf '%s\n' "$(panes_dir)/${1}"; }
 
-# pane_record_field <name> <name|provider|run|worktree|spawned> — that field,
-# or empty for a pane with no record. Empty and successful rather than a
+# pane_record_field <name> <name|provider|run|worktree|spawned|fallback> — that
+# field, or empty for a pane with no record. Empty and successful rather than a
 # status: callers test the value, and a reader left to handle two spellings of
 # "no record" would eventually handle one of them wrong.
 pane_record_field() {
-  local f f1 f2 f3 f4 f5
+  local f f1 f2 f3 f4 f5 f6
   f="$(pane_record "$1")"
   [ -f "$f" ] || return 0
-  IFS=$'\t' read -r f1 f2 f3 f4 f5 <"$f" || true
+  IFS=$'\t' read -r f1 f2 f3 f4 f5 f6 <"$f" || true
   case "${2:-}" in
     name) printf '%s' "$f1" ;;
     provider) printf '%s' "$f2" ;;
     run) printf '%s' "$f3" ;;
     worktree) printf '%s' "$f4" ;;
     spawned) printf '%s' "$f5" ;;
+    fallback) printf '%s' "$f6" ;;
   esac
 }
 
@@ -279,6 +318,21 @@ provider_load_for() {
   # which is the one shape this line has when every pane is unrecorded. A `|`
   # cannot appear in a pane name, so the three fields stay three.
   printf '%s|%s|%s\n' "$n" "$rec" "$unk"
+}
+
+# provider_ceiling <provider> — refuse when one more pane on that provider would
+# take the machine past the ceiling. Its own function because a spawn asks about
+# two providers when it falls back: the one it was told to use, and the one it
+# ends up using.
+provider_ceiling() {
+  local p="$1" load="" rec="" unk="" holds=""
+  reap_pane_records
+  IFS='|' read -r load rec unk <<<"$(provider_load_for "$p")"
+  if [ "$load" -ge "$PROVIDER_CAP" ]; then
+    holds="${rec:-none}"
+    [ -z "$unk" ] || holds="${holds} and ${unk} with no provider record"
+    die "spawn: ${load} panes count against ${p}'s ceiling (${holds}) — the ceiling is ${PROVIDER_CAP} panes on one provider across every Run (HERDR_TEAM_PROVIDER_CAP); settle one, or raise it if that credential can carry another."
+  fi
 }
 
 # exec_held <run> — the executors that Run is holding, one name per line.
@@ -349,6 +403,48 @@ esac'
   printf '%s\n' "$out" | grep -E '^(env:|op://)' | tail -1
 }
 
+# pro_window_used — the Pro 5h window's used percentage, or empty when the cache
+# cannot be believed. Empty rather than a status, the same way
+# `pane_record_field` answers: the caller has one thing to decide and two ways
+# to answer it wrong.
+#
+# The cache is read, never written, and never refreshed from here: it is
+# `ai/claude/statusline.sh`'s to write and a second writer would be a second
+# idea of what the window is. Two things make a number unusable, and both mean
+# the same thing to a caller — nobody knows what the window is:
+#
+# - the window has already reset (`resets_at` is behind us), so the percentage
+#   describes a window that no longer exists. `ai/claude/quota-advice.sh` reads
+#   the same field the same way.
+# - the cache is older than `PRO_QUOTA_MAX_AGE`, so nothing has rendered a Pro
+#   status line since; the number is from before whatever this machine has been
+#   doing.
+#
+# The absence of a number is not headroom, so nothing here guesses one: no
+# cache, an unreadable cache and a stale one all answer "unknown", and the one
+# caller refuses to fall back on unknown.
+pro_window_used() {
+  [ -r "${PRO_QUOTA_CACHE}" ] || return 0
+  python3 - "${PRO_QUOTA_CACHE}" "${PRO_QUOTA_MAX_AGE}" <<'PY' 2>/dev/null || true
+import json, sys, time
+
+path, max_age = sys.argv[1], int(sys.argv[2])
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    five = data["rate_limits"]["five_hour"]
+    used = float(five["used_percentage"])
+    reset = float(five["resets_at"])
+    cached = float(data["cached_at"])
+except (OSError, ValueError, KeyError, TypeError):
+    raise SystemExit(0)
+now = time.time()
+if reset <= now or now - cached > max_age:
+    raise SystemExit(0)
+print(int(used))
+PY
+}
+
 # The worktree checked out on <branch>, or empty. Asked of git rather than
 # rebuilt from the `git wta` layout, so moving that layout cannot silently
 # leave spawn predicting a path nothing is at.
@@ -412,12 +508,13 @@ landed_in() {
 # reaches that pane, not panes split from it afterwards.
 
 cmd_spawn() {
-  local name="${1:-}" branch="" provider="ccd" skip_provider_check=0
+  local name="${1:-}" branch="" provider="ccd" skip_provider_check=0 tier_reason=""
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
       --branch) branch="${2:-}"; shift 2 ;;
       --provider) provider="${2:-}"; shift 2 ;;
+      --tier-reason) tier_reason="${2:-}"; shift 2 ;;
       --skip-provider-check) skip_provider_check=1; shift ;;
       *) die "spawn: unknown option $1" ;;
     esac
@@ -428,12 +525,27 @@ cmd_spawn() {
   [ -n "$branch" ] || die "spawn: --branch is required"
   case "$provider" in cc | ccd | omp) ;; *) die "spawn: unknown provider $provider" ;; esac
 
+  # A `cc` pane spends the Pro login, and the tiers are not a price list: the
+  # cheap tier is safe wherever a command catches a wrong answer, so a Task a
+  # `verify` settles is a `ccd` Task whether or not its row says so. What earns
+  # the expensive one is a Task whose mistakes ship silently — it shapes later
+  # work, it writes a spec, or it reviews something. `--tier-reason` is that
+  # sentence, and requiring it is the whole check: what it forbids is the pane
+  # nobody can account for afterwards, not the pane on Pro.
+  #
+  # Asked of the provider the caller named, before the fallback below: a `ccd`
+  # spawn that falls back to `cc` spends Pro for a reason of its own, which is
+  # recorded rather than argued.
+  if [ "$provider" = "cc" ] && [ -z "$tier_reason" ]; then
+    die "spawn: --provider cc needs --tier-reason \"<why>\" — a row a command settles is ccd, and cc is for work that shapes later work, a spec, or a review (references/cost.md). Nothing here can tell which of those this pane is."
+  fi
+
   if [ -n "$(agent_field "$name" pane_id)" ]; then
     ok "agent ${name} already live — nothing to do"
     return 0
   fi
 
-  local run="" load="" rec="" unk="" holds=""
+  local run="" fallback_from=""
   run="$(current_run)" || run=""
 
   # The provider ceiling first, over the whole pool rather than the executors:
@@ -441,14 +553,9 @@ cmd_spawn() {
   # holding one whatever role its name says. The order after the early return
   # above is the point — this counts *other* panes — and it is before the
   # worktree, so a spawn refused for a limit it was going to hit anyway leaves
-  # nothing behind to undo.
-  reap_pane_records
-  IFS='|' read -r load rec unk <<<"$(provider_load_for "$provider")"
-  if [ "$load" -ge "$PROVIDER_CAP" ]; then
-    holds="${rec:-none}"
-    [ -z "$unk" ] || holds="${holds} and ${unk} with no provider record"
-    die "spawn: ${load} panes count against ${provider}'s ceiling (${holds}) — the ceiling is ${PROVIDER_CAP} panes on one provider across every Run (HERDR_TEAM_PROVIDER_CAP); settle one, or raise it if that credential can carry another."
-  fi
+  # nothing behind to undo. A fallback asks it a second time, about the
+  # credential the fallback spends rather than the one it asked for.
+  provider_ceiling "$provider"
 
   # Then the per-Run cap, and only for executors: a `spec-`, `res-` or `rev-`
   # pane is how a blocked executor gets unblocked, so a busy executor pool must
@@ -472,24 +579,57 @@ cmd_spawn() {
   #
   # `cc` is the Pro login and has no key ref to resolve, and omp is a different
   # agent whose key lives in ai/omp/models.yml: neither has a `cc_provider` to
-  # ask about, so neither is checked here.
+  # ask about, so neither is checked here. What is left is `ccd`, and `ccd` is
+  # the one provider with somewhere to go when its key is not there: the fallback
+  # below, which spends the Pro login instead. It is bounded, and it is recorded
+  # — an unrecorded one is the silent Pro spend cost.md's checklist forbids.
   if [ "$skip_provider_check" -eq 0 ] && [ "$provider" != "cc" ] && [ "$provider" != "omp" ]; then
-    local ref="" var="" state="" probe=""
-    probe="$(provider_key "$provider")" ||
-      die "spawn: could not ask the login shell about ${provider}'s key — pass --skip-provider-check to spawn anyway"
-    IFS=' ' read -r ref var state <<<"$probe"
-    case "$ref" in
-      env:*)
-        if [ "$state" != "set" ]; then
-          warn "spawn: ${provider} would launch with ${var} empty (ai/claude/providers.zsh: key=${ref}),"
-          die "spawn: so the pane would show a key error instead of a session — export ${var} in this login shell, or pass --skip-provider-check."
-        fi
-        ;;
-      op://*)
-        warn "spawn: ${provider}'s key is an op:// ref, which nothing here can resolve ahead of"
-        warn "the launch — the pane reads it itself and may prompt for 1Password."
-        ;;
-    esac
+    local ref="" var="" state="" probe="" why="" used=""
+    if ! probe="$(provider_key "$provider")"; then
+      why="could not ask the login shell about ${provider}'s key"
+    else
+      IFS=' ' read -r ref var state <<<"$probe"
+      case "$ref" in
+        env:*)
+          if [ "$state" != "set" ]; then
+            why="${provider} would launch with ${var} empty (ai/claude/providers.zsh: key=${ref})"
+          fi
+          ;;
+        op://*)
+          warn "spawn: ${provider}'s key is an op:// ref, which nothing here can resolve ahead of"
+          warn "the launch — the pane reads it itself and may prompt for 1Password."
+          ;;
+      esac
+    fi
+    if [ -n "$why" ]; then
+      warn "spawn: ${why},"
+      warn "spawn: so the pane would show a key error instead of a session — export the variable"
+      warn "spawn: in this login shell, or pass --skip-provider-check to launch ${provider} anyway."
+      # The fallback, and the only thing it is allowed to be: the same work on
+      # the credential this machine already holds, while that credential has
+      # room. Read from the cache rather than from a pane, because a pane is not
+      # passive to read and the status line has already written it down.
+      #
+      # Both refusals are gates rather than failures: nothing is broken, and
+      # what the spawned-but-wrong-pane would cost is exactly what a human
+      # should be the one to spend. Unknown and over-the-line answer the same
+      # way for the reason `quota-advice.sh` states — absence of data is not
+      # evidence of headroom.
+      used="$(pro_window_used)"
+      if [ -z "$used" ]; then
+        gate "spawn: the Pro 5h window is unknown — ${PRO_QUOTA_CACHE} is missing, stale, or names a window that has already reset — and a fallback decided from a cache nobody can read is the silent Pro spend cost.md's checklist forbids. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or let a Pro session render its status line to refresh that cache."
+      fi
+      if [ "$used" -ge "$PRO_FALLBACK_MAX" ]; then
+        gate "spawn: the Pro 5h window is ${used}% used, at or over the ${PRO_FALLBACK_MAX}% a fallback is allowed at (HERDR_TEAM_PRO_FALLBACK_MAX) — Pro is what a full window cannot spare, and this decision is a human's. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or wait for the window to reset."
+      fi
+      fallback_from="$provider"
+      provider="cc"
+      # The ceiling again, about the credential this pane now takes: the check
+      # above counted `ccd` panes, and a fallback that walked past `cc`'s own
+      # ceiling would spend the one credential the ceiling exists to protect.
+      provider_ceiling "$provider"
+      warn "spawn: running on cc instead — the Pro 5h window is ${used}%, under the ${PRO_FALLBACK_MAX}% a fallback is allowed at, and the pane record says it fell back (status and report read it)."
+    fi
   fi
 
   local dir made_worktree=0
@@ -593,10 +733,20 @@ cmd_spawn() {
   # the only place that knows which one it launched — the ceiling counts these
   # files, `status` reads one for its provider column, and `report` reads one
   # for its provider field.
-  printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
-    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$(pane_record "$name")"
+  #
+  # The sixth field is the provider this pane fell back from, empty when it did
+  # not. A fallback that one process knows about and no file records is the
+  # silent Pro spend cost.md's checklist forbids: the pane showing `cc` would
+  # read as a choice rather than a substitution, and `report` would bill the
+  # wave as if nothing had gone wrong. Written as its own field rather than
+  # folded into the provider, so the five-field records older Runs wrote still
+  # parse and the ceiling still counts them.
+  local note=""
+  [ -z "$fallback_from" ] || note=", fell back from ${fallback_from}"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$fallback_from" >"$(pane_record "$name")"
 
-  ok "${name} → ${pane} (${provider}) in ${dir}"
+  ok "${name} → ${pane} (${provider}${note}) in ${dir}"
 }
 
 # --- status ----------------------------------------------------------------
@@ -623,10 +773,17 @@ def provider_of(name):
     about to count. A pane with no record — hand-started, or spawning while
     this file is being read — is `unknown`, which is the same bucket the
     provider ceiling counts it in.
+
+    A pane that fell back shows both providers, `ccd→cc`, because either alone
+    is a half-truth: `cc` reads as a decision somebody made, and `ccd` as the
+    provider the task asked for and did not get.
     """
     try:
         with open(os.path.join(panes, name), encoding="utf-8") as fh:
-            return fh.readline().split("\t")[1] or "unknown"
+            fields = fh.readline().rstrip("\n").split("\t")
+        provider = fields[1] or "unknown"
+        fell_back = fields[5] if len(fields) > 5 else ""
+        return "%s→%s" % (fell_back, provider) if fell_back else provider
     except (OSError, IndexError):
         return "unknown"
 
@@ -909,14 +1066,47 @@ def journal_lines(handoffs, run):
     return rows
 
 
+def abandoned(handoffs, run):
+    """The (task, dispatch) pairs a `teardown` gave up on, as a set.
+
+    One line per outstanding Dispatch of the pane being destroyed, in the
+    journal's own shape, because destroying the pane is exactly what makes the
+    Dispatch unanswerable: the journal line stays — the Dispatch did happen —
+    and the handoff is no longer coming. `teardown` is the only writer.
+
+    Read here and consumed in `dispatched`, so the two verbs that ask what is
+    outstanding inherit it rather than each learning it separately: without
+    this, `wait` blocks on a pane herdr no longer knows and dies naming an
+    agent nobody can resolve, and `collect --plan` reads the Task as `running`
+    for as long as anyone cares to look at a Run that is over.
+    """
+    pairs = set()
+    if not handoffs:
+        return pairs
+    try:
+        text = open(os.path.join(handoffs, ".abandoned"), encoding="utf-8").read()
+    except OSError:
+        return pairs
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3 or parts[0] != run:
+            continue
+        pairs.add((parts[1], parts[2]))
+    return pairs
+
+
 def dispatched(handoffs, run):
     """The highest Dispatch id sent per Task under `run`, with its agent.
 
     A Task with a record here and no handoff for it is still out with an
-    agent. Nothing else on disk distinguishes that from never dispatched.
+    agent. Nothing else on disk distinguishes that from never dispatched —
+    except an abandonment, which is the same absence with the wait removed.
     """
     sent = {}
+    gone = abandoned(handoffs, run)
     for task, dispatch, agent in journal_lines(handoffs, run):
+        if (task, dispatch) in gone:
+            continue
         if dispatch > sent.get(task, {}).get("dispatch", ""):
             sent[task] = {"dispatch": dispatch, "agent": agent}
     return sent
@@ -1322,18 +1512,21 @@ panes = sys.argv[6]
 run_dir = os.path.join(root, "runs", run)
 
 
-def recorded_provider(name):
-    """The provider `spawn` wrote down for that pane, or empty.
+def recorded_field(name, index):
+    """Field `index` of the record `spawn` wrote for that pane, or empty.
 
-    Empty rather than "unknown" here, because the caller substitutes: this is
-    one source among two, and the other is the plan's own row.
+    Empty rather than a placeholder, because the callers substitute: a
+    provider falls back to the plan's own row, and a pane that never fell back
+    has nothing to say about where it came from. Out of range is empty too,
+    which is how a five-field record from an older Run reads — the field
+    simply was not written then.
     """
     if not name:
         return ""
     try:
         with open(os.path.join(panes, name), encoding="utf-8") as fh:
-            fields = fh.readline().split("\t")
-            return fields[1] if len(fields) > 1 else ""
+            fields = fh.readline().rstrip("\n").split("\t")
+        return fields[index] if len(fields) > index else ""
     except OSError:
         return ""
 
@@ -1409,7 +1602,7 @@ for path in sorted(glob.glob(os.path.join(handoffs, "*.md"))):
 head = ("task", "dispatch", "outcome", "evidence", "provider", "sends", "lines",
         "verify")
 table, dispatches, retried, proven = [], 0, 0, 0
-providers = set()
+providers, fallbacks = set(), []
 for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
     row = row_by_id.get(tid) or {}
     hs = by_task.get(tid, {})
@@ -1446,9 +1639,17 @@ for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
     # disagreeing is itself worth seeing: the record is what was launched, the
     # row is what was asked for, and a Run that quietly ran on the wrong
     # credential is what a report is for.
-    provider = recorded_provider(sent_agent.get(tid, "")) or row.get("provider") or "-"
+    provider = recorded_field(sent_agent.get(tid, ""), 1) or row.get("provider") or "-"
     if provider != "-":
         providers.add(provider)
+    # The provider this pane fell back from, when `spawn` had to substitute one.
+    # Its own line below rather than a wider provider column: the column is on
+    # one line of a table whose readers match a row by shape, and a fallback is
+    # a fact about the Run worth reading in a sentence, not a fifth glyph in a
+    # cell. `cc` alone would report a substitution as a choice.
+    fell_back = recorded_field(sent_agent.get(tid, ""), 5)
+    if fell_back:
+        fallbacks.append((tid, fell_back, provider))
     if verify == "ok":
         proven += 1
     dispatches += count
@@ -1456,7 +1657,8 @@ for tid in sorted(set(sends) | set(by_task) | set(row_by_id)):
         retried += 1
     table.append({"task": tid, "dispatch": winner, "outcome": outcome,
                   "evidence": evidence, "provider": provider,
-                  "sends": str(count), "lines": lines, "verify": verify})
+                  "sends": str(count), "lines": lines, "verify": verify,
+                  "fallback": fell_back or None})
 
 total = len(table)
 # Rated over the Tasks whose plan row states a `verify`, not over every row: a
@@ -1507,6 +1709,12 @@ if over_long:
     over += " (%s)" % " ".join(sorted(over_long))
 footer.append(over)
 print("  ".join(footer))
+# A substitution is the one thing about a Run that its provider column cannot
+# say, because the column is right: the work did run on `cc`. This is the line
+# that says it was not supposed to.
+if fallbacks:
+    print("fallback(s): %s" % "  ".join(
+        "%s %s→%s" % (tid, src, dst) for tid, src, dst in sorted(fallbacks)))
 
 payload = {
     "run": run,
@@ -1517,19 +1725,21 @@ payload = {
     "tasks": [{
         "task": r["task"], "dispatch": r["dispatch"],
         "outcome": r["outcome"], "evidence": r["evidence"],
-        "provider": r["provider"], "dispatches": int(r["sends"]),
+        "provider": r["provider"], "fallback": r["fallback"],
+        "dispatches": int(r["sends"]),
         "handoff_lines": None if r["lines"] == "-" else int(r["lines"]),
         "verify": r["verify"]} for r in table],
     "totals": {
         "tasks": total, "dispatches": dispatches, "retried_tasks": retried,
         "retry_rate": retry_rate, "verify_rated": len(rated),
         "verify_proven": proven, "verify_pass_rate": verify_rate,
-        "over_long_handoffs": len(over_long)},
+        "over_long_handoffs": len(over_long), "fallbacks": len(fallbacks)},
 }
 metrics = {
     "run": run, "plan": plan, "tasks": total, "dispatches": dispatches,
     "retry_rate": retry_rate, "verify_pass_rate": verify_rate,
     "wall_seconds": wall, "providers": sorted(providers),
+    "fallbacks": len(fallbacks),
     "plan_depth": (shape or {}).get("depth"),
     "plan_width": (shape or {}).get("width"),
     "over_long_handoffs": len(over_long)}
@@ -1827,7 +2037,8 @@ PY
 #   3  nothing the loop can dispatch and nothing running: done or wedged
 #   4  --timeout expired, or --max-waves reached
 #   5  an agent went blocked on a question — `surface` it, never answer it
-#   6  a Task is ready and no pane is free — spawn one, or settle one
+#   6  a Task is ready and no pane took it — the pool is full, or `spawn`
+#      refused one: spawn it by hand, settle one, or read the refusal
 #
 # The three prohibitions, stated here because this is the file where they would
 # be broken: `loop` never calls `settle`, never calls `teardown`, and never
@@ -1884,7 +2095,13 @@ loop_next_exec() {
 }
 
 # loop_routes <plan> <collect-table> — one line per dispatchable row, tab
-# separated: task, lane, the provider the row declares.
+# separated: task, lane, the provider the row declares, the `tier_reason` it
+# declares.
+#
+# The reason rides along because `spawn --provider cc` refuses without one, and
+# this is where a wave's spawn comes from: a `cc` row whose plan states no
+# reason is a row the loop cannot spawn, and the refusal has to reach the human
+# as that row's own omission rather than as a spawn that mysteriously said no.
 #
 # The lane is the routing rule this Task states and nothing more. A `cc` row
 # that names Tasks in `blocks` is a *reviewer* row — `dispatchable-plan`: "a
@@ -1920,8 +2137,12 @@ for line in table.splitlines():
         continue
     row = rows.get(parts[0]) or {}
     provider = row.get("provider") or ""
+    # Whitespace-collapsed: this is one tab-separated field on a line the wave
+    # splits on tabs, and a reason written as two lines in the plan would
+    # otherwise arrive as extra columns and be read as a lane or a provider.
+    reason = " ".join(str(row.get("tier_reason") or "").split())
     lane = "rev" if provider == "cc" and (row.get("blocks") or []) else "exec"
-    print("%s\t%s\t%s" % (parts[0], lane, provider))
+    print("%s\t%s\t%s\t%s" % (parts[0], lane, provider, reason))
 PY
   } | python3 - "$1" "$2"
 }
@@ -1935,7 +2156,7 @@ loop_gate_text() {
     3) printf 'nothing the loop can dispatch and nothing running — done or wedged' ;;
     4) printf 'a timeout, or the wave limit — the Run is still going' ;;
     5) printf 'an agent is blocked on a question — team.sh surface <agent>' ;;
-    6) printf 'a Task is ready and no pane is free — spawn one, or settle one' ;;
+    6) printf 'a Task is ready and no pane took it — spawn one, or settle one' ;;
     *) printf 'stopped' ;;
   esac
 }
@@ -2036,21 +2257,21 @@ loop_wave() {
   live_all="$(printf '%s\n' "$names_all" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/ $//')"
 
   local -a seats=() waiting=()
-  local ei=0 ri=0 tid lane provider seat
-  while IFS=$'\t' read -r tid lane provider; do
+  local ei=0 ri=0 tid lane provider reason seat
+  while IFS=$'\t' read -r tid lane provider reason; do
     [ -n "$tid" ] || continue
     if [ "$lane" = rev ] && [ "$ri" -lt "${#free_rev[@]}" ]; then
       seat="$(printf '%s\t%s\t%s\t%s' "${free_rev[$ri]}" "$tid" "$provider" "$lane")"
       seats+=("$seat")
       ri=$((ri + 1))
     elif [ "$lane" = rev ]; then
-      waiting+=("$(printf '%s\t%s\t%s' "$lane" "$tid" "$provider")")
+      waiting+=("$(printf '%s\t%s\t%s\t%s' "$lane" "$tid" "$provider" "$reason")")
     elif [ "$ei" -lt "${#free_exec[@]}" ]; then
       seat="$(printf '%s\t%s\t%s\t%s' "${free_exec[$ei]}" "$tid" "$provider" "$lane")"
       seats+=("$seat")
       ei=$((ei + 1))
     else
-      waiting+=("$(printf '%s\t%s\t%s' "$lane" "$tid" "$provider")")
+      waiting+=("$(printf '%s\t%s\t%s\t%s' "$lane" "$tid" "$provider" "$reason")")
     fi
   done <<<"$routes"
 
@@ -2074,7 +2295,7 @@ loop_wave() {
     local live_exec
     live_exec="$(printf '%s\n' "$held" | count_lines)"
     for i in "${!waiting[@]}"; do
-      IFS=$'\t' read -r lane tid provider <<<"${waiting[$i]}"
+      IFS=$'\t' read -r lane tid provider reason <<<"${waiting[$i]}"
       # An unattended loop never takes a provider's last seat. The ceiling is a
       # credential shared with every other tab on the machine, and a loop that
       # spends down to it holds what it took for the Run's life — it never
@@ -2108,10 +2329,25 @@ loop_wave() {
         live_exec=$((live_exec + 1))
       fi
       src=0
-      cmd_spawn "$name" --branch "$branch" --provider "${provider:-ccd}" || src=$?
+      # `--tier-reason` always, even empty: the flag is what `spawn` asks for a
+      # `cc` row, and the row is where the answer lives. An empty one on a `cc`
+      # row is a plan that did not state its reason, which `spawn` refuses —
+      # below, as the gate it is.
+      cmd_spawn "$name" --branch "$branch" --provider "${provider:-ccd}" \
+        --tier-reason "$reason" || src=$?
       if [ "$src" -ne 0 ]; then
-        still+=("${waiting[$i]}")
-        continue
+        # A refusal is not a full pool, and it is not a row to leave for the
+        # next wave either: `spawn` refuses for reasons a loop must not paper
+        # over — a `cc` row whose plan states no `tier_reason`, a Pro window no
+        # cache can answer for, a ceiling this Run is already at — and retrying
+        # it every wave is a loop that never ends, one refusal per turn. The
+        # wave stops before it dispatches anything, at the same gate it uses for
+        # a pool it cannot fill: both are a pane the loop may not create by
+        # itself. `spawn`'s own message is on stderr, where the reason is; this
+        # line is what ties it to the Task.
+        printf '%s\n' "$table"
+        loop_log "$log" "wave ${wave}: spawn refused ${tid} (exit ${src}) — a human decides"
+        return 6
       fi
       # A pane that spawned but did not come back free is not a seat: a dispatch
       # into an agent that is blocked or still starting is a prompt nobody reads,
@@ -2139,7 +2375,7 @@ loop_wave() {
   # table row — ready rows, and not one free pane to put them on.
   local ready_list="" i
   for i in "${!waiting[@]}"; do
-    IFS=$'\t' read -r lane tid provider <<<"${waiting[$i]}"
+    IFS=$'\t' read -r lane tid provider reason <<<"${waiting[$i]}"
     ready_list="${ready_list}${ready_list:+ }${tid}"
   done
   if [ -n "$ready_list" ] && [ "${#seats[@]}" -eq 0 ]; then
@@ -2557,18 +2793,36 @@ PY
 # `herdr agent prompt` refuses a blocked agent before sending anything, so an
 # approval dialog is never answered by accident.
 
-# next_dispatch <run> <task> — the lowest D-nn with no handoff file yet, under
-# that Run. A settled id is never reused, so an existing file means that
-# attempt already happened.
+# next_dispatch <run> <task> — the lowest D-nn that has neither a handoff file
+# nor a journal line under that Run. A settled id is never reused, so an
+# existing file means that attempt already happened.
+#
+# Both sources, because they are the same claim made twice and they disagree in
+# exactly one case: a Dispatch that was torn down before it could write a
+# handoff. The journal has it, no file does, so a reader of files alone hands
+# out D-01 a second time and two different agents' work lands under one id —
+# which is not a numbering nit, it is the never-reuse rule (protocol.md) broken
+# by the one verb that is supposed to enforce it.
 next_dispatch() {
-  local run="$1" task="$2" hdir="" n=1 id
+  local run="$1" task="$2" hdir="" n=1 id journal="" have j_run j_task j_dispatch j_agent
   hdir="$(handoffs_dir "$run")"
+  [ -r "${hdir}/.dispatched" ] && journal="$(cat "${hdir}/.dispatched")"
   while [ "$n" -lt 100 ]; do
     id="$(printf 'D-%02d' "$n")"
-    [ -e "${hdir}/${task}-${id}.md" ] || { printf '%s' "$id"; return 0; }
+    if [ ! -e "${hdir}/${task}-${id}.md" ]; then
+      have=""
+      while IFS=$'\t' read -r j_run j_task j_dispatch j_agent; do
+        if [ "$j_run" = "$run" ] && [ "$j_task" = "$task" ] &&
+          [ "$j_dispatch" = "$id" ]; then
+          have=1
+          break
+        fi
+      done <<<"$journal"
+      [ -n "$have" ] || { printf '%s' "$id"; return 0; }
+    fi
     n=$((n + 1))
   done
-  die "dispatch: ${task} has 99 settled dispatches — that is a loop, not a retry"
+  die "dispatch: ${task} has 99 dispatches — that is a loop, not a retry"
 }
 
 # plan_parser_py — the one reader of a plan's `## Tasks` block, emitted as
@@ -2784,6 +3038,41 @@ def _granularity(by_id, bodies):
     return out
 
 
+def _tiers(by_id):
+    """Rows claiming the expensive tier with nothing saying why.
+
+    The test is verifiability: a row whose `verify` command can catch a wrong
+    answer is a `ccd` row, and `cc` is for the work no command settles — the
+    row shapes later work, it is a spec, or it is a review (cost.md). So a `cc`
+    row that has a `verify` reads one of two ways, and both want the same thing
+    written down: a row that is really `ccd` and is mislabelled, or a row that
+    is really `cc` for a reason the plan has not stated. `tier_reason` is where
+    that reason goes — and `spawn --provider cc` refuses without one, so a plan
+    that omits it is a plan whose Dispatches are refused, or worse, quietly run
+    on the wrong credential.
+
+    A warning and never a finding, because the second reading is legitimate:
+    a review row has a `verify` (it runs the suite) and is still `cc`. No
+    parser can tell the two apart, so refusing would refuse correct plans —
+    which is how a check stops being read.
+    """
+    out = []
+    for tid in sorted(by_id):
+        row = by_id[tid]
+        if (row.get("provider") or "") != "cc":
+            continue
+        if not (row.get("verify") or "").strip():
+            continue
+        if str(row.get("tier_reason") or "").strip():
+            continue
+        out.append(
+            "%s is cc with a verify — a command settles this row, so it is a "
+            "ccd row unless it shapes later work, is a spec, or is a review; "
+            "say which with a \"tier_reason\" string, or run it on ccd "
+            "(cost.md)" % tid)
+    return out
+
+
 def _shape(by_id, bodies):
     """A plan's depth, width and task count, and what they earn in warnings.
 
@@ -2814,6 +3103,7 @@ def _shape(by_id, bodies):
             "second executor cannot help this plan whatever the cap says "
             "(%d is the width to shape for)" % (width, tasks, WIDTH_MIN))
     warnings.extend(_granularity(by_id, bodies))
+    warnings.extend(_tiers(by_id))
     return {"depth": depth, "width": width, "tasks": tasks,
             "chain": chain, "warnings": warnings}
 
@@ -3245,6 +3535,40 @@ cmd_settle() {
 # there taught the orchestrator to reach for --force on a guard that was right
 # to fire, which is how the guard stops being read at all.
 
+# abandon_outstanding <name> <run> — record that this pane's unanswered
+# Dispatches will never be answered.
+#
+# The pane is the thing that was going to answer them, so a teardown is the
+# moment a journal line stops meaning "out with an agent" and starts meaning
+# "given up on". Only the lines with no handoff file: one that already landed
+# is an answer, and the pane leaving does not unsay it. Written here, before the
+# record goes, because the record is where the Run is known — `teardown` is
+# called with an agent name and nothing else, and a pane spawned before its Run
+# existed has no Run to attribute anything to.
+#
+# Nothing is removed from the journal. The Dispatch did happen and `report`
+# counts it; what changes is that `dispatched()` no longer folds it down as
+# outstanding, which is what `wait` blocks on and `collect --plan` calls
+# `running`. Appended rather than rewritten, like the journal itself.
+abandon_outstanding() {
+  local name="$1" run="$2" hdir="" j_run j_task j_dispatch j_agent
+  [ -n "$run" ] && [ "$run" != "-" ] || return 0
+  hdir="$(handoffs_dir "$run")"
+  [ -r "${hdir}/.dispatched" ] || return 0
+  while IFS=$'\t' read -r j_run j_task j_dispatch j_agent; do
+    # By agent, so only this pane's Dispatches are abandoned. A three-column
+    # journal line names no agent and so matches nothing here: `wait` already
+    # skips those for the same reason, and guessing which pane sent one would
+    # abandon somebody else's work on a coincidence of ids.
+    [ "$j_run" = "$run" ] && [ "$j_agent" = "$name" ] || continue
+    [ -n "$j_task" ] && [ -n "$j_dispatch" ] || continue
+    [ -e "${hdir}/${j_task}-${j_dispatch}.md" ] && continue
+    printf '%s\t%s\t%s\t%s\n' "$run" "$j_task" "$j_dispatch" "$name" \
+      >>"${hdir}/.abandoned"
+  done <"${hdir}/.dispatched"
+  return 0
+}
+
 cmd_teardown() {
   local name="${1:-}" force=0
   shift || true
@@ -3278,6 +3602,16 @@ cmd_teardown() {
   fi
 
   herdr workspace close "$ws" >/dev/null
+  # Read off the record, which is about to be deleted: it names the Run this
+  # pane was spawned under, and teardown was given an agent name. A pane whose
+  # Run is not on its record — or a record already reaped — falls back to the
+  # current Run, which is the same question asked the only other way; neither
+  # answer is wrong, and an agent with no outstanding line has nothing written
+  # either way.
+  local torn_run
+  torn_run="$(pane_record_field "$name" run)"
+  [ -n "$torn_run" ] && [ "$torn_run" != "-" ] || torn_run="$(current_run)" || torn_run=""
+  abandon_outstanding "$name" "$torn_run"
   # The record goes with the pane, and here rather than at the top: everything
   # above can refuse, and a refusal leaves a pane that is still live and still
   # holding its provider. `settle … release` reaches this same line, so the two
