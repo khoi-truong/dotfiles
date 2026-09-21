@@ -128,7 +128,8 @@ Two things the verb list does not say:
 watching a pane.** It repeats one wave — `collect --plan`, dispatch what is
 `ready`, `wait` — until the plan is complete or a gate returns, and writes the
 Run's `report` on the way out however it ends. Each gate is a decision the loop
-is forbidden to make, so it stops and names it instead.
+is forbidden to make, so it stops and names it instead — including a
+provider's last seat, which it leaves for a human who is there to decide.
 
 When a gate returns, the same wave by hand is the fallback: `collect --plan`
 reports one row per task in the plan with an exit code saying what to do next,
