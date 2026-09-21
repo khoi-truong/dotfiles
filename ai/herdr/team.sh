@@ -14,7 +14,7 @@
 # `zsh -ic <wrapper>` instead, and the provider is asserted afterwards.
 #
 #   team.sh spawn <name> --branch <b> [--provider <profile>] [--tier-reason <text>]
-#   team.sh spawn exec-<run-suffix>-N --branch <b>   # 2 per Run, 4 on one provider
+#   team.sh spawn exec-<run-suffix>-N --branch <b>   # caps: team.sh config get role.exec.max_per_run
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
 #   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
