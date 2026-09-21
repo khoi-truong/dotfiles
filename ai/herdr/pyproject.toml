@@ -6,7 +6,7 @@
 # `.github/workflows/test.yml` and `scripts/ci/lint-local.sh`.
 #
 # Every pin for those tools lives in the two files above, which name each other
-# for that reason. Bump them together.
+# for that reason. Bump them together, and `vscode/setup.sh` with them for pytest.
 
 [tool.ruff]
 # The interpreter these modules are run by, which is not the one CI lints them

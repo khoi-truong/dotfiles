@@ -1,0 +1,7 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    { "root": "ai/herdr", "extraPaths": ["ai/herdr/lib"] }
+  ]
+}

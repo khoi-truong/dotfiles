@@ -28,8 +28,9 @@
 # Every pin below is the one its workflow uses — lint.yml's for the shell, zsh,
 # markdown, editorconfig, actionlint, zizmor, ruff and mypy checks, test.yml's
 # for pytest — and this file's steps mirror those files' steps. Bump them
-# together: these files are the only places these tools are named, and a version
-# that disagrees is a green local run that CI then fails.
+# together: these files are the only places these tools are named (bar pytest,
+# which vscode/setup.sh also pins for the editor venv), and a version that
+# disagrees is a green local run that CI then fails.
 set -euo pipefail
 
 # Mirrors the pins in .github/workflows/lint.yml.

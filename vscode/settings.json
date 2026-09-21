@@ -472,13 +472,10 @@
   "python.analysis.autoFormatStrings": true,
   "python.analysis.autoImportCompletions": true,
   "python.analysis.completeFunctionParens": true,
-  "python.analysis.diagnosticMode": "workspace",
-  "python.analysis.extraPaths": [],
-  "python.analysis.importFormat": "relative",
-  "python.analysis.typeCheckingMode": "strict",
-  "python.autoComplete.extraPaths": [],
-  "python.diagnostics.sourceMapsEnabled": true,
-  "python.languageServer": "None",
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.analysis.importFormat": "absolute",
+  "python.analysis.typeCheckingMode": "standard",
+  "python.languageServer": "Pylance",
   "python.terminal.activateEnvInCurrentTerminal": true,
   "redhat.telemetry.enabled": true,
   "remote.SSH.configFile": "~/.ssh/config.local",
@@ -523,6 +520,10 @@
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    },
     "editor.tabSize": 4,
     "editor.wordWrapColumn": 79
   },

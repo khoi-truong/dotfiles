@@ -33,4 +33,15 @@ while read -r extension; do
   code --install-extension "${extension}" || warn "failed: ${extension}"
 done <"${CURRENT_DIR}/extensions.vscode"
 
+# The editor's Python environment: Pylance resolves imports against the
+# interpreter pyrightconfig.json names. CI does not use it; it runs the tools
+# through uvx. The pytest pin mirrors test.yml and scripts/ci/lint-local.sh.
+if command -v uv >/dev/null 2>&1; then
+  info "Creating the editor venv..."
+  (cd "${DOTFILES}" && { [ -d .venv ] || uv venv; } && uv pip install pytest==9.1.1) ||
+    warn "editor venv setup failed"
+else
+  warn "uv unavailable — skipping the editor venv (run ./setup.sh mise first)."
+fi
+
 ok "Visual Studio Code configured."
