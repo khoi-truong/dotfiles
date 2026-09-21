@@ -359,6 +359,32 @@ default_ref() {
   return 1
 }
 
+# landed_in <dir> <base> — true when this branch carries nothing <base> does not
+# already have, which is the question the teardown guard is really asking. A
+# commit count cannot answer it for a branch with no upstream: the forge merges
+# a PR by squash and then deletes the head branch, so the branch's own commits
+# are reachable from nowhere else while their content sits in <base>, and the
+# count says "unpushed" forever about work that has landed. The merge is the
+# question, so `merge-tree` is asked it — merging this branch into <base>
+# changes nothing exactly when the result is <base>'s own tree. A git too old
+# for `--write-tree` falls back to the count, which is stricter than the
+# question needs and is the answer this guard gave before: a guard that cannot
+# see is not one that may pass.
+landed_in() {
+  local dir="$1" base="$2" out="" merged="" want=""
+  if git -C "$dir" merge-tree --write-tree HEAD HEAD >/dev/null 2>&1; then
+    out="$(git -C "$dir" merge-tree --write-tree "$base" HEAD 2>/dev/null)" || return 1
+    [ -n "$out" ] || return 1
+    merged="${out%%$'\n'*}"
+    want="$(git -C "$dir" rev-parse "${base}^{tree}")" || return 1
+    if [ "$merged" = "$want" ]; then
+      return 0
+    fi
+    return 1
+  fi
+  [ -z "$(git -C "$dir" log --oneline "${base}..HEAD")" ]
+}
+
 # --- spawn -----------------------------------------------------------------
 # Runs the agent in the workspace's ROOT pane: `workspace create --env` only
 # reaches that pane, not panes split from it afterwards.
@@ -3189,11 +3215,13 @@ cmd_settle() {
 # --- teardown --------------------------------------------------------------
 # Nothing here is about the pane: teardown answers one question, whether there
 # is work in this worktree that exists nowhere else, and refuses when there is.
-# A branch with an upstream is measured against it. A branch without one is
-# measured against the default branch, so a branch that has not diverged from
-# where it was cut tears down cleanly — refusing there taught the orchestrator
-# to reach for --force on a guard that was right to fire, which is how the
-# guard stops being read at all.
+# A branch with an upstream is measured against it, by commit count. A branch
+# without one is measured against the default branch by content, because that
+# is the branch the forge leaves behind: it merges by squash and deletes the
+# head, so the branch's commits are reachable from nowhere while their content
+# sits in the default branch, and a count calls that unpushed forever. Refusing
+# there taught the orchestrator to reach for --force on a guard that was right
+# to fire, which is how the guard stops being read at all.
 
 cmd_teardown() {
   local name="${1:-}" force=0
@@ -3210,14 +3238,21 @@ cmd_teardown() {
   if [ "$force" -eq 0 ] && [ -n "$cwd" ] && [ -d "$cwd" ]; then
     [ -z "$(git -C "$cwd" status --porcelain)" ] ||
       die "teardown: ${cwd} has uncommitted changes — commit them or pass --force"
-    # One rule, two bases: commits not reachable from where this branch will
-    # land. `--force` keeps its meaning for the case the guard is right about.
-    local base='@{u}'
-    git -C "$cwd" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1 ||
+    # One rule, two questions. `--force` keeps its meaning for the case the
+    # guard is right about: work that exists nowhere else.
+    if git -C "$cwd" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+      [ -z "$(git -C "$cwd" log --oneline '@{u}..HEAD')" ] ||
+        die "teardown: ${cwd} has unpushed commits — push them or pass --force"
+    else
+      local base
       base="$(default_ref "$cwd")" ||
-      die "teardown: ${cwd} has no upstream and no default branch to measure against — pass --force"
-    [ -z "$(git -C "$cwd" log --oneline "${base}..HEAD")" ] ||
-      die "teardown: ${cwd} has unpushed commits — push them or pass --force"
+        die "teardown: ${cwd} has no upstream and no default branch to measure against — pass --force"
+      # The same words as the count path, and the same remedy: a branch that
+      # fails *this* question really does hold commits that are in no upstream
+      # and in no default branch, whatever their number or their content.
+      landed_in "$cwd" "$base" ||
+        die "teardown: ${cwd} has unpushed commits — push them or pass --force"
+    fi
   fi
 
   herdr workspace close "$ws" >/dev/null

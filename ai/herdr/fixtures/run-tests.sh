@@ -214,7 +214,7 @@ sed -e "s#${FIXTURES}#<FIXTURES>#g" -e "s#${HERDR_TEAM_ROOT}#<ROOT>#g" \
   "${TMP}/out" >"${TMP}/norm"
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
   cp "${TMP}/norm" "${FIXTURES}/golden/T-01-dispatch.prompt"
-  ok "1 golden updated"
+  ok "1b the golden prompt was rewritten from this run"
 elif diff -u "${FIXTURES}/golden/T-01-dispatch.prompt" "${TMP}/norm" >"${TMP}/diff"; then
   ok "1 unblocked dispatch matches the golden prompt"
 else
@@ -1026,7 +1026,7 @@ expect_collect 0 '^T-01 +done +D-01 .*artifacts: \.omc/research/one\.md' \
 echo
 echo "one handoff, one verdict"
 
-# 53b-53g. The block-list shape, and the verdict both readers have to reach.
+# 53d-53j. The block-list shape, and the verdict both readers have to reach.
 # `commands:` and `artifacts:` empty on their own line, one `- ` item per value:
 # what an agent writes once a value stops fitting on one line. The parser
 # normalises it into the inline form every reader below already takes, so the
@@ -1036,15 +1036,15 @@ INLINE_CMDS='[{"cmd": "shellcheck -x ai/setup.sh", "exit": 0}, {"cmd": "git stat
 BLOCK_CMDS=$'\n  - {"cmd": "shellcheck -x ai/setup.sh", "exit": 0}\n  - {"cmd": "git status --short", "exit": 0}'
 BLOCK_ARTS=$'\n  - /abs/path.md'
 
-# 53b. The block list proves the row's verify, and its receipt prints.
+# 53i. The block list proves the row's verify, and its receipt prints.
 reset
 handoff T-01 "${RUN}" succeeded verified D-01 "$BLOCK_CMDS" "$BLOCK_ARTS"
 expect_collect 0 '^T-01 +done +D-01 .*artifacts: /abs/path\.md' \
-  "53b a block-list commands: proves the verify to collect --plan" \
+  "53i a block-list commands: proves the verify to collect --plan" \
   --plan "${FIXTURES}/plan-ok.md"
 
-# 53c. And the same handoff releases the dependent, through the gate.
-expect_exit 0 "53c and the same handoff releases the dependent in dispatch" \
+# 53j. And the same handoff releases the dependent, through the gate.
+expect_exit 0 "53j and the same handoff releases the dependent in dispatch" \
   --task T-02 --from-plan "${FIXTURES}/plan-ok.md"
 
 # 53d. Same two commands, written inline, read the same — the normalisation
@@ -1088,8 +1088,9 @@ echo "teardown"
 # branch cut from main in this repo, registered and removed again by these
 # cases. One path, reused — case 54's teardown removes the worktree, the next
 # case puts it back — and one stub herdr, which reports that path as exec-9's
-# cwd. A branch with an upstream is measured against it; a branch without one
-# against main, which is what a worktree branch here is cut from.
+# cwd. A branch with an upstream is measured against it by commit count; a
+# branch without one against main by content, because that is the branch a
+# squash-merge leaves behind.
 T05_BRANCH="fixture-t05-$$"
 WT="${TMP}/throwaway"
 mkdir -p "${TMP}/teardown"
@@ -1103,14 +1104,15 @@ exit 0
 SH
 chmod +x "${TMP}/teardown/herdr"
 
-# wt_add <suffix> — the throwaway worktree, cut fresh from main. Anything left
-# at that path comes off first: a case that failed to tear the worktree down
-# would otherwise decide what the next case is looking at, and a run whose
-# guard is broken has to fail the same way every time.
+# wt_add <suffix> [base] — the throwaway worktree, cut fresh from main unless
+# asked for another commit. Anything left at that path comes off first: a case
+# that failed to tear the worktree down would otherwise decide what the next
+# case is looking at, and a run whose guard is broken has to fail the same way
+# every time.
 wt_add() {
   git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null || true
   rm -rf "${WT}"
-  git -C "${DOTFILES}" worktree add --quiet -b "${T05_BRANCH}-$1" "${WT}" main 2>"${TMP}/err"
+  git -C "${DOTFILES}" worktree add --quiet -b "${T05_BRANCH}-$1" "${WT}" "${2:-main}" 2>"${TMP}/err"
 }
 
 # teardown_on <want-exit> <stdout-regex> <label> — teardown of exec-9, whose
@@ -1140,11 +1142,17 @@ if wt_add a; then
   fi
 
   # 55. The case the guard is right about, still refused without --force. The
-  #     commit is empty and skips hooks: this is about the count of commits
-  #     ahead, not about what is in them.
+  #     commit carries a file main does not have, because content is what the
+  #     guard reads now: a commit whose content is already in main is work that
+  #     has landed (131), and one that is in no branch and no main is the work
+  #     teardown exists to refuse. An empty commit would pass both guards —
+  #     even one that had stopped asking — so this one is real work. Hooks are
+  #     skipped only so the fixture does not depend on them.
   wt_add b
+  printf 'unpushed\n' >"${WT}/unpushed.txt"
+  git -C "${WT}" add unpushed.txt
   git -C "${WT}" -c commit.gpgsign=false -c user.email=fixture@example.com \
-    -c user.name=fixture commit --quiet --no-verify --allow-empty -m "unpushed"
+    -c user.name=fixture commit --quiet --no-verify -m "unpushed"
   teardown_on 1 '' "55 one unpushed commit and no upstream is still refused"
   if grep -q 'unpushed commits' "${TMP}/err" && grep -q -- '--force' "${TMP}/err"; then
     ok "55b the refusal names the work, and the way past it"
@@ -1165,13 +1173,45 @@ if wt_add a; then
   git -C "${WT}" branch --set-upstream-to=main --quiet
   teardown_on 0 'torn down' "56 a branch level with its upstream tears down without --force"
 
+  # 131. The defect this fix is for, in the shape it arrives in. The forge
+  #      merges a PR by squash and deletes the head branch, so `@{u}` is gone
+  #      from a branch whose work is already in main, and the count of commits
+  #      main has no sha for is one from then on. This branch is that shape
+  #      stripped to the three facts the guard reads — a commit main has no sha
+  #      for, a tree that differs from main's, and a merge into main that
+  #      changes nothing — because a forged squash cannot be built in this
+  #      repo: landing one means advancing main, and a commit carrying an older
+  #      main's tree conflicts with the commits after it, which is refusal
+  #      again and not landing. A guard that counts commits, or compares HEAD's
+  #      tree to main's, still reads this as unpushed work; 55 is its other
+  #      direction, the same shape holding content main has never seen.
+  behind_tree="$(git -C "${DOTFILES}" rev-parse --verify --quiet 'main~1^{tree}')" || behind_tree=""
+  main_tree="$(git -C "${DOTFILES}" rev-parse --verify --quiet 'main^{tree}')" || main_tree=""
+  if [ -z "${behind_tree}" ] || [ "${behind_tree}" = "${main_tree}" ]; then
+    sk "131 a squash-merged branch tears down without --force" \
+      "this case stands on a last commit that changed main; this repo's did not"
+  elif wt_add d 'main~1'; then
+    git -C "${WT}" -c commit.gpgsign=false -c user.email=fixture@example.com \
+      -c user.name=fixture commit --quiet --no-verify --allow-empty \
+      -m "the work, already in main"
+    teardown_on 0 'torn down' "131 a squash-merged branch tears down without --force"
+    if [ ! -d "${WT}" ]; then
+      ok "131b the landed worktree is gone, not just the pane"
+    else
+      no "131b the landed worktree is gone, not just the pane" "still at ${WT}"
+    fi
+  else
+    sk "131 a squash-merged branch tears down without --force" "no throwaway worktree"
+  fi
+
   git -C "${DOTFILES}" worktree remove --force "${WT}" 2>/dev/null
-  for b in a b c; do git -C "${DOTFILES}" branch -D "${T05_BRANCH}-$b"; done >/dev/null 2>&1
+  for b in a b c d; do git -C "${DOTFILES}" branch -D "${T05_BRANCH}-$b"; done >/dev/null 2>&1
 else
   sk "54 a branch level with main tears down without --force" \
     "no throwaway worktree: $(head -1 "${TMP}/err")"
   sk "55 one unpushed commit and no upstream is still refused" "no throwaway worktree"
   sk "56 a branch level with its upstream tears down without --force" "no throwaway worktree"
+  sk "131 a squash-merged branch tears down without --force" "no throwaway worktree"
 fi
 
 echo
@@ -1920,7 +1960,7 @@ for key in tab-a tab-b; do
   dispatch_as "$key" "${TMP}/${key}.prompt" --task T-01 --from-plan "${FIXTURES}/plan-ok.md" ||
     code=$?
   if [ "$code" -ne 0 ]; then
-    no "87 ${key} dispatches T-01/D-01 without being refused" \
+    no "87 ${key} dispatches T-01/D-01 into its own Run" \
       "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
   elif grep -q "^You are exec-1, working Task T-01 under Run ${want}\.$" "${TMP}/${key}.prompt" &&
     grep -q '^This is Dispatch D-01\.' "${TMP}/${key}.prompt" &&
@@ -3214,6 +3254,59 @@ loop_on 0 '' "129c one more seat and the same wave spawns" \
 unset FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
 called 1 '^worktree open .* --label exec-0001-1 ' \
   "129d the executor it refused above was drawn"
+
+echo
+echo "the ids"
+
+# case_ids — every id this file labels a case with, as the id and the whole
+# description it is spent on. An id is the leading token of a description handed
+# to one of this file's own helpers, and the helper names are read from the
+# file's function definitions rather than listed here: a helper added later is
+# covered the moment it is written, and a `grep` pattern — an argument to
+# `grep`, which is not a helper — is never read as a description. Continuations
+# are joined first, because a label sits on the line after its call as often as
+# on it, and an environment prefix is stepped over, because `VAR=1 helper` is
+# still a call to `helper`.
+case_ids() {
+  local helpers
+  helpers="$(grep -oE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)' "$0" | sed 's/()$//' | tr '\n' ' ')"
+  awk -v HELPERS="${helpers}" '
+    BEGIN { n = split(HELPERS, h, " "); for (i = 1; i <= n; i++) helper[h[i]] = 1 }
+    {
+      joined = (joined == "" ? $0 : joined " " $0)
+      if ($0 ~ /\\$/) { sub(/\\$/, "", joined); next }
+      cmd = joined
+      sub(/^[ \t]+/, "", cmd)
+      while (match(cmd, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+/)) cmd = substr(cmd, RLENGTH + 1)
+      sub(/[ \t].*$/, "", cmd)
+      if (cmd in helper)
+        while (match(joined, /"[0-9]+[a-z]? [^"]*"/)) {
+          print substr(joined, RSTART, RLENGTH)
+          joined = substr(joined, RSTART + RLENGTH)
+        }
+      joined = ""
+    }
+  ' "$0"
+}
+
+# 130. The ids themselves, which is the one property no case can assert about
+#      its own file. #74 merged two branches that had each spent 53b and 53c, so
+#      each of those named two cases apiece and the collision showed up only in
+#      the label of a line that failed — the second case invisible in the one
+#      place a reader looks when something is wrong. The count floor is here
+#      because the failure this case is most likely to suffer is its own: an
+#      extraction that reads no ids would report a tidy, empty agreement.
+all_ids="$(case_ids | sort -u)"
+n_ids="$(printf '%s\n' "${all_ids}" | wc -l | tr -d ' ')"
+dup_ids="$(printf '%s\n' "${all_ids}" | sed -E 's/^"([0-9]+[a-z]?) .*/\1/' | sort | uniq -d)"
+if [ "${n_ids}" -lt 100 ]; then
+  no "130 every case id is unique" \
+    "${n_ids} ids read from ${0} — the extraction failed, not the file"
+elif [ -n "${dup_ids}" ]; then
+  no "130 every case id is unique" "spent twice: $(printf '%s' "${dup_ids}" | tr '\n' ' ')"
+else
+  ok "130 every case id is unique"
+fi
 
 echo
 printf '%d passed, %d failed, %d skipped\n' "$pass" "$fail" "$skip"

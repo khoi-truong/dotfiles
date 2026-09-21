@@ -13,8 +13,8 @@ state>`. The rest is what those cost.
 Measured in a throwaway workspace:
 
 - **`pane run` types the command but does not run it**; `pane send-keys <pane>
-  enter` submits. A spawn that omits it hangs forever with the command on the
-  prompt line, looking identical to a slow start.
+  enter` submits. Omit it and the spawn hangs with the command on the prompt
+  line, identical to a slow start.
 - **An agent launched as `zsh -ic cc` is detected in ~4 s**, so the wrapper is
   not a problem, and `agent rename` then `agent get <name>` resolves. Its
   `terminal_title` was the command line, not an identity: titles are not
@@ -22,8 +22,7 @@ Measured in a throwaway workspace:
 - **`workspace create --env` reaches the root pane only.** A split does **not**
   inherit it (`HERDR_ENV=1` is injected regardless, so proves nothing). Run the
   agent in the **root pane**, `result.root_pane.pane_id`, or pass `--env` again
-  on `pane split`. An executor spawned this way wrote its handoff
-  into the main checkout, confirming propagation end to end.
+  on `pane split`. A handoff landing in the main checkout confirmed it.
 - **The provider label is on the visible screen only.** `agent read` defaults
   to `--source recent`, which is scrollback from *before* the agent started and
   reports no marker on a correct pane. Read `--source visible`, and retry: the
@@ -35,10 +34,10 @@ Measured in a throwaway workspace:
   non-empty of `HERDR_TEAM_RUN_KEY`, `HERDR_PANE_ID` and
   `CLAUDE_CODE_SESSION_ID`, falls back to `default`, and sanitises it to
   `[a-z0-9_-]`, since it becomes a path component under `state/`. herdr sets
-  it in every pane, which is what makes "one orchestrator pane,
-  one Run" hold with nothing to export — an agent's own `export` does not
-  survive to its next Bash call, so the pointer file, not env, is the primary
-  mechanism. `HERDR_TEAM_RUN_KEY` is the deliberate override.
+  it in every pane, so "one orchestrator pane, one Run" holds with nothing to
+  export — an agent's own `export` dies with its Bash call, so the pointer
+  file, not env, is the primary mechanism. `HERDR_TEAM_RUN_KEY` is the
+  deliberate override.
 - **`HERDR_TEAM_ROOT` is what a spawn exports**, alongside `OMC_STATE_DIR`: the
   state root, never one Run's handoff directory — that would pin the pane to
   that Run for life, which `protocol.md` forbids. The dispatch prompt carries
@@ -72,28 +71,29 @@ suite's hook, not a spawn's.
 
 ## `release-agent` is not our settlement verb
 
-`pane release-agent` releases the *reporter's* lifecycle authority over a pane,
-which belongs to whichever integration reported the agent (`herdr:claude`,
-here), not to us — calling it from outside that integration meddles with state
-we do not own. Settling a Dispatch is our own bookkeeping: label it with
+`pane release-agent` releases the *reporter's* lifecycle authority over a pane
+— `herdr:claude`'s here, not ours — so calling it meddles with state we do not
+own. Settling a Dispatch is our own bookkeeping: label it with
 `report-metadata` and let teardown close the workspace.
 
-What herdr gets right: `agent wait` pins the resolved occupant, so a
-replacement cannot satisfy the wait — the substrate enforces the identity rule
-itself.
+`agent wait` pins the resolved occupant, so a replacement cannot satisfy the
+wait: herdr enforces the identity rule itself.
+
+Teardown's landed test without an upstream (`worktrees.md`) is `git merge-tree
+--write-tree <default> HEAD` yielding `<default>`'s own tree; a git lacking
+`--write-tree` falls back to the stricter count.
 
 ## Plans
 
 The `## Tasks` block `--from-plan` reads is specified once, in the
-`dispatchable-plan` skill — a skill rather than a page here because a planning
-session never says "herdr", so these triggers never fire. Here: what the
-adapter does with a row.
+`dispatchable-plan` skill — a skill, since a planning session never says
+"herdr". Here: what the adapter does with a row.
 
 `dispatch --from-plan`
 builds the body as a **pointer**: the plan's absolute path, the section id, the
 files in scope, and the `verify` command the executor must run before claiming
-`evidence: verified`. Nothing is copied — the plan lives in the main checkout,
-which outlives any worktree, and which is why the orchestrator resolves
+`evidence: verified`. Nothing is copied: the plan lives in the main checkout,
+which outlives any worktree, so the orchestrator resolves
 `--from-plan`, never the agent.
 
 `blocks` is enforced at dispatch: exit **3** and the unmet ids on stderr unless
@@ -101,11 +101,10 @@ each has a `succeeded` + `verified` handoff **under the current Run**.
 `--force` overrides with a warning: retry is human-gated, and a gate with no
 key is a trap.
 
-`provider` is advisory metadata for whoever chooses the target agent; the
-script does not check a row against a live pane, for the reason under The two
-caps. Body precedence is argv, then `--from-plan`, then stdin — stdin only when
-it is not a terminal, since reading a terminal hangs with no prompt, looking
-like a slow dispatch.
+`provider` is advisory: the script does not check a row against a live pane,
+for the reason under The two caps. Body precedence is argv, then `--from-plan`,
+then stdin — stdin only when it is not a terminal, since reading a terminal
+hangs with no prompt, looking like a slow dispatch.
 
 `collect --plan <plan.md>` reports the other direction: one row per task in the
 plan rather than one per handoff — `done`, `review`, `failed`, `running`,
@@ -224,10 +223,10 @@ reader can settle.
 
 `spawn` records each pane in `state/panes/<name>` — name, provider, Run,
 worktree, spawn time — and `settle … release` and `teardown` remove it. The
-provider count reads those files: a provider is not readable off a screen
-passively, and `agent list` is per session, not per machine, so five sessions
-would each count only their own and each spawn to the ceiling of the one key. A pane with no record counts as `unknown`: an uncounted pane is
-exactly the one that exhausts a key.
+provider count reads those files: a provider is not passively readable off a
+screen, and `agent list` is per session, so five sessions would each count only
+their own and spawn to the ceiling. A pane with no record counts as `unknown`:
+an uncounted pane is the one that exhausts a key.
 
 ## Naming
 
