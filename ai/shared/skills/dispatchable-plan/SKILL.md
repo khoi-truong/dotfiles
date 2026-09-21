@@ -29,21 +29,43 @@ prose section per row:
 ```json
 [
   {"task": "T-01", "provider": "ccd", "files": ["ai/setup.sh"], "verify": "shellcheck -x ai/setup.sh", "blocks": []},
-  {"task": "T-02", "provider": "cc", "files": ["README.md"], "verify": "set -o pipefail; npx markdownlint-cli2 README.md | tail -1", "blocks": ["T-01"]}
+  {"task": "T-02", "provider": "ccd", "files": ["README.md"], "verify": "set -o pipefail; npx markdownlint-cli2 README.md | tail -1", "blocks": ["T-01"]}
 ]
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `task` | `T-nn`. Unique in this plan, and matching a `### T-nn` section. |
-| `provider` | Advisory: who should run it. Nothing enforces it. |
+| `provider` | Who runs it: `cc`, `ccd` or `omp`. A row with a `verify` is `ccd`; a `cc` row needs a `tier_reason`. |
 | `files` | The paths in scope. Named in the prompt, so scope is stated, not inferred. |
 | `verify` | The command that proves the task done. It must be able to fail. |
 | `blocks` | Task ids that must be verified before this one may start. `[]` for none. |
+| `tier_reason` | Why a `cc` row is on `cc` anyway. Required there, ignored elsewhere. |
 
 JSON rather than a markdown table because `verify` commands contain pipes and
 commas; JSON rather than YAML because the parser is stdlib `python3`, which has
 no YAML, and this takes no new dependency.
+
+## Who runs it
+
+`provider` picks a tier, and the tier follows from the row's shape rather than
+from budget:
+
+- **`ccd`** — a row with a `verify`. A command catches a wrong answer, so the
+  cheap tier is safe: the check, not the model, is what makes it so.
+- **`cc`** — a row no command settles. It shapes later work, it is a spec, or
+  it is a review. Pro login, no key of its own.
+- **`omp`** — a row needing web or docs lookup. A capability axis, not a
+  cheaper `ccd`, and **never a `ccd` fallback**: it is a different agent
+  spending a DeepSeek key of its own (`ai/omp/models.yml`), so it buys no
+  headroom on the credential a fallback exists to spare.
+
+A `cc` row carries a `tier_reason` string saying which of the three it is,
+because the tier is not self-evident from a row that has a `verify` and is
+expensive anyway. `plan lint` warns about exactly that shape, and `team.sh
+spawn --provider cc` refuses to start one without `--tier-reason "<why>"`
+(`references/cost.md` in the `herdr-team` skill) — neither can tell a review
+from a mispriced row, so both hand the sentence back to the author.
 
 ## The rules the parser enforces
 
@@ -103,13 +125,20 @@ skill's `references/herdr-adapter.md`.
 ## Reviewers are ordinary rows
 
 A review is work, so it gets a row like anything else, with `blocks` naming
-what it reviews:
+what it reviews — and on `cc`, with a `tier_reason` saying why:
 
 ```json
 [
-  {"task": "T-03", "provider": "cc", "files": ["ai/herdr/team.sh"], "verify": "bash ai/herdr/tests/run.sh", "blocks": ["T-02"]}
+  {"task": "T-03", "provider": "cc", "files": ["ai/herdr/team.sh"], "verify": "bash ai/herdr/tests/run.sh", "blocks": ["T-02"], "tier_reason": "review — a second model family reads what T-02 wrote"}
 ]
 ```
+
+The reason here is not a preference. A review is the one stage whose `verify`
+cannot fail on the thing it exists to find: the command runs the tests, and the
+bug a review is for is the one the tests miss, so a `ccd` review would read
+`verified` on exactly the case it was sent to catch. A reviewer also shares its
+author's blind spots when it shares the author's model family, so running the
+review on a different family is a second opinion rather than a duplicate.
 
 There is no separate review mechanism and no implicit review step. A plan that
 wants one says so in a row.

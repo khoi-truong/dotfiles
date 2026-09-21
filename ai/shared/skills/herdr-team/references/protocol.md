@@ -131,6 +131,17 @@ When a Dispatch settles, do **exactly one**, immediately:
 No fourth option, no "later". Settling is automatic on a valid completion
 message; status is never edited by hand.
 
+**Release leaves the Task ready, and that is a retry decision.** A pane torn
+down with Dispatches still out abandons them — they happened, the handoff is not
+coming — so the Tasks they named read `ready` again and a `loop` that is still
+running takes them up on its next wave. That is the intended reading: the pane
+is gone, nobody is working on the Task, and "nobody is working on it" is a next
+move rather than a stall. What makes it safe is who did it. `loop` never
+settles, so it can never reach the abandon on its own; a human tearing a pane
+down is choosing to put that work back in play, and the abandoned Dispatch is
+recorded rather than deleted — the id stays spent, because the Dispatch
+happened whether or not it was answered.
+
 ## Ambiguity
 
 Locked at the start of a Run, so unattended work resolves ambiguity

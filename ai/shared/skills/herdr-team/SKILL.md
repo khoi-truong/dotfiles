@@ -93,6 +93,49 @@ cheap tier is safe wherever a command catches a wrong answer. The orchestrator
 routes rather than judges, so it is never the most expensive thing running.
 Table in `references/cost.md`.
 
+A plan row states its tier in `provider` and, when that is `cc`, why in
+`tier_reason` — a task that shapes later work, a spec, or a review. `plan lint`
+warns on a `cc` row without one and `spawn --provider cc` refuses it, so the
+question is answered by the plan's author rather than by whoever is spawning
+under quota pressure.
+
+A `ccd` spawn whose key is missing may fall back to `cc`, and only inside a
+bounded Pro window: under 70% of the 5h window, read from the cache
+`ai/claude/quota-advice.sh` advises from and fresh enough to describe the
+window it names. Unknown is not headroom — a missing or stale cache is a gate
+for a human, not a fallback. **`omp` is never that fallback**: it is a
+different agent spending a DeepSeek key of its own (`ai/omp/models.yml`), so
+it relieves nothing the fallback exists to relieve. Any fallback is written to
+the pane record and to the Run's `.providers` note: `status` reads the record
+back as `ccd→cc`, and `report` lists it from the note, which outlives the pane
+`release` deletes.
+
+## Reviewing a PR
+
+Per PR, in this order:
+
+1. **The `ccd` handoff is verified.** The executor wrote the branch and a
+   handoff whose `commands:` names its row's `verify` at `exit: 0`; that is
+   what licenses everything below it.
+2. **`settle <exec> retain`.** The next step reads the diff, which lives in the
+   executor's worktree, and `release` would refuse a worktree holding work that
+   exists nowhere else anyway. The retain is the recorded decision that keeps
+   it alive.
+3. **A `cc` review.** `/code-review` inline when one read covers the diff, or a
+   `rev-<task>` pane in the executor's worktree when the review is long enough
+   to want its own context. Always `cc`: a `verify` cannot catch the bug a
+   review is for, and a reviewer from another model family is a second opinion
+   (`references/cost.md`).
+4. **The human reads the diff in herdr-reviewr** and sends line comments into
+   the retained executor's pane, which is what the retain in step 2 was for —
+   the pane that wrote the branch is the one that answers the comments.
+   herdr-reviewr is the human's review surface, not an agent: nothing here
+   dispatches to it, it is not on the roster, and the reviewer in step 3 does
+   not talk to it.
+5. **Merge, then `settle <exec> release`.** The retain has nothing left to
+   hold once the work is upstream, and a pane that keeps it is the stale pane
+   rule 4 is about.
+
 ## Tooling
 
 `ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `wait`,
