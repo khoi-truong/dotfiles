@@ -36,6 +36,18 @@ commands: [{"cmd": "...", "exit": 0}]
 ## What was found
 ## What remains
 
+The list fields — `commands:`, `files_changed:`, `artifacts:` — take either
+the inline shape above or a YAML block list, and both read the same:
+
+  commands:
+    - cmd: "..."
+      exit: 0
+  files_changed:
+    - path
+
+An entry with no `exit` proves nothing, and a shape that is neither of these
+reads UNPARSED: both send a reviewer at the Task rather than counting it done.
+
 'artifacts:' is for documents, not edits: if a skill or workflow you invoke
 writes its own artifact — `/research` under `.omc/research/`, `/plan` under
 `.omc/plans/` — leave it where that workflow put it and list its absolute
