@@ -1,9 +1,11 @@
 # CLAUDE.md
 
-`README.md` is canonical for layout and installation. Read it before changing
-structure, the install flow or shell startup, and keep it updated when any of
-those change. Don't `@`-include it here: at 29KB it costs ~7k tokens of every
-session's context window, whether or not the task goes near it.
+`README.md` is the landing page: getting started, the module table and an
+index of `docs/`. The details live in `docs/` (installation, shell, git, apps,
+AI tooling, herdr, agent teams, contributing). Read the guide for the area you
+are changing before you change it, and update it in the same PR. Don't
+`@`-include any of them here: they cost context on every session, whether or
+not the task goes near them.
 
 ## Rules
 

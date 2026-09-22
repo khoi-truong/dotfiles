@@ -44,7 +44,7 @@ read -r five seven five_reset ok < <(
 resets="$(date -r "${five_reset}" '+%H:%M' 2>/dev/null || echo '?')"
 status="Pro 5h window ${five}% used (resets ${resets}), 7d ${seven}%."
 
-# Thresholds mirror the routing rule in README "Which to use": work whose
+# Thresholds mirror the routing rule in docs/ai.md "Which to use": work whose
 # mistakes a lint run or a diff read catches cheaply is what moves first.
 if [ "${seven}" -ge 80 ]; then
   verdict="7d window is nearly spent and refills slowly. Keep Pro for decisions only — planning, review, security, anything that ships silently. Everything executable goes to ccd, research to omp."
