@@ -336,7 +336,9 @@ The same payload feeds a second tee branch that caches just the two windows to
 and Claude never sees it — the model doing the routing would otherwise have no
 idea the 5h window is nearly spent. `ai/claude/quota-advice.sh`, a
 `UserPromptSubmit` hook, reads that cache and prints a routing advisory, which
-Claude Code injects as context. Account-wide on purpose: the limits are, so
+Claude Code injects as context. It only speaks inside a herdr pane
+(`HERDR_ENV=1`): the advice routes to `ccd` and `omp` panes, and a plain
+session has nowhere to route to. Account-wide on purpose: the limits are, so
 whichever pane rendered last refreshes them for every other one. Three things
 keep it honest — a `ccd` pane reports its own endpoint's limits, so
 `CC_PROVIDER` gates the write the same way `ai/herdr/team.sh` asserts on it; a

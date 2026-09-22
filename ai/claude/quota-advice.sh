@@ -16,6 +16,10 @@ CACHE="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json"
 # cache was written by some other (Pro) session. Advising from it would be a
 # lie. Same variable ai/herdr/team.sh asserts on.
 [ -z "${CC_PROVIDER:-}" ] || exit 0
+
+# The advice routes work to ccd and omp panes, which only exist inside herdr.
+# A plain session has nowhere to route to, so it gets no advice at all.
+[ "${HERDR_ENV:-}" = "1" ] || exit 0
 [ -r "${CACHE}" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
