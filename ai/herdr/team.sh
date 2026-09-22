@@ -17,7 +17,7 @@
 #   team.sh spawn exec-<run-suffix>-N --branch <b>   # caps: team.sh config get role.exec.max_per_run
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
-#   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
+#   team.sh run [new [--plan <plan.md>] [--repo <path>] | show [--repo] | resolve <plan.md> | list]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
 #   team.sh report [<run-id>] [--plan <plan.md>] [--no-write]
@@ -25,7 +25,9 @@
 #   team.sh loop --plan <plan.md> [--max-waves <n>] [--timeout <ms>] [--spawn <branch-prefix>]
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
-#   team.sh config [show [--sources] | get <key> | lint | doctor]
+#   team.sh config [show [--sources] [--repo <path>] | get <key> [--repo <path>] |
+#                   lint [--repo <path>] | env [--repo <path>] | doctor]
+#   team.sh config trust [--repo <path>] [--revoke]   # lift a project repo's layers
 #   team.sh settle <name> <reuse|retain|release> [--clear]
 #   team.sh teardown <name> [--force | --abandon-only]
 #
@@ -162,6 +164,15 @@ raise SystemExit(config.main(sys.argv[1:]))" "$@"
 #   spawn, where the emitted one is the guard on the profile's own fallback.
 _ENV_EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-}"
 _ENV_PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-}"
+
+# A `HERDR_TEAM_REPO` inherited from a parent shell must not reach the first
+# gate below, which resolves this checkout's own layers: the Run file, read
+# further down once ROOT exists, is the only source for which repo a Run is
+# bound to. A caller that wants a repo with no Run still has `--repo` on
+# `config` itself. `_SPAWN_RUN` is `loop`'s internal hand-off to `cmd_spawn`,
+# never a caller's.
+unset HERDR_TEAM_REPO _SPAWN_RUN
+
 case "${1:-}" in
   config | -h | --help | help | "") ;;
   *)
@@ -186,14 +197,43 @@ esac
 #   runs/<run-id>/        the Run: its handoffs, and the plan it was cut from
 #   runs/by-plan/<sha1>   plan path → the Run that plan started
 #
-# `paths.root`, and then `[limits]`. The `:-` is a fallback and not the default:
-# if the reader ever stops emitting a name, the short name is still bound and
-# `set -u` does not turn a missing knob into a crash mid-wave. A test run points
-# the root at a throwaway directory, which is the same override it always was.
-ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
-DETECT_TIMEOUT="${HERDR_TEAM_DETECT_TIMEOUT:-60}"
-HANDOFF_MAX="${HERDR_TEAM_HANDOFF_MAX:-150}"
-CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
+# derive_knobs — the short names every later call reads, set from the
+# HERDR_TEAM_* names the `eval` above just set. Called again, further down,
+# by the second gate a Run bound to a project repo pays — a project's own
+# `[limits]` reaches nothing here unless that second `eval` is followed by
+# the same derivation this one is.
+#
+# `paths.root`, and then `[limits]`. The `:-` on each is a fallback and not the
+# default: if the reader ever stops emitting a name, the short name is still
+# bound and `set -u` does not turn a missing knob into a crash mid-wave. A test
+# run points the root at a throwaway directory, which is the same override it
+# always was.
+#
+# ROOT is the one name this only ever sets once, behind `_ROOT_DERIVED`:
+# `paths.root` cannot come from a project layer (an untrusted layer may set
+# `limits`, `role.*.profiles`/`max_per_run`, `route`, `preset` and
+# `fallback.*` — see config.py's module docstring — and a trusted one names
+# this checkout, not a project's), and `run_file`/REPO further down are
+# already resolved against it by the time a second call is possible.
+_ROOT_DERIVED=0
+
+# The confirmation deadline's default, at column zero where a reader (and case
+# 85k) looks for it; derive_knobs sets the value actually in force.
+CLEAR_CONFIRM_TIMEOUT=15
+
+derive_knobs() {
+  if [ "$_ROOT_DERIVED" -eq 0 ]; then
+    ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
+    _ROOT_DERIVED=1
+  fi
+  DETECT_TIMEOUT="${HERDR_TEAM_DETECT_TIMEOUT:-60}"
+  HANDOFF_MAX="${HERDR_TEAM_HANDOFF_MAX:-150}"
+  CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
+  PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
+  PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json}"
+  PRO_QUOTA_MAX_AGE="${HERDR_TEAM_PRO_QUOTA_MAX_AGE:-900}"
+}
+derive_knobs
 
 # `PROVIDER_CAP` is the machine ceiling: how many panes may be live on one
 # provider across every Run. The resource is the credential, not the executor —
@@ -238,9 +278,9 @@ PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-}"
 # resolved, which states the guard on its own fallback, so a profile guarded
 # more tightly than the one the reader picked for this name falls back less. What
 # is left here is the number for a config that guards nothing, and the `:-` for a
-# reader that emitted nothing at all.
-PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
-
+# reader that emitted nothing at all. Assigned in `derive_knobs` above, along
+# with the two below, so a project repo's own guard reaches it too.
+#
 # The cache `ai/claude/statusline.sh` writes on every render of a Pro session's
 # status line, and `ai/claude/quota-advice.sh` reads. Account-wide by design:
 # the windows are, so whichever pane rendered last refreshed them for all of
@@ -248,15 +288,13 @@ PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
 # ai/providers.toml; `HERDR_TEAM_PRO_QUOTA_CACHE` exists for the tests, which
 # must not have the fallback's answer depend on how much of this machine's
 # window is spent.
-PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json}"
-
+#
 # How old that cache may be and still describe the window it names. The status
 # line refreshes it whenever any Pro pane renders, so an age past this is a
 # window nobody is currently working in — a number from before the last thing
 # this machine did, which is not evidence about what it can afford now. The
 # number is a judgement, not a measurement: it is long enough to survive a
 # thinking pause and short enough to be inside the same 5h window.
-PRO_QUOTA_MAX_AGE="${HERDR_TEAM_PRO_QUOTA_MAX_AGE:-900}"
 
 # --- helpers ---------------------------------------------------------------
 
@@ -303,8 +341,200 @@ run_key() {
   printf '%s\n' "$key"
 }
 
-# run_file — this key's pointer to the Run it is in.
-run_file() { printf '%s\n' "${ROOT}/state/run-$(run_key)"; }
+# run_file — this key's pointer to the Run it is in. Resolved once, below,
+# where REPO is: the key cannot change inside one invocation, and `run_key` is
+# a pipeline every later call would otherwise fork again.
+run_file() { printf '%s\n' "${_RUN_FILE:-${ROOT}/state/run-$(run_key)}"; }
+
+# repo_common_dir <path> — that path's real identity as a git checkout: the
+# absolute `--git-common-dir`, which is the same string for every worktree of
+# one repository and different for every other one, submodule or not. `run
+# new --repo` reads this before writing anything, because a submodule or a
+# bare repository is not a place `spawn` can grow a worktree from, and saying
+# so here is cheaper than a `git worktree add` failing three commands later.
+repo_common_dir() {
+  local dir="$1" common bare
+  common="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
+    die "run: ${dir} is not a git repository"
+  case "$common" in
+    */.git/modules/*) die "run: ${dir} is a submodule — team.sh works on the repository that owns it" ;;
+  esac
+  bare="$(git -C "$dir" rev-parse --is-bare-repository 2>/dev/null)" ||
+    die "run: ${dir} is not a git repository"
+  [ "$bare" = "false" ] || die "run: ${dir} is a bare repository — nothing to spawn a worktree from"
+  printf '%s\n' "$common"
+}
+
+# second_gate <fatal> — re-resolve the configuration under whatever REPO now
+# names, the way the first gate resolved it for this checkout, and run
+# `derive_knobs` again so a project's own knobs reach the short names above
+# rather than only the HERDR_TEAM_* names `eval` sets.
+#
+# Fatal only for the verbs that route or spawn work — spawn, loop, dispatch,
+# plan — because those are the ones a bad project config would otherwise let
+# run on dotfiles defaults nobody approved for that repo. Every other verb
+# keeps the first pass's dotfiles knobs and gets one warning naming the
+# refusal instead: a project this Run cannot resolve must not also lock the
+# verbs — teardown, status, ... — a human reaches for to recover from that.
+#
+# Non-fatal, this always returns 0: the whole point of the warn-and-continue
+# path is that the caller carries on, and a caller invoked as a plain
+# statement under `set -e` (`bind_run_repo`'s two non-fatal call sites, in
+# `collect --plan` and `wait`) would otherwise abort on the reader's own exit
+# code instead. `_GATE_RC` is the one place that code still lives, for a
+# caller — `bind_run_repo` — that needs to know whether the gate actually
+# resolved before deciding whether to keep the REPO it just pointed at.
+second_gate() {
+  local fatal="$1" _cfg="" _rc
+  local _prev_fb="${HERDR_TEAM_PRO_FALLBACK_MAX-}" _had_fb=0
+  local _prev_qc="${HERDR_TEAM_PRO_QUOTA_CACHE-}" _had_qc=0
+  local _prev_qa="${HERDR_TEAM_PRO_QUOTA_MAX_AGE-}" _had_qa=0
+  [ -z "${HERDR_TEAM_PRO_FALLBACK_MAX+x}" ] || _had_fb=1
+  [ -z "${HERDR_TEAM_PRO_QUOTA_CACHE+x}" ] || _had_qc=1
+  [ -z "${HERDR_TEAM_PRO_QUOTA_MAX_AGE+x}" ] || _had_qa=1
+  _GATE_RC=0
+  # The three names `env_pairs` emits only beside a `[fallback.*.guard]` —
+  # unset here, ahead of the second `eval`, because a name the first pass's
+  # config emitted (a guarded profile) is otherwise still set when the second
+  # pass's own config guards nothing at all: `env_pairs` only overwrites a
+  # name when its own config has one to emit, so a project with no guard
+  # would leave the dotfiles' guard's numbers standing rather than reaching
+  # `derive_knobs`'s own `:-` fallback. Restored on a non-fatal failure below,
+  # since "continuing on ${DOTFILES}'s" means its guard's numbers too, not a
+  # blank slate this unset would otherwise leave standing. `_ENV_PRO_FALLBACK_MAX`,
+  # captured above before either eval, is untouched by any of this and still
+  # wins wherever the caller's own override is read.
+  unset HERDR_TEAM_PRO_FALLBACK_MAX HERDR_TEAM_PRO_QUOTA_CACHE HERDR_TEAM_PRO_QUOTA_MAX_AGE
+  # `$?` right after an `if` with no `else` is the `if` construct's own exit
+  # status — zero, whether or not the condition was true — not the failed
+  # command's; so the failure path lives in an `else`, the one place `$?`
+  # still names what `herdr_cfg env` actually exited with.
+  if _cfg="$(herdr_cfg env)"; then
+    eval "${_cfg}"
+    derive_knobs
+    return 0
+  else
+    _rc=$?
+  fi
+  [ "$_had_fb" -eq 0 ] || export HERDR_TEAM_PRO_FALLBACK_MAX="$_prev_fb"
+  [ "$_had_qc" -eq 0 ] || export HERDR_TEAM_PRO_QUOTA_CACHE="$_prev_qc"
+  [ "$_had_qa" -eq 0 ] || export HERDR_TEAM_PRO_QUOTA_MAX_AGE="$_prev_qa"
+  if [ "$fatal" -eq 1 ]; then
+    [ "${_rc}" -eq 3 ] \
+      || printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+    exit "${_rc}"
+  fi
+  warn "team.sh: ${REPO}'s configuration does not resolve (exit ${_rc}) — continuing on ${DOTFILES}'s"
+  _GATE_RC="${_rc}"
+  return 0
+}
+
+# REPO — the repository this Run's worktrees are grown from. `spawn` and
+# `teardown` read this in place of `${DOTFILES}` wherever a worktree, a branch
+# or `herdr worktree open --cwd` needs one. The default is this checkout;
+# `run new --repo <path>` is the one place that changes it, once, written to
+# `runs/<id>/repo` so every shell that later lands in the same Run agrees.
+#
+# That file is written only when the resolved repository differs from this
+# checkout's own — the common case leaves no file, so a Run started without
+# `--repo` costs nothing to read back and looks exactly like a Run from
+# before this existed.
+#
+# Skipped whole for `-h`/`--help`/`help`/no command: nothing on that path
+# reads REPO, and a help screen has no business resolving a Run or paying the
+# second gate's round trip.
+REPO="${DOTFILES}"
+case "${1:-}" in
+  -h | --help | help | "") ;;
+  *)
+    _RUN_FILE="$(run_file)"
+    if [ -s "$_RUN_FILE" ]; then
+      _repo_file="${ROOT}/runs/$(<"$_RUN_FILE")/repo"
+      [ -s "$_repo_file" ] && REPO="$(<"$_repo_file")"
+      unset _repo_file
+    fi
+
+    # `HERDR_TEAM_REPO` is the one transport from here to the Python config
+    # reader: exported once, at the point REPO is resolved, so `herdr_cfg` and
+    # every gated verb's `config.route`/`config.resolve` call inherit it
+    # without each call site naming it again. Unset rather than exported
+    # empty when this shell is not in a project Run, so a stale value from a
+    # parent shell's environment cannot outlive the Run it was resolved for.
+    if [ "$REPO" = "${DOTFILES}" ]; then
+      unset HERDR_TEAM_REPO
+    else
+      export HERDR_TEAM_REPO="$REPO"
+    fi
+
+    # The second gate: a Run bound to a project repository re-resolves the
+    # configuration under it before the verb runs. `env` is the only round
+    # trip a project repo costs, and only a Run whose `repo` file names one
+    # pays it. `config` answers for itself — its own `--repo` and gate logic
+    # decide what it reads — so it takes neither pass here.
+    #
+    # `loop` and `dispatch` resolve their own Run below (`--plan`, a by-plan
+    # link, or an explicit run id), which can differ from the pointer REPO
+    # was just resolved from above — gating fatally on the pointer's Run here
+    # would refuse a `loop --plan` whose *pointer* Run is broken even though
+    # the Run it is actually about to drive resolves fine. `bind_run_repo`,
+    # inside each, pays its own fatal gate against whichever Run it actually
+    # resolves, so this pass is non-fatal for them, same as every other verb.
+    if [ -n "${HERDR_TEAM_REPO:-}" ]; then
+      case "${1:-}" in
+        config) ;;
+        spawn | plan) second_gate 1 ;;
+        *) second_gate 0 || true ;;
+      esac
+    fi
+    ;;
+esac
+
+# bind_run_repo <run-id> <fatal> — point REPO, and the configuration read
+# under it, at the repository that Run is actually bound to. `loop` and
+# `dispatch` resolve a Run through `--plan`, a by-plan link or an explicit run
+# id rather than this shell's own pointer above, and that Run can name a
+# different repo than the one REPO was resolved from — a project Run reached
+# from a dotfiles tab, or the other way round. Read the same file `run new
+# --repo` wrote, so no verb that cuts a worktree or routes a Dispatch ever
+# does either against a repo it was not handed.
+#
+# A no-op when the Run's repo already matches REPO — the common case, costing
+# nothing beyond the one read of `runs/<id>/repo`.
+#
+# Non-fatal, a Run whose repo does not resolve leaves REPO/HERDR_TEAM_REPO
+# where they stood before this call rather than pointed at a repository
+# `second_gate` just warned it could not read a configuration for — the
+# pane/worktree decisions a gated verb makes after this returns read REPO
+# directly, and "continuing on the previous configuration" should mean the
+# previous REPO too, not just the previous knobs `second_gate` already falls
+# back to on its own.
+bind_run_repo() {
+  local run="$1" fatal="$2" repo="${DOTFILES}" repo_file
+  local prev_repo="$REPO" prev_team_repo="" had_team_repo=0
+  if [ -n "${HERDR_TEAM_REPO+x}" ]; then
+    had_team_repo=1
+    prev_team_repo="$HERDR_TEAM_REPO"
+  fi
+  repo_file="${ROOT}/runs/${run}/repo"
+  [ -s "$repo_file" ] && repo="$(<"$repo_file")"
+  [ "$repo" = "$REPO" ] && return 0
+  REPO="$repo"
+  if [ "$REPO" = "${DOTFILES}" ]; then
+    unset HERDR_TEAM_REPO
+  else
+    export HERDR_TEAM_REPO="$REPO"
+  fi
+  second_gate "$fatal"
+  if [ "${_GATE_RC:-0}" -ne 0 ]; then
+    REPO="$prev_repo"
+    if [ "$had_team_repo" -eq 1 ]; then
+      export HERDR_TEAM_REPO="$prev_team_repo"
+    else
+      unset HERDR_TEAM_REPO
+    fi
+  fi
+  return 0
+}
 
 # handoffs_dir <run> — that Run's handoffs, and its journal inside them.
 #
@@ -377,23 +607,43 @@ panes_dir() { printf '%s\n' "${ROOT}/state/panes"; }
 
 pane_record() { printf '%s\n' "$(panes_dir)/${1}"; }
 
-# pane_record_field <name> <name|provider|run|worktree|spawned|fallback> — that
-# field, or empty for a pane with no record. Empty and successful rather than a
-# status: callers test the value, and a reader left to handle two spellings of
-# "no record" would eventually handle one of them wrong.
+# pane_record_field <name> <name|provider|run|worktree|spawned|fallback|repo> —
+# that field, or empty for a pane with no record. Empty and successful rather
+# than a status: callers test the value, and a reader left to handle two
+# spellings of "no record" would eventually handle one of them wrong.
+#
+# `repo` is the seventh field, absent from any record `spawn` wrote before it
+# existed — a short line answers empty for it, so an old record falls back to
+# `${DOTFILES}`, exactly the repository those panes were actually spawned in.
+#
+# The line is split by hand, not with `IFS=$'\t' read`: tab is IFS whitespace
+# even when IFS is narrowed to just tab, so `read` collapses a run of them —
+# the very shape an empty `fallback` next to a populated `repo` takes — and
+# silently shifts every field after it left by one. Parameter expansion keeps
+# the empty field and forks nothing; callers read these in loops.
 pane_record_field() {
-  local f f1 f2 f3 f4 f5 f6
+  local f col line i=1
   f="$(pane_record "$1")"
   [ -f "$f" ] || return 0
-  IFS=$'\t' read -r f1 f2 f3 f4 f5 f6 <"$f" || true
   case "${2:-}" in
-    name) printf '%s' "$f1" ;;
-    provider) printf '%s' "$f2" ;;
-    run) printf '%s' "$f3" ;;
-    worktree) printf '%s' "$f4" ;;
-    spawned) printf '%s' "$f5" ;;
-    fallback) printf '%s' "$f6" ;;
+    name) col=1 ;;
+    provider) col=2 ;;
+    run) col=3 ;;
+    worktree) col=4 ;;
+    spawned) col=5 ;;
+    fallback) col=6 ;;
+    repo) col=7 ;;
+    *) return 0 ;;
   esac
+  IFS= read -r line <"$f" || true
+  while [ "$i" -lt "$col" ]; do
+    case "$line" in
+      *$'\t'*) line="${line#*$'\t'}" ;;
+      *) return 0 ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s' "${line%%$'\t'*}"
 }
 
 # reap_pane_records — forget the records whose pane is gone. A pane that exits
@@ -792,7 +1042,7 @@ bad_knob() {
 # rebuilt from the `git wta` layout, so moving that layout cannot silently
 # leave spawn predicting a path nothing is at.
 worktree_path() {
-  git -C "${DOTFILES}" worktree list --porcelain |
+  git -C "${REPO}" worktree list --porcelain |
     awk -v b="refs/heads/$1" '/^worktree /{p=substr($0,10)} /^branch /{if($2==b){print p;exit}}'
 }
 
@@ -923,7 +1173,16 @@ cmd_spawn() {
   fi
 
   local run="" fallback_from=""
-  run="$(current_run)" || run=""
+  # `_SPAWN_RUN` is `loop`'s own resolved Run, handed down when this runs
+  # inside `loop_wave`'s subshell: that Run can differ from this tab's
+  # pointer (`--plan`/an explicit run id), and reading the pointer here would
+  # attribute the pane, its lane and its cap to the wrong Run. Unset, this is
+  # every other caller of `spawn`, which still means the tab's own pointer.
+  if [ -n "${_SPAWN_RUN:-}" ]; then
+    run="$_SPAWN_RUN"
+  else
+    run="$(current_run)" || run=""
+  fi
 
   # The provider ceiling first, over the whole pool rather than the executors:
   # the thing being protected is a credential, and a pane holding one is a pane
@@ -1085,7 +1344,7 @@ cmd_spawn() {
   dir="$(worktree_path "$branch")"
   if [ -z "$dir" ]; then
     info "creating worktree for ${branch}"
-    (cd "${DOTFILES}" && git wta "$branch") >/dev/null
+    (cd "${REPO}" && git wta "$branch") >/dev/null
     dir="$(worktree_path "$branch")"
     [ -n "$dir" ] || die "spawn: git wta ${branch} created no worktree"
     made_worktree=1
@@ -1109,7 +1368,7 @@ cmd_spawn() {
   # idempotent — an already-open checkout comes back as `already_open` with its
   # existing workspace — so only a space this call opened may be rolled back.
   local created ws pane reused
-  created="$(herdr worktree open --cwd "${DOTFILES}" --path "$dir" \
+  created="$(herdr worktree open --cwd "${REPO}" --path "$dir" \
     --label "$name" --no-focus)"
   ws="$(printf '%s' "$created" | jget "d['result']['workspace']['workspace_id']")"
   # The agent must occupy the root pane: the env below is typed into that
@@ -1123,7 +1382,7 @@ cmd_spawn() {
   tab="$(printf '%s' "$created" | jget "d['result']['workspace'].get('active_tab_id','')")"
   [ -z "$tab" ] || herdr tab rename "$tab" "$branch" >/dev/null 2>&1 || true
   if [ -z "$ws" ] || [ -z "$pane" ]; then
-    [ "$made_worktree" -eq 1 ] && git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null
+    [ "$made_worktree" -eq 1 ] && git -C "${REPO}" worktree remove --force "$dir" 2>/dev/null
     die "spawn: worktree open returned no workspace/pane id"
   fi
 
@@ -1131,8 +1390,8 @@ cmd_spawn() {
   spawn_rollback() {
     [ -n "$reused" ] || herdr workspace close "$ws" >/dev/null 2>&1 || true
     if [ "$made_worktree" -eq 1 ]; then
-      git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null || true
-      git -C "${DOTFILES}" branch -D "$branch" >/dev/null 2>&1 || true
+      git -C "${REPO}" worktree remove --force "$dir" 2>/dev/null || true
+      git -C "${REPO}" branch -D "$branch" >/dev/null 2>&1 || true
     fi
   }
 
@@ -1204,10 +1463,17 @@ cmd_spawn() {
   # wave as if nothing had gone wrong. Written as its own field rather than
   # folded into the provider, so the five-field records older Runs wrote still
   # parse and the ceiling still counts them.
+  #
+  # The seventh field is the repository this pane's worktree was cut from,
+  # empty when it is this checkout's own — `teardown` reads it back to know
+  # which repository's worktree to remove, falling back to `${DOTFILES}` for
+  # this field and for every six-field record older Runs wrote.
   local note=""
   [ -z "$fallback_from" ] || note=", fell back from ${fallback_from}"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
-    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$fallback_from" >"$(pane_record "$name")"
+  local record_repo=""
+  [ "$REPO" = "${DOTFILES}" ] || record_repo="$REPO"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$fallback_from" "$record_repo" >"$(pane_record "$name")"
 
   ok "${name} → ${pane} (${provider}${note}) in ${dir}"
 }
@@ -1253,6 +1519,9 @@ cmd_collect() {
     # which is the output it has always produced.
     [ -n "$run" ] || run="$(resolve_run "$plan")" ||
       die "collect: no Run started — team.sh run new"
+    # Read-only: bind REPO for consistency, but a stale project config is a
+    # warning here, never a refusal — collect only reads a Run's own state.
+    bind_run_repo "$run" 0
     cmd_collect_plan "$plan" "$run"
     return $?
   fi
@@ -1406,6 +1675,9 @@ cmd_wait() {
 
   [ -n "$run" ] || run="$(resolve_run "$plan")" ||
     die "wait: no Run started — team.sh run new"
+  # Read-only, like collect: bind REPO for consistency, and warn rather than
+  # refuse on a stale project config — blocking is a question about the Run.
+  bind_run_repo "$run" 0
   if [ -n "$timeout" ]; then
     printf '%s' "$timeout" | grep -qE '^[0-9]+$' ||
       die "wait: --timeout takes milliseconds, got: ${timeout}"
@@ -1919,7 +2191,14 @@ loop_wave() {
       # `cc` row, and the row is where the answer lives. An empty one on a `cc`
       # row is a plan that did not state its reason, which `spawn` refuses —
       # below, as the gate it is.
-      ( cmd_spawn "$name" --branch "$branch" --provider "$provider" \
+      #
+      # `_SPAWN_RUN` tells `cmd_spawn` which Run this pane belongs to: `loop`
+      # may be driving a Run resolved through `--plan` or an explicit run id
+      # that differs from this tab's own pointer, and `cmd_spawn`'s own
+      # `current_run` reads that pointer, not the Run `bind_run_repo` already
+      # pointed REPO at above. Left unset anywhere else, `cmd_spawn` falls
+      # back to `current_run` exactly as before.
+      ( _SPAWN_RUN="$run" cmd_spawn "$name" --branch "$branch" --provider "$provider" \
         --tier-reason "$reason" ) || src=$?
       if [ "$src" -ne 0 ]; then
         # A refusal is not a full pool, and it is not a row to leave for the
@@ -2126,6 +2405,10 @@ cmd_loop() {
     die "loop: no Run started — team.sh run new --plan ${plan}"
   [ -d "${ROOT}/runs/${run}" ] ||
     die "loop: no Run ${run} under ${ROOT}/runs — team.sh run list"
+  # `resolve_run` may have named a Run other than this shell's own pointer
+  # (an explicit run id, or --plan's by-plan link) — bind REPO to that Run's
+  # repo before anything below cuts a worktree or routes a Dispatch on it.
+  bind_run_repo "$run" 1
 
   local log="${ROOT}/runs/${run}/loop.log"
   mkdir -p "${ROOT}/runs/${run}"
@@ -2266,6 +2549,10 @@ resolve_run() {
 cmd_run() {
   case "${1:-show}" in
     show)
+      if [ "${2:-}" = "--repo" ]; then
+        printf '%s\n' "${REPO}"
+        return 0
+      fi
       local run
       run="$(current_run)" || die "run: none started — team.sh run new"
       printf '%s\n' "$run"
@@ -2288,7 +2575,7 @@ cmd_run() {
       ;;
     new)
       shift
-      local plan="" run="" existing="" dir=""
+      local plan="" run="" existing="" dir="" repo_arg="" repo_dir="" common="" checkout_common=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --plan)
@@ -2296,9 +2583,27 @@ cmd_run() {
             plan="$2"
             shift 2
             ;;
+          --repo)
+            [ $# -ge 2 ] || die "run: --repo needs a path"
+            repo_arg="$2"
+            shift 2
+            ;;
           *) die "run: unknown option $1" ;;
         esac
       done
+      # `--repo` is resolved and validated before anything is written, not
+      # after: `repo_common_dir` refuses a path that is not a git repository,
+      # a submodule or a bare repository, and a caller who fixes the flag and
+      # retries must find no half-made Run behind the first attempt. The
+      # binding itself — a file written only when the resolved repository is
+      # not this checkout's own — happens below, once the Run exists; a
+      # `--repo` naming the checkout itself, by whichever path, still leaves
+      # this Run looking exactly like one that never took the flag.
+      if [ -n "$repo_arg" ]; then
+        common="$(repo_common_dir "$repo_arg")" || exit 1
+        checkout_common="$(repo_common_dir "${_CHECKOUT}")" || exit 1
+        [ "$common" = "$checkout_common" ] || repo_dir="$(dirname "$common")"
+      fi
       # A plan that already has a Run is refused rather than given a second
       # one. `--plan` is how a verb finds its Run without being told, and two
       # Runs behind one plan would make that answer whichever was minted
@@ -2331,6 +2636,9 @@ cmd_run() {
         mkdir -p "${ROOT}/runs/by-plan"
         printf '%s\n' "$run" >"${ROOT}/runs/by-plan/$(plan_key "$plan")"
       fi
+      # `--repo` binds every later shell in this Run to a project repository
+      # rather than this checkout, using the path validated above.
+      [ -z "$repo_dir" ] || printf '%s\n' "$repo_dir" >"${dir}/repo"
       ok "run ${run}"
       ;;
     *) die "run: expected 'new', 'show', 'resolve' or 'list'" ;;
@@ -2368,6 +2676,10 @@ cmd_plan() {
 # `config doctor` says what this machine would have to be for a spawn to work.
 # `herdr_cfg` tells the reader which checkout to read the same way that arm
 # does: one file, one answer, whether a verb got as far as `eval` or not.
+#
+# `show`, `get`, `lint` and `env` answer for this Run's repository without a
+# `--repo`: the exported `HERDR_TEAM_REPO` above is what the reader reads, and
+# an explicit `--repo` on the command line still wins over it.
 cmd_config() { herdr_cfg "$@"; }
 
 # --- dispatch --------------------------------------------------------------
@@ -2460,6 +2772,10 @@ cmd_dispatch() {
 
   [ -n "$run" ] || run="$(resolve_run "$plan")" ||
     die "dispatch: no Run started — team.sh run new"
+  # `--run`, `--from-plan` and the by-plan link can all name a Run other than
+  # this shell's own pointer — bind REPO to that Run's repo before the plan
+  # body below is composed or the prompt is routed to a pane.
+  bind_run_repo "$run" 1
   hdir="$(handoffs_dir "$run")"
   [ -n "$dispatch" ] || dispatch="$(next_dispatch "$run" "$task")"
   printf '%s' "$dispatch" | grep -qE '^D-[0-9]{2}$' ||
@@ -2851,17 +3167,34 @@ cmd_teardown() {
   # above can refuse, and a refusal leaves a pane that is still live and still
   # holding its provider. `settle … release` reaches this same line, so the two
   # ways a pane ends both forget it.
+  # The repository this pane's worktree came from — the pane record's own
+  # answer, since that is the only place `spawn` wrote it, falling back to
+  # `${DOTFILES}` for a record with no seventh field and for a pane no record
+  # names at all (dead by the time `pane_record` is read, or never spawned by
+  # this file).
+  local repo
+  repo="$(pane_record_field "$name" repo)"
+  [ -n "$repo" ] || repo="${DOTFILES}"
   rm -f "$(pane_record "$name")"
-  if [ -n "$cwd" ] && [ "$cwd" != "${DOTFILES}" ]; then
+  if [ -n "$cwd" ] && [ "$cwd" != "${repo}" ]; then
     if [ "$force" -eq 1 ]; then
-      git -C "${DOTFILES}" worktree remove --force "$cwd" 2>/dev/null ||
+      git -C "${repo}" worktree remove --force "$cwd" 2>/dev/null ||
         warn "worktree remove failed for ${cwd} — remove it by hand"
     else
-      git -C "${DOTFILES}" worktree remove "$cwd" 2>/dev/null ||
+      git -C "${repo}" worktree remove "$cwd" 2>/dev/null ||
         warn "worktree remove failed for ${cwd} — remove it by hand"
     fi
   fi
-  git -C "${DOTFILES}" tidy >/dev/null 2>&1 || true
+  # `tidy` is this checkout's own housekeeping alias, not a git built-in, and
+  # running it against a project repository would ask that repository for a
+  # command it has no reason to define. A foreign repo gets the plain
+  # built-in instead — `worktree prune` clears the entry teardown just
+  # removed, and nothing more.
+  if [ "$repo" = "${DOTFILES}" ]; then
+    git -C "${repo}" tidy >/dev/null 2>&1 || true
+  else
+    git -C "${repo}" worktree prune >/dev/null 2>&1 || true
+  fi
   ok "${name} torn down"
 }
 

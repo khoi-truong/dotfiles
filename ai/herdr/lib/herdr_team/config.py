@@ -15,15 +15,25 @@ Seven layers, lowest to highest, deep-merged tables and replacing arrays:
     6  HERDR_TEAM_* in the environment
     7  flags on the command line
 
+Layers 3 and 4 are read when a Run is bound to a project repo — `run new
+--repo` at Run start, or `--repo <path>` / `HERDR_TEAM_REPO` on a single
+call — rather than this checkout; a repo named that way is otherwise ignored
+for anything but these two files.
+
 Layers 1 and 2 are trusted. Layers 3 and 4 are not: a project file that could
 name a launch command would be a project file that can run code, so an
 untrusted layer may set `limits`, `role.<r>.profiles` and `max_per_run`,
 `route`, `preset`, and `fallback.<p>.to`/`never` — and may name only cheap
 profiles, so it can never route work onto the Pro login. Anything else is a
-finding, and so is a `never` list that shrinks. `config trust`, which records a
-repo's path and its file's sha in `~/.dotfiles/.herdr/trust`, is what lifts
-that; until it lands a project layer is always untrusted, and layers 3 and 4
-are only read when a checkout other than this one is named.
+finding, and so is a `never` list that shrinks. `config trust` is what lifts
+that: it records the project's path and the sha256 of both files in
+`<root>/trust` (`<root>` being `paths.root`, or `~/.dotfiles/.herdr` shipped),
+after a typed `yes` at a real terminal — the TTY check is there to stop a
+script or an agent from answering the prompt by accident, not to keep one from
+trusting a repo on purpose; it can still run `config trust` from one that has
+a terminal. `--revoke` removes the line. Any byte changed in
+either file makes that trust stale — layers 3 and 4 fall back to untrusted and
+`config lint` names it — until `config trust` is run again.
 
 Values may name three things the reader expands:
 
@@ -56,6 +66,7 @@ is what it could not decide, and notes do not fail the verb.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import re
@@ -63,6 +74,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Iterator, NamedTuple
 
@@ -110,6 +122,8 @@ _NUMERIC_ENV = frozenset(
 ENV_PRESET = "HERDR_TEAM_PRESET"
 ENV_DOTFILES = "DOTFILES"
 ENV_CONFIG = "HERDR_TEAM_CONFIG"
+ENV_REPO = "HERDR_TEAM_REPO"
+ENV_ROOT = "HERDR_TEAM_ROOT"
 
 _ROOT_KEYS = frozenset(
     {
@@ -205,16 +219,90 @@ class ConfigError(ValueError):
         super().__init__("%s: %s" % (at, reason))
 
 
+def _common_dir(path: Path) -> str | None:
+    """That path's `--git-common-dir`, absolute, or `None` when it names no
+    git checkout at all.
+
+    Two worktrees of one repository answer with the same string; a bare
+    repository, a submodule and an unrelated repository each answer with a
+    different one. Used to tell "this checkout" from "a project" by identity
+    rather than by path spelling, so a linked worktree of the dotfiles is
+    still the dotfiles and not a project of its own.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(path),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
+def _checkout_from_common(path: Path, common: str | None) -> Path:
+    """`path`, normalized against an already-resolved `--git-common-dir` (or
+    `None`, when `path` names no checkout at all).
+
+    The fork-free half of `_main_checkout`, below, for a caller that has
+    already paid for `common` — `default_layers` and `_trust` both need it a
+    second time anyway, to compare `project` against `where`, and a second
+    `git -C path rev-parse --git-common-dir` for the same answer would be a
+    second fork for nothing.
+
+    A submodule or a `--separate-git-dir` checkout's `--git-common-dir` does
+    not end in `.git` at all, so `.parent` of it would name a directory one
+    level too high rather than a main checkout — taken only when the name
+    confirms there is a `.git` to be the parent of. Anything else that is not
+    `None` (an ordinary directory, a bare `tmp_path` in a test) comes back
+    unchanged, since there is nothing to normalize it against.
+    """
+    if not common:
+        return path
+    common_path = Path(common)
+    return common_path.parent if common_path.name == ".git" else path
+
+
+def _main_checkout(path: Path) -> Path:
+    """`path`, normalized to the git checkout it belongs to.
+
+    A linked worktree's `--git-common-dir` names the main checkout's `.git`
+    directory even when asked from inside the worktree, so trust granted
+    against a worktree and a layer lookup made from its main checkout — or the
+    reverse — still land on the same path: `.config/herdr/` lives once, in the
+    main checkout, not once per worktree.
+    """
+    return _checkout_from_common(path, _common_dir(path))
+
+
 class Layer(NamedTuple):
     """One file in the stack, and whether the repository behind it is trusted.
 
     Trust travels with the layer rather than with the resolver so that `config
     trust` has one thing to flip when it lands: the caller that knows the repo's
     sha is the caller that builds this list.
+
+    `findings` is the trust file's own opinion of this project's line, if it has
+    one — malformed, duplicated, or stale — carried alongside `trusted` rather
+    than raised, so `load` can fold it into the one findings list every verb
+    already reads. Attached to the higher-priority (`team.toml`) layer only,
+    so a caller summing every layer's findings counts it once.
     """
 
     path: Path
     trusted: bool
+    findings: tuple[str, ...] = ()
 
 
 # --- the stack --------------------------------------------------------------
@@ -246,13 +334,134 @@ def default_layers(
         Layer(where / "ai/herdr/team.toml", True),
         Layer(where / "ai/herdr/team.local.toml", True),
     ]
-    project = Path(repo or where).expanduser().resolve()
+    project = Path(repo or env.get(ENV_REPO) or where).expanduser().resolve()
+    project_common: str | None = None
     if project != where:
+        # `_main_checkout` and `_same_repo` both want `--git-common-dir`; a
+        # dotfiles Run (`project == where`) needs neither, so it forks no
+        # git at all, and a project Run forks it once, not twice.
+        project_common = _common_dir(project)
+        project = _checkout_from_common(project, project_common)
+    if not _same_repo(project, where, project_common):
+        # The trust file is read here, and only here: a dotfiles Run never
+        # reaches this branch at all, and a foreign one pays for it once, not
+        # once per verb that happens to ask for layers.
+        trust_path = _trust_file_path(where, env)
+        trusted, findings = _project_trust(project, trust_path)
         layers += [
-            Layer(project / ".config/herdr/team.toml", False),
-            Layer(project / ".config/herdr/team.local.toml", False),
+            Layer(project / ".config/herdr/team.toml", trusted, tuple(findings)),
+            Layer(project / ".config/herdr/team.local.toml", trusted),
         ]
     return layers
+
+
+def _same_repo(project: Path, where: Path, project_common: str | None = None) -> bool:
+    """Whether `project` and `where` name one repository.
+
+    Compared by git identity, not by path spelling: `project` and `where` name
+    the same repository whenever their `--git-common-dir`s agree, which is what
+    makes a linked worktree of the dotfiles still read as the dotfiles. Neither
+    side being a git checkout (a bare `tmp_path` in a test, say) falls back to
+    the plain path comparison this replaces. The same path needs no `git` at
+    all, which keeps a dotfiles Run's reads free of the two forks.
+
+    `project_common` lets a caller that already resolved `project`'s
+    `--git-common-dir` (normalizing it to its main checkout, say) hand that
+    fork's answer over instead of paying for a second one here.
+    """
+    if project == where:
+        return True
+    if project_common is None:
+        project_common = _common_dir(project)
+    where_common = _common_dir(where)
+    if project_common is not None and where_common is not None:
+        return project_common == where_common
+    return False
+
+
+# --- trust --------------------------------------------------------------
+
+
+def _valid_sha_field(value: str) -> bool:
+    """A trust line's sha column: `-` (the file is absent) or 64 hex digits."""
+    if value == "-":
+        return True
+    return len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+
+
+def _file_sha(path: Path) -> str:
+    """That file's sha256, or `-` when there is nothing to hash."""
+    if not path.is_file():
+        return "-"
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _read_trust_lines(path: Path) -> list[str]:
+    """Every non-empty line in the trust file, or none when it is not there."""
+    try:
+        text = path.read_text()
+    except OSError:
+        return []
+    return [line for line in text.splitlines() if line]
+
+
+def _project_trust(project: Path, trust_path: Path) -> tuple[bool, list[str]]:
+    """Whether the trust file trusts `project`'s layers 3-4, and any finding
+    its line for that repo raises.
+
+    Absent file, or no line naming this repo, is the ordinary unlifted state:
+    untrusted, and nothing to report — a project nobody has trusted yet is not
+    a finding. A line that does not parse, or more than one line naming the
+    same repo, fails closed with a finding rather than guessing which one is
+    right. A sha mismatch is the "stale" finding `config lint` names: the byte
+    a `config trust` reviewed is not the byte on disk any more.
+    """
+    target = str(project)
+    matches = [
+        line
+        for line in _read_trust_lines(trust_path)
+        if line.split("\t", 1)[0] == target
+    ]
+    if not matches:
+        return False, []
+    if len(matches) > 1:
+        return False, ["%s has more than one line for %s" % (trust_path, target)]
+    fields = matches[0].split("\t")
+    if (
+        len(fields) != 3
+        or not _valid_sha_field(fields[1])
+        or not _valid_sha_field(fields[2])
+    ):
+        return False, ["%s has a malformed line for %s" % (trust_path, target)]
+    team_sha, local_sha = fields[1], fields[2]
+    current_team = _file_sha(project / ".config/herdr/team.toml")
+    current_local = _file_sha(project / ".config/herdr/team.local.toml")
+    if team_sha == current_team and local_sha == current_local:
+        return True, []
+    return False, ["trust for %s is stale — re-run `team.sh config trust`" % target]
+
+
+def _trust_file_path(where: Path, env: dict[str, str]) -> Path:
+    """Where `config trust` reads and writes its line for a repo.
+
+    `HERDR_TEAM_ROOT` in the environment first — the same override every other
+    knob honours. Otherwise `paths.root`, read from the trusted layers only:
+    an untrusted layer choosing where trust itself is recorded would be the one
+    key `config trust` could never safely honour. Otherwise `{dotfiles}/.herdr`,
+    the shipped default.
+    """
+    root_env = env.get(ENV_ROOT)
+    if root_env:
+        return Path(root_env).expanduser() / "trust"
+    trusted_document: dict[str, Any] = {}
+    merge(trusted_document, read_layer(where / "ai/herdr/team.toml"))
+    merge(trusted_document, read_layer(where / "ai/herdr/team.local.toml"))
+    root_value = document_value(trusted_document, "paths.root")
+    if isinstance(root_value, str) and root_value:
+        expand_env = dict(env)
+        expand_env.setdefault(ENV_DOTFILES, str(where))
+        return Path(_expand(root_value, expand_env)).expanduser() / "trust"
+    return where / ".herdr" / "trust"
 
 
 def load(
@@ -344,7 +553,12 @@ def load(
         sources[key] = name
 
     registry = load_registry(providers_path)
-    findings = untrusted_findings(untrusted, document, trusted)
+    # A layer's own opinion of itself — the trust file has no line for this
+    # repo's, or it does and the line is malformed, duplicated, or stale — is
+    # folded in here so every verb that reads `findings` sees it, the same as
+    # any other lint result.
+    findings = [f for layer in layers for f in layer.findings]
+    findings += untrusted_findings(untrusted, document, trusted)
     findings += schema_findings(document, registry)
     # The registry's own findings, about the entries this document names: a
     # profile's `credential` and its ceiling are read here, so a key written
@@ -1824,14 +2038,139 @@ def _shell_defines(names: list[str], env: dict[str, str]) -> dict[str, bool] | N
 # --- the command line -------------------------------------------------------
 
 
+def _extract_repo(args: list[str]) -> tuple[list[str], str | None]:
+    """Pull a `--repo <path>` out of `args`, if there is one.
+
+    Returns the remaining arguments and the path, so a caller keeps checking
+    the rest of its own arguments for anything else it does not recognise —
+    `--repo` is not a verb-specific option, and every verb that takes it takes
+    it the same way.
+    """
+    out: list[str] = []
+    repo: str | None = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--repo":
+            if i + 1 >= len(args):
+                raise ConfigError("--repo", "needs a path")
+            repo = args[i + 1]
+            i += 2
+            continue
+        out.append(args[i])
+        i += 1
+    return out, repo
+
+
+def _write_trust_atomic(path: Path, lines: list[str]) -> None:
+    """Replace the trust file's contents, never leaving a partial write.
+
+    A temp file in the same directory, then `os.replace`: the trust file is
+    security-relevant enough that a reader racing the write should see the old
+    file or the new one, never a half-written one. Mode 600 because the file
+    names repositories a project trusts — not a secret, but not world-readable
+    either.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".trust-")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            for line in lines:
+                handle.write(line + "\n")
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def _trust(repo: str | None, revoke: bool) -> int:
+    """`config trust` — grant or revoke a project's layers 3-4.
+
+    Resolves the repo exactly as `default_layers` does, so the line this
+    writes names the same path `default_layers` will later look up. Refuses
+    outright when there is no project in play, since there is nothing here to
+    trust or revoke.
+    """
+    environment = dict(os.environ)
+    where = (
+        Path(environment.get(ENV_DOTFILES) or _DERIVED_DOTFILES).expanduser().resolve()
+    )
+    project = Path(repo or environment.get(ENV_REPO) or where).expanduser().resolve()
+    project_common: str | None = None
+    if project != where:
+        project_common = _common_dir(project)
+        project = _checkout_from_common(project, project_common)
+    if _same_repo(project, where, project_common):
+        sys.stderr.write("config trust: no project repo — nothing to trust\n")
+        return 2
+    target = str(project)
+    trust_path = _trust_file_path(where, environment)
+    lines = _read_trust_lines(trust_path)
+    kept = [line for line in lines if line.split("\t", 1)[0] != target]
+
+    if revoke:
+        if kept != lines:
+            _write_trust_atomic(trust_path, kept)
+        return 0
+
+    # What trusting would lift: the same layers, but with the project's own
+    # entries marked trusted, diffed against what stands today.
+    # Hashed before anything is shown: the line records the bytes the user was
+    # asked about, so an edit landing between the prompt and the answer reads
+    # as stale rather than trusted.
+    team_sha = _file_sha(project / ".config/herdr/team.toml")
+    local_sha = _file_sha(project / ".config/herdr/team.local.toml")
+    before = load(repo=str(project), dotfiles=str(where), env=environment).lint()
+    trusted_layers = [
+        Layer(layer.path, True)
+        if layer.path.parent == project / ".config/herdr"
+        else layer
+        for layer in default_layers(
+            dotfiles=str(where), repo=str(project), env=environment
+        )
+    ]
+    after = load(layers=trusted_layers, dotfiles=str(where), env=environment).lint()
+    lifted = [finding for finding in before if finding not in after]
+    if lifted:
+        for finding in lifted:
+            print("config trust: %s" % finding)
+    else:
+        print("config trust: no findings")
+
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        sys.stderr.write("config trust: run this in a terminal to confirm\n")
+        return 1
+    try:
+        answer = input("Trust %s? [yes/N] " % target)
+    except (EOFError, KeyboardInterrupt):
+        # A closed stdin or ^C mid-prompt is a "no", not a crash: the isatty
+        # check above already turned away the non-interactive case, so this is
+        # someone at a real terminal changing their mind, or piping something
+        # that ran dry.
+        print()
+        return 1
+    if answer != "yes":
+        return 1
+
+    kept.append("%s\t%s\t%s" % (target, team_sha, local_sha))
+    _write_trust_atomic(trust_path, kept)
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if not argv:
-        sys.stderr.write("usage: config <env|show|get|lint|resolve|route|doctor>\n")
+        sys.stderr.write(
+            "usage: config <env|show|get|lint|trust|resolve|route|doctor>\n"
+        )
         return 2
     verb, rest = argv[0], argv[1:]
     try:
         if verb == "lint":
-            findings = load().lint()
+            rest, repo = _extract_repo(rest)
+            findings = load(repo=repo).lint()
             for finding in findings:
                 print("config: %s" % finding)
             if not findings:
@@ -1850,22 +2189,28 @@ def main(argv: list[str]) -> int:
                 print("config: ok")
             return 1 if findings else 0
         if verb == "show":
+            rest, repo = _extract_repo(rest)
             unknown = [arg for arg in rest if arg != "--sources"]
             if unknown:
                 sys.stderr.write("config show: unknown option %s\n" % " ".join(unknown))
                 return 2
-            for line in load().show("--sources" in rest):
+            for line in load(repo=repo).show("--sources" in rest):
                 print(line)
             return 0
         if verb == "env":
-            for line in load().env_lines():
+            rest, repo = _extract_repo(rest)
+            if rest:
+                sys.stderr.write("usage: config env [--repo <path>]\n")
+                return 2
+            for line in load(repo=repo).env_lines():
                 print(line)
             return 0
         if verb == "get":
+            rest, repo = _extract_repo(rest)
             if len(rest) != 1:
-                sys.stderr.write("usage: config get <dotted.key>\n")
+                sys.stderr.write("usage: config get <dotted.key> [--repo <path>]\n")
                 return 2
-            config = load()
+            config = load(repo=repo)
             config.clean()
             if document_value(config.document, rest[0]) is None:
                 sys.stderr.write(
@@ -1887,6 +2232,16 @@ def main(argv: list[str]) -> int:
             for key, value in load().profile(rest[1]).items():
                 print("%s=%s" % (key, shlex.quote(value)))
             return 0
+        if verb == "trust":
+            rest, repo = _extract_repo(rest)
+            revoke = "--revoke" in rest
+            unknown = [arg for arg in rest if arg != "--revoke"]
+            if unknown:
+                sys.stderr.write(
+                    "config trust: unknown option %s\n" % " ".join(unknown)
+                )
+                return 2
+            return _trust(repo, revoke)
         if verb == "route":
             if len(rest) != 1:
                 sys.stderr.write("usage: config route '<row-json>'\n")

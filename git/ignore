@@ -6,3 +6,6 @@
 
 # Claude Code `--worktree` checkouts
 .claude/worktrees/
+
+# herdr team, this machine's project-local settings
+.config/herdr/team.local.toml

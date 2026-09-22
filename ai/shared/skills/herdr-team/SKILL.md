@@ -174,6 +174,20 @@ role). `config show` prints the resolved keys, and `--sources` the layer each
 value came from. `HERDR_TEAM_CONFIG=<file>` replaces every layer, which is the
 way back from a local file that will not parse.
 
+**A Run can work on a repo other than the dotfiles.** `run new --repo <path>`
+binds every later `spawn`/`teardown`/`config` in that Run to it; `--repo
+<path>` on a single `config` call instead names the repo for that one call,
+with nothing recorded anywhere a later call would read. It must be passed
+explicitly — `run new` never infers it from `$PWD` — and the default with no
+`--repo` is the dotfiles checkout. `teardown` in a project repo only
+removes the worktree (`worktree remove`/`worktree prune`); it never runs `git
+tidy`, which is a dotfiles-only alias. The project's own `.config/herdr/*.toml`
+is untrusted until `config trust` records the repo and a sha256 of both files;
+`config trust` is not a security boundary against an agent that already has a
+shell, since anything with a shell can edit the trust file directly. Also
+watch `wta`: it names a worktree by the repo's basename, so two repos sharing
+one collide under `~/.worktrees/`.
+
 Only `team.sh` starts an agent: it is the only place that knows `cc` and `ccd`
 are shell functions rather than binaries, which is what keeps work off the
 wrong provider.

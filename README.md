@@ -393,7 +393,10 @@ roster (prefix, lifetime, cwd, `max_per_run`), the `[[route]]` table that places
 a plan row, the fallback chains and the presets; the credentials behind those
 profiles — url, key, protocol, launcher and the `ceiling` bounding how many
 panes may spend one — are `ai/providers.toml`, their only definition.
-`ai/herdr/team.local.toml` layers over the shipped file for this machine.
+`ai/herdr/team.local.toml` layers over the shipped file for this machine. A Run
+bound to another repo (`run new --repo <path>`) layers that project's own
+`.config/herdr/team*.toml` on top, gated on `config trust` — see the
+`herdr-team` skill for the details.
 `config lint` checks the result, `config doctor` reports the differences that
 are not errors (this shell's provider against the orchestrator's role), and
 `config show [--sources]` prints the resolved keys and the layer each value came

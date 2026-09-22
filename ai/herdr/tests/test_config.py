@@ -22,7 +22,11 @@ two are merged as an untrusted project layer, which is what fills in the
 
 from __future__ import annotations
 
+import hashlib
 import os
+import stat
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -1003,3 +1007,414 @@ def test_expand_leaves_an_unset_reference_empty() -> None:
 def test_expand_only_rewrites_a_leading_tilde() -> None:
     assert config._expand("~/x", {"HOME": "/h"}) == "/h/x"
     assert config._expand("/a/~/b", {"HOME": "/h"}) == "/a/~/b"
+
+
+# --- the project's own repository (T-01: run-bound repo) --------------------
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        },
+    )
+
+
+def test_common_dir_of_a_non_git_path_is_none(tmp_path: Path) -> None:
+    assert config._common_dir(tmp_path) is None
+
+
+def test_common_dir_of_a_git_checkout_is_stable() -> None:
+    # Not asserting a particular string — only that a real checkout answers,
+    # and answers the same way twice, since that stability is the whole of
+    # what the comparison in `default_layers` depends on.
+    common = config._common_dir(DOTFILES)
+    assert common is not None
+    assert common == config._common_dir(DOTFILES)
+
+
+def test_default_layers_forks_no_git_on_the_dotfiles_only_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A dotfiles Run (no `--repo`, no `HERDR_TEAM_REPO`) has `project == where`
+    # before any git identity check runs at all — `_same_repo` already fast
+    # paths that case without a fork, and `default_layers` must not spend one
+    # normalizing `project` through `_main_checkout` first just to throw the
+    # answer away on the same comparison.
+    def _boom(path: object) -> str | None:
+        raise AssertionError(
+            f"_common_dir called for {path!r} on the dotfiles-only path"
+        )
+
+    monkeypatch.setattr(config, "_common_dir", _boom)
+    layers = config.default_layers(dotfiles=DOTFILES, env={})
+    assert [layer.path for layer in layers] == [
+        DOTFILES / "ai/herdr/team.toml",
+        DOTFILES / "ai/herdr/team.local.toml",
+    ]
+
+
+def test_default_layers_reads_the_repo_from_the_environment(tmp_path: Path) -> None:
+    # AC5/AC8's transport: `team.sh` exports `HERDR_TEAM_REPO` rather than
+    # passing `--repo` to the Python reader, so `default_layers` has to fall
+    # back to it exactly the way it falls back to `DOTFILES`.
+    from_env = config.default_layers(
+        dotfiles=DOTFILES, env={config.ENV_REPO: str(tmp_path)}
+    )
+    assert [layer.trusted for layer in from_env] == [True, True, False, False]
+    assert from_env[2].path == tmp_path / ".config/herdr/team.toml"
+    # An explicit `repo=` still wins over the environment.
+    explicit = config.default_layers(
+        dotfiles=DOTFILES, repo=DOTFILES, env={config.ENV_REPO: str(tmp_path)}
+    )
+    assert [layer.path for layer in explicit] == [
+        DOTFILES / "ai/herdr/team.toml",
+        DOTFILES / "ai/herdr/team.local.toml",
+    ]
+
+
+def test_default_layers_treats_a_worktree_as_the_same_repository(
+    tmp_path: Path,
+) -> None:
+    # The comparison is git identity, not path spelling: a linked worktree of
+    # `dotfiles` is a different directory but the same repository, and reading
+    # its `.config/herdr/` as a project layer would be reading the dotfiles'
+    # own directory back as if it belonged to someone else.
+    main_repo = tmp_path / "main"
+    main_repo.mkdir()
+    _git("init", "-q", cwd=main_repo)
+    _git("commit", "-q", "--allow-empty", "-m", "x", cwd=main_repo)
+    wt = tmp_path / "wt"
+    _git("worktree", "add", "-q", "-b", "feature", str(wt), cwd=main_repo)
+    layers = config.default_layers(dotfiles=main_repo, repo=wt, env={})
+    assert [layer.path for layer in layers] == [
+        main_repo / "ai/herdr/team.toml",
+        main_repo / "ai/herdr/team.local.toml",
+    ]
+
+
+def test_default_layers_treats_an_unrelated_repository_as_a_project(
+    tmp_path: Path,
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    _git("init", "-q", cwd=other)
+    layers = config.default_layers(dotfiles=DOTFILES, repo=other, env={})
+    assert [layer.trusted for layer in layers] == [True, True, False, False]
+    assert layers[2].path == other / ".config/herdr/team.toml"
+
+
+def test_main_repo_flag_reads_the_project_layer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # AC8: `show`, `get`, `lint` and `env` accept `--repo`, which is how
+    # `team.sh config` (via `cmd_config`) hands the reader the Run's project
+    # without every caller having to export `HERDR_TEAM_REPO` first.
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text("[limits]\ndetect_timeout_s = 5\n")
+    assert config.main(["get", "limits.detect_timeout_s", "--repo", str(project)]) == 0
+    assert capsys.readouterr().out == "5\n"
+    assert config.main(["show", "--repo", str(project)]) == 0
+    assert "detect_timeout_s = 5" in capsys.readouterr().out
+    assert config.main(["lint", "--repo", str(project)]) == 0
+    assert config.main(["env", "--repo", str(project)]) == 0
+    assert "HERDR_TEAM_DETECT_TIMEOUT=5\n" in capsys.readouterr().out
+
+
+def test_main_repo_flag_needs_a_path(capsys: pytest.CaptureFixture[str]) -> None:
+    assert config.main(["show", "--repo"]) == 1
+    assert "--repo: needs a path" in capsys.readouterr().err
+
+
+def test_main_env_refuses_an_argument_that_is_not_repo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(config.ENV_CONFIG, str(TEAM))
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    assert config.main(["env", "--bad"]) == 2
+
+
+# --- config trust (T-02) -----------------------------------------------------
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_project_trust_matches_when_the_sha_is_unchanged(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\t%s\t-\n" % (project, _sha(team)))
+    assert config._project_trust(project, trust_file) == (True, [])
+
+
+def test_project_trust_matches_when_the_local_file_is_absent(tmp_path: Path) -> None:
+    # The `-` sha stands for "this file does not exist", not for "any file".
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\t%s\t-\n" % (project, _sha(team)))
+    assert not (project / ".config/herdr/team.local.toml").exists()
+    assert config._project_trust(project, trust_file) == (True, [])
+
+
+def test_project_trust_is_stale_after_one_byte_edit(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\t%s\t-\n" % (project, _sha(team)))
+    team.write_text("[limits]\ndetect_timeout_s = 6\n")
+    trusted, found = config._project_trust(project, trust_file)
+    assert trusted is False
+    assert found == ["trust for %s is stale — re-run `team.sh config trust`" % project]
+
+
+def test_project_trust_fails_closed_on_a_malformed_line(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\tnot-a-sha\t-\n" % project)
+    trusted, found = config._project_trust(project, trust_file)
+    assert trusted is False
+    assert found == ["%s has a malformed line for %s" % (trust_file, project)]
+
+
+def test_project_trust_fails_closed_on_a_duplicate_line(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    line = "%s\t%s\t-\n" % (project, _sha(team))
+    trust_file = tmp_path / "trust"
+    trust_file.write_text(line + line)
+    trusted, found = config._project_trust(project, trust_file)
+    assert trusted is False
+    assert found == ["%s has more than one line for %s" % (trust_file, project)]
+
+
+def test_main_trust_lifts_the_untrusted_profile_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # AC7: trusting a project makes `config lint` drop the "may not be set by
+    # an untrusted layer" finding for a profile that is otherwise valid.
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+
+    before = config.load(repo=str(project), dotfiles=DOTFILES).lint()
+    assert any("profile.trustme" in f and "untrusted" in f for f in before)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "yes")
+    assert config.main(["trust", "--repo", str(project)]) == 0
+
+    trust_file = root / "trust"
+    assert stat.S_IMODE(trust_file.stat().st_mode) == 0o600
+
+    after = config.load(repo=str(project), dotfiles=DOTFILES).lint()
+    assert not any("profile.trustme" in f for f in after)
+
+
+def test_main_trust_revoke_removes_the_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "yes")
+    assert config.main(["trust", "--repo", str(project)]) == 0
+    trust_file = root / "trust"
+    assert str(project) in trust_file.read_text()
+
+    assert config.main(["trust", "--repo", str(project), "--revoke"]) == 0
+    assert str(project) not in trust_file.read_text()
+
+
+def test_main_trust_refuses_without_a_tty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    assert config.main(["trust", "--repo", str(project)]) == 1
+    assert "run this in a terminal" in capsys.readouterr().err
+    assert not (root / "trust").exists()
+
+
+def test_main_trust_refuses_a_non_yes_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "sure")
+    assert config.main(["trust", "--repo", str(project)]) == 1
+    assert not (root / "trust").exists()
+
+
+def test_main_trust_needs_a_project_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    assert config.main(["trust", "--repo", str(DOTFILES)]) == 2
+
+
+# --- M3: a project path normalizes to its main checkout ---------------------
+
+
+def test_default_layers_normalizes_a_project_worktree_to_its_main_checkout(
+    tmp_path: Path,
+) -> None:
+    # A project bound to a linked worktree still reads its layers from the
+    # main checkout: `.config/herdr/` lives once, in the repository, not once
+    # per worktree a Run happened to bind to.
+    project = tmp_path / "project"
+    project.mkdir()
+    _git("init", "-q", cwd=project)
+    _git("commit", "-q", "--allow-empty", "-m", "x", cwd=project)
+    wt = tmp_path / "project-wt"
+    _git("worktree", "add", "-q", "-b", "feature", str(wt), cwd=project)
+    layers = config.default_layers(dotfiles=DOTFILES, repo=wt, env={})
+    assert layers[2].path == project / ".config/herdr/team.toml"
+    assert layers[3].path == project / ".config/herdr/team.local.toml"
+
+
+def test_main_trust_from_a_linked_worktree_records_the_main_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The same normalization on the write side: trusting a Run bound to a
+    # worktree records the repository `default_layers` will later look up,
+    # not the worktree path that happened to be handed to `--repo`.
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    project.mkdir()
+    _git("init", "-q", cwd=project)
+    _git("commit", "-q", "--allow-empty", "-m", "x", cwd=project)
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    wt = tmp_path / "project-wt"
+    _git("worktree", "add", "-q", "-b", "feature", str(wt), cwd=project)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "yes")
+    assert config.main(["trust", "--repo", str(wt)]) == 0
+
+    trust_file = root / "trust"
+    assert str(project) in trust_file.read_text()
+    assert str(wt) not in trust_file.read_text()
+
+    after = config.load(repo=str(wt), dotfiles=DOTFILES).lint()
+    assert not any("profile.trustme" in f for f in after)
+
+
+def test_trust_file_path_ignores_paths_root_from_a_project_layer(
+    tmp_path: Path,
+) -> None:
+    # `_trust_file_path` takes no project at all: `paths.root` only ever comes
+    # from the trusted, dotfiles-only layers it reads directly, so a project's
+    # own file — however it is reached — has no path here to choose where
+    # trust itself gets recorded.
+    where = tmp_path / "dotfiles"
+    (where / "ai/herdr").mkdir(parents=True)
+    (where / "ai/herdr/team.toml").write_text("")
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[paths]\nroot = "/should-not-be-read"\n'
+    )
+    env = {"DOTFILES": str(where), config.ENV_REPO: str(project)}
+    assert config._trust_file_path(where, env) == where / ".herdr" / "trust"
+
+
+# --- L2: input() closed or interrupted mid-prompt ----------------------------
+
+
+def test_main_trust_handles_a_closed_stdin_on_the_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    def _raise(prompt: str = "") -> str:
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", _raise)
+    assert config.main(["trust", "--repo", str(project)]) == 1
+    assert not (root / "trust").exists()
+
+
+def test_main_trust_handles_a_keyboard_interrupt_on_the_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    def _raise(prompt: str = "") -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", _raise)
+    assert config.main(["trust", "--repo", str(project)]) == 1
+    assert not (root / "trust").exists()
