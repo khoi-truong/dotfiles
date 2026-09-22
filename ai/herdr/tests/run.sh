@@ -5061,6 +5061,23 @@ else
 fi
 reset
 
+# 174. T-02/AC7: `config trust` refuses to grant anything when it is not
+#      talking to a terminal — an agent's own non-interactive shell must never
+#      be able to self-grant trust by piping stdin at it. Nothing is written.
+trust174="$(proj_repo trust174)"
+mkdir -p "${trust174}/.config/herdr"
+printf '[profile.x]\nharness = "claude"\ncredential = "deepseek"\n' \
+  >"${trust174}/.config/herdr/team.toml"
+"${TEAM}" config trust --repo "${trust174}" >"${TMP}/out" 2>"${TMP}/err" </dev/null
+code=$?
+if [ "${code}" -eq 1 ] && [ ! -e "${HERDR_TEAM_ROOT}/trust" ]; then
+  ok "174 config trust over piped stdin refuses and writes nothing"
+else
+  no "174 config trust over piped stdin refuses and writes nothing" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+rm -f "${HERDR_TEAM_ROOT}/trust"
+
 echo
 echo "the ids"
 

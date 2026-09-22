@@ -22,8 +22,11 @@ two are merged as an untrusted project layer, which is what fills in the
 
 from __future__ import annotations
 
+import hashlib
 import os
+import stat
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -1118,3 +1121,160 @@ def test_main_env_refuses_an_argument_that_is_not_repo(
     monkeypatch.setenv(config.ENV_CONFIG, str(TEAM))
     monkeypatch.setenv("DOTFILES", str(DOTFILES))
     assert config.main(["env", "--bad"]) == 2
+
+
+# --- config trust (T-02) -----------------------------------------------------
+
+
+def _sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_project_trust_matches_when_the_sha_is_unchanged(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\t%s\t-\n" % (project, _sha(team)))
+    assert config._project_trust(project, trust_file) == (True, [])
+
+
+def test_project_trust_matches_when_the_local_file_is_absent(tmp_path: Path) -> None:
+    # The `-` sha stands for "this file does not exist", not for "any file".
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\t%s\t-\n" % (project, _sha(team)))
+    assert not (project / ".config/herdr/team.local.toml").exists()
+    assert config._project_trust(project, trust_file) == (True, [])
+
+
+def test_project_trust_is_stale_after_one_byte_edit(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\t%s\t-\n" % (project, _sha(team)))
+    team.write_text("[limits]\ndetect_timeout_s = 6\n")
+    trusted, found = config._project_trust(project, trust_file)
+    assert trusted is False
+    assert found == ["trust for %s is stale — re-run `team.sh config trust`" % project]
+
+
+def test_project_trust_fails_closed_on_a_malformed_line(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    trust_file = tmp_path / "trust"
+    trust_file.write_text("%s\tnot-a-sha\t-\n" % project)
+    trusted, found = config._project_trust(project, trust_file)
+    assert trusted is False
+    assert found == ["%s has a malformed line for %s" % (trust_file, project)]
+
+
+def test_project_trust_fails_closed_on_a_duplicate_line(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    team = project / ".config/herdr/team.toml"
+    team.write_text("[limits]\ndetect_timeout_s = 5\n")
+    line = "%s\t%s\t-\n" % (project, _sha(team))
+    trust_file = tmp_path / "trust"
+    trust_file.write_text(line + line)
+    trusted, found = config._project_trust(project, trust_file)
+    assert trusted is False
+    assert found == ["%s has more than one line for %s" % (trust_file, project)]
+
+
+def test_main_trust_lifts_the_untrusted_profile_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # AC7: trusting a project makes `config lint` drop the "may not be set by
+    # an untrusted layer" finding for a profile that is otherwise valid.
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+
+    before = config.load(repo=str(project), dotfiles=DOTFILES).lint()
+    assert any("profile.trustme" in f and "untrusted" in f for f in before)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "yes")
+    assert config.main(["trust", "--repo", str(project)]) == 0
+
+    trust_file = root / "trust"
+    assert stat.S_IMODE(trust_file.stat().st_mode) == 0o600
+
+    after = config.load(repo=str(project), dotfiles=DOTFILES).lint()
+    assert not any("profile.trustme" in f for f in after)
+
+
+def test_main_trust_revoke_removes_the_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "yes")
+    assert config.main(["trust", "--repo", str(project)]) == 0
+    trust_file = root / "trust"
+    assert str(project) in trust_file.read_text()
+
+    assert config.main(["trust", "--repo", str(project), "--revoke"]) == 0
+    assert str(project) not in trust_file.read_text()
+
+
+def test_main_trust_refuses_without_a_tty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    assert config.main(["trust", "--repo", str(project)]) == 1
+    assert "run this in a terminal" in capsys.readouterr().err
+    assert not (root / "trust").exists()
+
+
+def test_main_trust_refuses_a_non_yes_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    root = tmp_path / "root"
+    monkeypatch.setenv("HERDR_TEAM_ROOT", str(root))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text(
+        '[profile.trustme]\nharness = "claude"\ncredential = "deepseek"\n'
+    )
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "sure")
+    assert config.main(["trust", "--repo", str(project)]) == 1
+    assert not (root / "trust").exists()
+
+
+def test_main_trust_needs_a_project_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    assert config.main(["trust", "--repo", str(DOTFILES)]) == 2
