@@ -33,13 +33,14 @@ from __future__ import annotations
 import re
 import shlex
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
-if sys.version_info >= (3, 11):  # pragma: no cover - taken on 3.11 and up
-    import tomllib
-else:  # pragma: no cover - taken on the 3.9 `/usr/bin/python3` team.sh runs
-    from _vendor import tomli as tomllib
+# `tomllib` is 3.11's, and it is why nothing here has a dependency: mise owns the
+# python this runs on, `team.sh` refuses an older one before it reads anything,
+# and a parser vendored into the checkout would be a second copy of one the
+# standard library already carries.
 
 __all__ = [
     "ENTRY_KEYS",
@@ -56,10 +57,9 @@ __all__ = [
     "zsh",
 ]
 
-# This file's own directory, `lib/`, which is also where `_vendor` lives: it is
-# the one path every caller already has — `team.sh` sets PYTHONPATH to it,
-# pytest's config names the same, and the cache generator in providers.zsh
-# passes it explicitly — so the two imports above need no path of their own.
+# This file's own directory, `lib/`: the one path every caller already has —
+# `team.sh` sets PYTHONPATH to it, pytest's config names the same, and the cache
+# generator in providers.zsh passes it explicitly.
 _LIB = Path(__file__).resolve().parent
 
 # ai/providers.toml, two levels up from `lib/`, through `herdr/`.
@@ -139,9 +139,9 @@ def read_toml(path: Any) -> dict[str, Any]:
 
     The position matters more than the reason: `team.local.toml` is edited by
     hand, on this machine only, and a caller who is told which line is wrong can
-    fix it. `tomli` carries `lineno`/`colno` as attributes; the standard
-    library's copy embeds them in the message and only grew attributes in 3.14,
-    so both are read here.
+    fix it. The standard library's `TOMLDecodeError` embeds the position in its
+    message and only grew `lineno`/`colno` attributes in 3.14, so both are read
+    here — the attributes where they exist, the message's text where they do not.
     """
     path = Path(path)
     try:

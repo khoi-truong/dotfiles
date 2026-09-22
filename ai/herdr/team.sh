@@ -90,6 +90,41 @@ _CHECKOUT="$(cd "$(dirname "${_self}")/../.." && pwd)"
 command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
 command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
 
+# The floor under that python3, run *by* it in front of the module each verb
+# needs: the reader is stdlib `tomllib`, which 3.11 added, so an older python3
+# fails on the import with a `No module named` that names the wrong thing.
+# Prefixed rather than probed, so the version costs no fork of its own: `herdr_cfg`
+# below is the only way a reader is launched, and the configuration read — the
+# fork every verb already paid before it could do anything — now pays for this
+# too.
+#
+# Deliberately old-syntax python: `%` rather than an f-string, no `sys.exit`
+# message, nothing a 3.9 could not evaluate, because an interpreter that cannot
+# parse this is an interpreter that cannot report how old it is. Exit 3 is the
+# gate's own code — `herdr_team.config` does not use it — so the caller can tell
+# "your python is too old" from "your configuration does not resolve" without
+# reading stderr back.
+_PY_GATE='
+import sys
+if sys.version_info < (3, 11):
+    sys.stderr.write(
+        "team.sh: needs python3 >= 3.11 (mise provides it); found %d.%d\n"
+        % sys.version_info[:2]
+    )
+    raise SystemExit(3)
+'
+
+# _PY_GATE's other half, and the one place the reader is launched from: `-c`
+# rather than `-m`, because `-m` cannot carry anything in front of the module it
+# names. `DOTFILES` is set here for the reason it always was — the reader
+# resolves its layers against that name, and `_CHECKOUT` is the checkout this
+# file is in.
+herdr_cfg() {
+  DOTFILES="${_CHECKOUT}" herdr_py -c "${_PY_GATE}
+from herdr_team import config
+raise SystemExit(config.main(sys.argv[1:]))" "$@"
+}
+
 # --- the knobs -------------------------------------------------------------
 #
 # Every knob below is a value in ai/herdr/team.toml, resolved by the reader in
@@ -130,9 +165,11 @@ _ENV_PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-}"
 case "${1:-}" in
   config | -h | --help | help | "") ;;
   *)
-    _cfg="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config env)" || {
-      printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
-      exit 1
+    _cfg="$(herdr_cfg env)" || {
+      _rc=$?
+      [ "${_rc}" -eq 3 ] \
+        || printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+      exit "${_rc}"
     }
     eval "${_cfg}"
     ;;
@@ -2309,13 +2346,13 @@ cmd_plan() {
 # exit code — `lint` and `doctor` answer in it, and a wrapper that swallowed it
 # would turn both into a printout nobody could branch on.
 #
-# It runs with the configuration *unread* — see the gate above — which is what
-# makes it the verb to reach for when the configuration is the thing that is
-# broken: `config lint` names the file and the line, and `config doctor` says
-# what this machine would have to be for a spawn to work. The reader is told
-# which checkout to read, the same way the gate tells it: one file, one answer,
-# whether a verb got as far as `eval` or not.
-cmd_config() { DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config "$@"; }
+# It runs with the configuration *unread* — the case arm at the top of the file
+# is why — which is what makes it the verb to reach for when the configuration
+# is the thing that is broken: `config lint` names the file and the line, and
+# `config doctor` says what this machine would have to be for a spawn to work.
+# `herdr_cfg` tells the reader which checkout to read the same way that arm
+# does: one file, one answer, whether a verb got as far as `eval` or not.
+cmd_config() { herdr_cfg "$@"; }
 
 # --- dispatch --------------------------------------------------------------
 # The completion contract is handed over verbatim, never reconstructed by the

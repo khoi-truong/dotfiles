@@ -9,21 +9,14 @@
 # for that reason. Bump them together, and `vscode/setup.sh` with them for pytest.
 
 [tool.ruff]
-# The interpreter these modules are run by, which is not the one CI lints them
-# on: `team.sh` calls whatever `python3` is on PATH, and on macOS that is
-# `/usr/bin/python3` — 3.9. Stated rather than sniffed off the developer's own
-# python3, so a rule cannot hold on the machine that wrote the code and fail on
-# the machine that runs it. `lint.yml`'s `python` job and
-# `scripts/ci/lint-local.sh` both import the package under 3.9 for the half of
-# this ruff cannot see; mypy@2.3.1 has no 3.9 mode, so `python_version` below
-# stays at what CI can type-check.
-target-version = "py39"
-# Vendored Xcode templates, the plan fixtures and the vendored TOML parser are
-# not source to be linted: the first two are data, and `lib/_vendor` is someone
-# else's file that is here to be the parser 3.9 does not have. Reformatting it
-# would also break the one property that matters about a vendored copy, which is
-# that it is the same bytes as upstream.
-extend-exclude = ["plugins", "tests/fixtures", "lib/_vendor"]
+# The lowest interpreter these modules run on, which is what a rule has to be
+# safe for: `team.sh` calls whatever `python3` is on PATH, mise provides it, and
+# `team.sh` refuses one older than 3.11 before it reads anything — so 3.11 is the
+# floor a rule may not lint below, not the version on the machine that wrote the
+# code. `tomllib` is 3.11's, and it is the only TOML reader here.
+target-version = "py311"
+# Vendored Xcode templates and the plan fixtures are data rather than source.
+extend-exclude = ["plugins", "tests/fixtures"]
 
 [tool.ruff.lint]
 # Ruff's default set (E4, E7, E9, F) plus import sorting: a move that put 700
@@ -37,17 +30,14 @@ select = ["E4", "E7", "E9", "F", "I"]
 known-first-party = ["herdr_team"]
 
 [tool.mypy]
-python_version = "3.12"
+# The same floor ruff targets, for the same reason: the types have to hold on the
+# oldest interpreter that will run the code, and `team.sh` refuses anything below
+# 3.11.
+python_version = "3.11"
 strict = true
 # One entry point, so `mypy` with no arguments here checks the same files a
 # bare `uvx mypy` does from this directory in CI and on a laptop.
 files = ["lib", "tests"]
-# `lib/_vendor` is not ours to type: it is the parser `providers.py` falls back
-# to on 3.9, kept as upstream wrote it, and `strict` over a file nobody here
-# maintains is a second copy that drifts from the first. `providers.py` is
-# checked, and it only reaches the vendored module on a Python that mypy cannot
-# target anyway.
-exclude = ["lib/_vendor"]
 # Nothing here exempts pytest. The tests import it and mypy is run with it
 # alongside — `uvx --with pytest==… mypy@… --strict` — rather than with
 # `ignore_missing_imports`, because a decorator mypy cannot see makes the test

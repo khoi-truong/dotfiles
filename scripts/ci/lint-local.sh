@@ -280,9 +280,9 @@ check_editorconfig() {
   "$binary" -exclude "$EC_EXCLUDE"
 }
 
-# lint.yml's `python` job (ruff check, ruff format, mypy, the 3.9 import check),
-# then test.yml's (pytest) — cheapest first, and the two ruff passes ahead of the
-# two that read every file.
+# lint.yml's `python` job (ruff check, ruff format, mypy), then test.yml's
+# (pytest) — cheapest first, and the two ruff passes ahead of the two that read
+# every file.
 #
 # `uvx` is where the three versions are pinned, and they are the versions those
 # jobs use. The runner installs uv itself first (`pipx install uv==…`), because
@@ -293,13 +293,14 @@ check_editorconfig() {
 # From `ai/herdr`, in a subshell: all of them read `pyproject.toml` from the
 # directory they are run in, and that is where it is. From the repo root none of
 # them finds it — `ruff` falls back to its defaults and checks the whole tree,
-# `mypy` has no target to check, `pytest` collects without `lib/` on the path,
-# and the 3.9 check imports nothing. Each of those fails for its own reason
-# instead of the real one, which is a red run that names the wrong thing.
+# `mypy` has no target to check, and `pytest` collects without `lib/` on the
+# path. Each of those fails for its own reason instead of the real one, which is
+# a red run that names the wrong thing.
 check_python() {
-  # `uv` and not only `uvx`: the 3.9 check is `uv run`, because the interpreter
-  # it needs is one uv fetches rather than one this file can invoke.
-  require_tool uvx uv python || return 1
+  # `uvx` alone, or rather `uvx` and not `uv`: the package that provided the 3.9
+  # import check was one this file reached with `uv run --python 3.9`, and with
+  # that step gone nothing here names a tool `uvx` does not carry.
+  require_tool uvx python || return 1
   (
     cd ai/herdr || exit 1
     # `--with pytest` because the tests import it: an unresolved import leaves
@@ -309,22 +310,7 @@ check_python() {
     uvx ruff@0.16.8 check . &&
       uvx ruff@0.16.8 format --check . &&
       uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
-      uvx pytest@9.1.1 &&
-      # Not a tool of its own: the interpreter `team.sh` runs these modules
-      # with — macOS's `/usr/bin/python3` — is 3.9, and every check above reads
-      # them on 3.12. An alias is an assignment, so `State = tuple[str, str |
-      # None, str]` is evaluated at import and `|` is a TypeError on 3.9: the
-      # verb exits 1 before doing anything, and nothing above can see it.
-      # `from __future__ import annotations` defers annotations, not this, and
-      # mypy@2.3.1 refuses to target below 3.10. Last because it is the only
-      # step that fetches an interpreter; uv caches it after the first run.
-      PYTHONPATH=lib uv run --no-project --python 3.9 python -c '
-import pkgutil
-import herdr_team
-
-for name in sorted(m.name for m in pkgutil.iter_modules(herdr_team.__path__)):
-    __import__("herdr_team." + name)
-'
+      uvx pytest@9.1.1
   )
 }
 

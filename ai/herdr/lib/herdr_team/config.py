@@ -989,10 +989,10 @@ def _find_guard(
                 % (where, credential)
             )
     # `guard` is `Any` all the way down, so `guard.get` is `Any | None`, and
-    # `_is_int` is a plain `bool` rather than a TypeGuard — it cannot be one,
-    # because `typing.TypeGuard` does not exist on 3.9 and importing it there
-    # would break the import this module's own docstring promises. Said out loud
-    # instead: after the `or`, the value is an int.
+    # `_is_int` is a plain `bool` rather than a `TypeGuard`: a `TypeGuard` narrows
+    # the positive branch only, and what this check needs is the negative one —
+    # `not _is_int(pct)` leaving `pct` an int, which is `TypeIs`, and 3.13's.
+    # Said out loud instead: after the `or`, the value is an int.
     pct: Any = guard.get("quota_max_pct")
     if not _is_int(pct) or not 1 <= pct <= 100:
         found.append(

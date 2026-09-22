@@ -4589,6 +4589,113 @@ else
     "$(printf '%s' "${listed}" | tr '\n' '|')"
 fi
 
+# 163. The runtime floor, from the outside. The reader is the standard library's
+#      `tomllib` now, which is 3.11's, so a machine whose PATH python3 is older
+#      has to be told which python to install rather than shown a
+#      `No module named 'tomllib'` from the middle of a spawn. Refused by name,
+#      naming mise, before the module is imported at all — and with an exit code
+#      of its own, because the two ways this line can fail are different
+#      findings: too old a python3, or a configuration that will not resolve.
+mkdir -p "${TMP}/old-py"
+cat >"${TMP}/old-py/python3" <<'SH'
+#!/usr/bin/env bash
+# Reports 3.9 to whatever runs under it: a `-c` program is compiled and run by
+# the real interpreter in a namespace whose `sys.version_info` is the tuple a
+# 3.9 would have, and everything else — `-m`, a script path — is delegated
+# untouched. `sys` is a plain module, so assigning the attribute is a lie both
+# the reader's check and team.sh's actually compare against.
+[ "${1:-}" = "-c" ] || exec "${REAL_PY}" "$@"
+prog=$2
+shift 2
+exec "${REAL_PY}" -c 'import sys
+sys.version_info = (3, 9)
+_prog = sys.argv[1]
+sys.argv = ["-c"] + sys.argv[2:]
+exec(compile(_prog, "<-c>", "exec"), {"__name__": "__main__"})' "${prog}" "$@"
+SH
+chmod +x "${TMP}/old-py/python3"
+
+code=0
+PATH="${TMP}/old-py:${PATH}" "${TEAM}" config lint >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 3 ] &&
+  grep -qF 'team.sh: needs python3 >= 3.11 (mise provides it); found 3.9' "${TMP}/err"; then
+  ok "163 a 3.9 python3 is refused by name, so the verb can say what to install"
+else
+  no "163 a 3.9 python3 is refused by name, so the verb can say what to install" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+code=0
+PATH="${TMP}/old-py:${PATH}" "${TEAM}" status >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 3 ] && grep -qF 'needs python3 >= 3.11' "${TMP}/err" &&
+  ! grep -qF 'the configuration does not resolve' "${TMP}/err"; then
+  ok "163b and a verb that reads the configuration says that rather than the other thing"
+else
+  no "163b and a verb that reads the configuration says that rather than the other thing" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 164. And the shell survives it. The launcher cache is a file the last good
+#      start left behind, so a python3 that cannot regenerate it must not cost
+#      the developer their provider launchers: the shell warns once, goes on
+#      reading the copy on disk, and says nothing on the next start because the
+#      stamp beside the cache says this edit has already been reported.
+cache_tree="${TMP}/cache-tree"
+cache_home="${TMP}/cache-home"
+mkdir -p "${cache_tree}/ai/claude" "${cache_tree}/ai/herdr" "${cache_home}"
+cp "${DOTFILES}/ai/claude/providers.zsh" "${cache_tree}/ai/claude/providers.zsh"
+cp "${DOTFILES}/ai/providers.toml" "${cache_tree}/ai/providers.toml"
+# `lib/` symlinked at the real package, so what generates the cache is the
+# module under test rather than a copy a later edit here would leave behind.
+ln -sfn "${DOTFILES}/ai/herdr/lib" "${cache_tree}/ai/herdr/lib"
+
+# cc_shell <dir-to-prepend> — one start against that tree: a PATH whose python3
+# is that directory's, a cache directory of its own so this case can neither see
+# nor clobber the developer's, and `ccd` as what the shell was left with. `-f`,
+# so no rc file of the machine running the suite is read. The `zsh` is a file
+# rather than a `-c` program, because a zsh program in `-c`'s argument is a
+# quoted string holding `${…}` that the shell reading this one has to leave
+# alone, which shellcheck reads as a mistake and is one typo away from being
+# true.
+cat >"${TMP}/cc-start.zsh" <<'ZSH'
+source "${DOTFILES}/ai/claude/providers.zsh"
+(( $+functions[ccd] )) && print -r -- ccd-defined
+ZSH
+cc_shell() {
+  code=0
+  PATH="${1:+$1:}${PATH}" HOME="${cache_home}" DOTFILES="${cache_tree}" \
+    XDG_CACHE_HOME="${cache_home}" "${REAL_ZSH}" -f "${TMP}/cc-start.zsh" \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+}
+
+cc_shell ""
+if [ "${code}" -eq 0 ] && [ -s "${cache_home}/dotfiles/providers.zsh" ] &&
+  grep -q '^ccd-defined$' "${TMP}/out"; then
+  ok "164 a 3.11 python3 builds the cache and the launchers with it"
+else
+  no "164 a 3.11 python3 builds the cache and the launchers with it" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err") $(tr '\n' '|' <"${TMP}/out")"
+fi
+cp "${cache_home}/dotfiles/providers.zsh" "${TMP}/cache-before"
+touch "${cache_tree}/ai/providers.toml"
+cc_shell "${TMP}/old-py"
+if [ "${code}" -eq 0 ] &&
+  cmp -s "${TMP}/cache-before" "${cache_home}/dotfiles/providers.zsh" &&
+  grep -qF 'no python3 >= 3.11' "${TMP}/err" &&
+  grep -qF 'mise provides one' "${TMP}/err" &&
+  grep -q '^ccd-defined$' "${TMP}/out"; then
+  ok "164b a 3.9 python3 warns, keeps the last good cache and leaves ccd defined"
+else
+  no "164b a 3.9 python3 warns, keeps the last good cache and leaves ccd defined" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+cc_shell "${TMP}/old-py"
+if [ "${code}" -eq 0 ] && [ ! -s "${TMP}/err" ] && grep -q '^ccd-defined$' "${TMP}/out"; then
+  ok "164c and the start after it says nothing, that edit having been reported"
+else
+  no "164c and the start after it says nothing, that edit having been reported" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
 echo
 echo "the ids"
 

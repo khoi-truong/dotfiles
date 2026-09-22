@@ -10,7 +10,7 @@ from __future__ import annotations
 import glob
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from herdr_team.handoff import (
     Meta,
@@ -36,22 +36,14 @@ __all__ = [
 
 # One Task's settled state: the name, the Dispatch it came off, and the detail
 # column. None is a Task no handoff and no journal line mentions.
-#
-# `Optional[…]` rather than `X | None`, and the reason is not style: an alias is
-# an assignment, so it is evaluated when the module is imported, and
-# `from __future__ import annotations` defers annotations only. The interpreter
-# `team.sh` calls is macOS's `/usr/bin/python3`, which is 3.9 — where the `|`
-# operand is a TypeError at import, and every verb reading this module exits 1
-# before it does anything. The rest of the module stays 3.10-shaped because the
-# work below is inside annotations, which never reach the interpreter.
-State = tuple[str, Optional[str], str]
+State = tuple[str, str | None, str]
 
 # A Task's newest handoff's `artifacts:`.
 Receipt = list[str]
 
 # task -> dispatch id -> frontmatter, and task -> its journal record.
 Seen = dict[str, dict[str, Meta]]
-Sent = dict[str, dict[str, Optional[str]]]
+Sent = dict[str, dict[str, str | None]]
 
 
 def settled_state(row: dict[str, Any], seen: Seen, sent: Sent) -> State | None:

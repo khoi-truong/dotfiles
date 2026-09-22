@@ -116,10 +116,12 @@ function cc-providers {
 # One warning, not one per start: a failure leaves a stamp beside the cache, and
 # the next start retries only once one of the two files it reads has moved past
 # it. A registry that will not parse therefore costs a python3 per edit rather
-# than per shell. The interpreter is the python3 PATH holds — the one
-# herdr_team's reader runs — or /usr/bin/python3 where the Command Line Tools
-# are installed: on a machine without them that path is a shim whose only job is
-# to say so, and a shim is not worth a fork at every start.
+# than per shell. The interpreter is the python3 PATH holds — mise puts it there,
+# and it is the one herdr_team's reader runs — at 3.11 or newer, because the
+# reader is stdlib `tomllib` and an older python3 cannot open the registry at
+# all. There is no fallback to /usr/bin/python3: on this machine that is 3.9, a
+# shim under the Command Line Tools whose only job is to say so, and picking it
+# would mean warning at every start rather than building the cache.
 
 typeset -g _cc_cache_dir=${XDG_CACHE_HOME:-${HOME}/.cache}/dotfiles
 typeset -g _cc_cache=${_cc_cache_dir}/providers.zsh
@@ -129,14 +131,18 @@ typeset -g _cc_stamp=${_cc_cache}.failed
 
 # _cc_python_path — the interpreter to generate with, on stdout, or non-zero.
 #
-# `$commands` is the hash zsh keeps of PATH, so asking whether there is a
-# python3 costs a lookup and never a fork; the `xcode-select` probe is paid for
-# only on a machine whose PATH has none, and only when a regeneration is
-# actually due.
+# Called only when a regeneration is due, which is what lets the version check
+# be a fork: `$commands` is the hash zsh keeps of PATH, so finding the python3
+# costs a lookup, and asking its version costs one `python3 -c` in the shell
+# that follows an edit to ai/providers.toml and nothing in the shells that do
+# not. The test is on `sys.version_info`, not a `-V` string, because a shim's
+# output is not a promise; 3.11 is the floor because the registry is read with
+# stdlib `tomllib`.
 function _cc_python_path {
-  (( $+commands[python3] )) && { print -r -- ${commands[python3]}; return 0 }
-  xcode-select -p >/dev/null 2>&1 && { print -r -- /usr/bin/python3; return 0 }
-  return 1
+  local py=${commands[python3]}
+  [[ -n $py ]] || return 1
+  "$py" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || return 1
+  print -r -- "$py"
 }
 
 # _cc_registry_newer <file> — has the registry or the generator moved past it?
@@ -154,8 +160,8 @@ function _cc_cache_refresh {
   local tmp=${_cc_cache}.$$ line py=""
   [[ -d $_cc_cache_dir ]] || mkdir -p "$_cc_cache_dir" 2>/dev/null || return 1
   if ! py="$(_cc_python_path)"; then
-    print -u2 "cc_provider: no python3 to generate ${_cc_cache} from ai/providers.toml"
-    print -u2 "             — provider launchers are unavailable in this shell"
+    print -u2 "cc_provider: no python3 >= 3.11 to generate ${_cc_cache} from ai/providers.toml"
+    print -u2 "             — mise provides one; the launchers are left as they were"
     : >"$_cc_stamp"
     return 1
   fi

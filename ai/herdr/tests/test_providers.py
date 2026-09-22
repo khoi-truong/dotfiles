@@ -8,8 +8,9 @@ thing the file exists for — that a warm shell start reads the cache and forks
 nothing, that a cold one rewrites it, and that a registry nobody can parse costs
 one warning rather than the `ccd` command.
 
-The shell cases need a zsh and the `/usr/bin/python3` the cache calls by name;
-they skip without either. Nothing here reads the ambient environment: every case
+The shell cases need a zsh and a `python3` the cache generator can use — the one
+PATH holds, at 3.11 or newer, because the reader is stdlib `tomllib`; they skip
+without either. Nothing here reads the ambient environment: every case
 runs in a tree built under `tmp_path`, so `HERDR_TEAM_ROOT` and `DOTFILES` — both
 exported by the herdr pane this suite is usually run from — cannot reach the
 file under test.
@@ -44,9 +45,29 @@ DEEPSEEK_LINE = (
 )
 
 ZSH = shutil.which("zsh")
+PYTHON3 = shutil.which("python3")
+
+
+def _python3_reads_toml() -> bool:
+    """Can the `python3` on PATH be the cache generator's interpreter?
+
+    Asked of the interpreter rather than compared against a version number,
+    because `tomllib` is what the reader actually needs and it is the same
+    question `providers.zsh` asks before it regenerates — a skip condition that
+    answered a different one would disagree with the code under test on exactly
+    the machine where the difference shows.
+    """
+    if PYTHON3 is None:
+        return False
+    probe = subprocess.run(
+        [PYTHON3, "-c", "import tomllib"], capture_output=True, check=False
+    )
+    return probe.returncode == 0
+
+
 needs_shell = pytest.mark.skipif(
-    ZSH is None or not Path("/usr/bin/python3").exists(),
-    reason="needs a zsh and the /usr/bin/python3 the launcher cache runs",
+    ZSH is None or not _python3_reads_toml(),
+    reason="needs a zsh and a python3 >= 3.11 (stdlib tomllib) for the cache",
 )
 
 
@@ -322,7 +343,6 @@ def isolated(tmp_path: Path) -> Path:
     (root / "ai/claude").mkdir(parents=True)
     lib.mkdir(parents=True)
     shutil.copy(DOTFILES / "ai/herdr/lib/providers.py", lib / "providers.py")
-    shutil.copytree(DOTFILES / "ai/herdr/lib/_vendor", lib / "_vendor")
     shutil.copy(REGISTRY, root / "ai/providers.toml")
     shutil.copy(PROVIDERS_ZSH, root / "ai/claude/providers.zsh")
     return root
