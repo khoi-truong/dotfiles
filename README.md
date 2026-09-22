@@ -1,7 +1,7 @@
 # dotfiles
 
-[![Lint](https://github.com/khoi/dotfiles/actions/workflows/lint.yml/badge.svg)](https://github.com/khoi/dotfiles/actions/workflows/lint.yml)
-[![Secrets](https://github.com/khoi/dotfiles/actions/workflows/secrets.yml/badge.svg)](https://github.com/khoi/dotfiles/actions/workflows/secrets.yml)
+[![Lint](https://github.com/khoi-truong/dotfiles/actions/workflows/lint.yml/badge.svg)](https://github.com/khoi-truong/dotfiles/actions/workflows/lint.yml)
+[![Secrets](https://github.com/khoi-truong/dotfiles/actions/workflows/secrets.yml/badge.svg)](https://github.com/khoi-truong/dotfiles/actions/workflows/secrets.yml)
 
 Personal macOS setup: zsh, git, Homebrew, mise, macOS defaults, and a
 workspace for running coding agents (Claude Code, oh-my-pi, herdr).
@@ -19,7 +19,7 @@ workspace for running coding agents (Claude Code, oh-my-pi, herdr).
 On a new machine:
 
 1. Install the Xcode command line tools: `xcode-select --install`.
-2. `git clone https://github.com/khoi/dotfiles.git ~/.dotfiles && cd ~/.dotfiles`
+2. `git clone https://github.com/khoi-truong/dotfiles.git ~/.dotfiles && cd ~/.dotfiles`
 3. `./setup.sh` — installs Homebrew, links dotfiles, runs the default modules
    (including `mise install` for the pinned runtimes). `macos/` asks for a
    computer name; leave it blank to keep the current one.
