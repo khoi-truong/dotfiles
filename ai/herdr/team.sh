@@ -1818,7 +1818,7 @@ loop_wave() {
   if [ "${#waiting[@]}" -gt 0 ] && [ "$spawn" -eq 1 ]; then
     local -a still=()
     local i name branch src st spawned="" pv="" pload="" pcap="" reserved=""
-    local reserved_below="" reserved_creds="" cred=""
+    local reserved_below="" reserved_creds="" cred="" waited=0
     # The profile table, before the wave asks it anything: the two counts below
     # are `$(…)` calls, and a `$(…)` cannot load it into the shell that made it.
     provider_table
@@ -1830,7 +1830,7 @@ loop_wave() {
     # gate counts the same way when a pane is drawn by hand.
     lane_table
     local cap_exec="" from_exec="" cap_rev="" from_rev="" n_exec=0 n_rev=0
-    local lane_full_note=""
+    local lane_full_note="" slow_note=""
     IFS=$'\t' read -r cap_exec from_exec <<<"$(lane_bound exec)"
     IFS=$'\t' read -r cap_rev from_rev <<<"$(lane_bound rev)"
     n_exec="$(lane_held "$run" exec | count_lines)"
@@ -1937,14 +1937,29 @@ loop_wave() {
       fi
       # A pane that spawned but did not come back free is not a seat: a dispatch
       # into an agent that is blocked or still starting is a prompt nobody reads,
-      # and the loop would then wait on it as if it were work.
-      st="$(agent_field "$name" agent_status 2>/dev/null || true)"
+      # and the loop would then wait on it as if it were work. `spawn` returns
+      # once herdr detects an agent, which is before that agent has finished
+      # starting — a fresh pane reads `working` for its first seconds — so one
+      # read here is a race the pane usually wins. Poll for as long as `spawn`
+      # waits for detection; `blocked` is an answer, not a pane still starting.
+      st=""
+      waited=0
+      while :; do
+        st="$(agent_field "$name" agent_status 2>/dev/null || true)"
+        case "$st" in ready | idle | done | blocked) break ;; esac
+        [ "$waited" -lt "$DETECT_TIMEOUT" ] || break
+        sleep 1
+        waited=$((waited + 1))
+      done
       case "$st" in
         ready | idle | done)
           seats+=("$(printf '%s\t%s\t%s\t%s' "$name" "$tid" "$provider" "$lane")")
           spawned="$(printf '%s\n%s' "$spawned" "$name")"
           ;;
-        *) still+=("${waiting[$i]}") ;;
+        *)
+          still+=("${waiting[$i]}")
+          slow_note="${slow_note:+${slow_note} and }${name} spawned but is ${st:-gone} after ${waited}s"
+          ;;
       esac
     done
     if [ "${#still[@]}" -gt 0 ]; then
@@ -1980,10 +1995,11 @@ loop_wave() {
       # The lane's own bound rather than the executor cap: `lane_full_note` is
       # built where the row was refused and names the number and where it came
       # from, so a `rev` row stopped by `role.review.max_per_run` says so. A wave
-      # with no note drew nothing for a reason that is not a bound — the names
-      # are exhausted, or every pane it drew came back busy — and says only that.
+      # with no bound note drew nothing for a reason that is not a bound — the
+      # names are exhausted, or a pane it drew never came back free, which
+      # `slow_note` names — and says only that.
       printf 'loop: %s ready and no pane free for them — %s; settle one, or raise it if this lane can carry another\n' \
-        "$ready_list" "${lane_full_note:-no pane this wave may draw}"
+        "$ready_list" "${lane_full_note:-${slow_note:-no pane this wave may draw}}"
     else
       printf 'loop: %s ready and no pane free for them — %s live; --spawn <branch-prefix>, or settle one\n' \
         "$ready_list" "${live_all:-none}"
