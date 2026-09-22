@@ -47,10 +47,13 @@ Measured in a throwaway workspace:
 suite's hook, not a spawn's.
 
 - **`HERDR_TEAM_REPO` is the transport for a Run bound to a project repo.**
-  `run new --repo <path>` writes it once, to `runs/<id>/repo`; `--repo <path>`
-  on a single `config`/`config trust` call sets it for that call alone. Never
-  inferred from `$PWD` — omit it and every verb reads the dotfiles checkout,
-  which is the default. Layers 3–4
+  `run new --repo <path>` writes the resolved path once, to `runs/<id>/repo`;
+  `team.sh` reads that file and exports `HERDR_TEAM_REPO` from it on every
+  later call against that Run. `--repo <path>` on a single `config`/`config
+  trust` call is a plain argument to `config.py`, naming the repo for that one
+  call without touching the environment or any Run's file. Never inferred
+  from `$PWD` — omit it and every verb reads the dotfiles checkout, which is
+  the default. Layers 3–4
   (`<repo>/.config/herdr/team*.toml`) stay untrusted until `config trust`
   records the repo's path and the sha256 of both files; that record is not a
   security boundary against an agent that already has a shell, since anything

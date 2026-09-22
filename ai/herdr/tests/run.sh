@@ -5054,10 +5054,30 @@ if [ -n "$RA4" ]; then
     no "173b and teardown prunes the project, never tidy" \
       "exit ${code}: $(tr '\n' '|' <"${TMP}/err") | log: $(tr '\n' '|' <"${TMP}/ac4-git-log")"
   fi
+
+  # 173c. AC4, the wrapper's own log read the other way: every `worktree
+  #       remove`/`worktree prune` teardown actually ran named the project by
+  #       `-C`, and none of them ever named this checkout — "prune ran" and
+  #       "prune ran against the wrong repository" would otherwise both read
+  #       as the same passing case. Narrowed to those two calls' own
+  #       arguments, cut past the wrapper's leading `$PWD` field: that field is
+  #       this checkout's cwd on every line regardless of which repo `-C`
+  #       names, so checking the whole line would indict a call for where the
+  #       wrapper ran rather than what it ran.
+  ac4wt_args="$(grep -E 'worktree (remove|prune)' "${TMP}/ac4-git-log" | cut -f2- || true)"
+  if grep -q -- "-C ${ac4proj} worktree" <<<"${ac4wt_args}" &&
+    ! grep -qF "${DOTFILES}" <<<"${ac4wt_args}"; then
+    ok "173c and every call in the log names the project by -C, never this checkout"
+  else
+    no "173c and every call in the log names the project by -C, never this checkout" \
+      "args: $(tr '\n' '|' <<<"${ac4wt_args}")"
+  fi
 else
   no "173 spawn cuts a new worktree from the project, not this checkout" \
     "run new failed: $(tr '\n' '|' <"${TMP}/err")"
   sk "173b and teardown prunes the project, never tidy" "run new failed"
+  sk "173c and every call in the log names the project by -C, never this checkout" \
+    "run new failed"
 fi
 reset
 
@@ -5076,7 +5096,191 @@ else
   no "174 config trust over piped stdin refuses and writes nothing" \
     "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
 fi
+
+# 174b. M4: the refusal names why, in words a caller could match on — the same
+#       trust174 fixture, so what changed is only which line of stderr the case
+#       reads.
+"${TEAM}" config trust --repo "${trust174}" >"${TMP}/out" 2>"${TMP}/err" </dev/null
+code=$?
+if [ "${code}" -eq 1 ] && grep -q 'run this in a terminal' "${TMP}/err"; then
+  ok "174b and the refusal names why: run this in a terminal"
+else
+  no "174b and the refusal names why: run this in a terminal" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
 rm -f "${HERDR_TEAM_ROOT}/trust"
+
+# 175. H1: a project's own [limits] knob other than max_per_run reaches the
+#      short name derive_knobs sets, not only the HERDR_TEAM_* one the eval
+#      binds — the second gate a Run bound to a project pays has to re-run
+#      derive_knobs after that eval, or a project's own handoff_max_lines never
+#      leaves the environment. handoff_max_lines is the cheapest of the six to
+#      observe from outside: `report` reads HANDOFF_MAX at call time, and a
+#      handoff five lines past frontmatter is over the project's cap of 3 but
+#      well under the dotfiles' 150 — it reads as over-long only if the number
+#      derive_knobs actually set, on this call, was the project's.
+h1proj="$(proj_repo h1)"
+mkdir -p "${h1proj}/.config/herdr"
+printf '[limits]\nhandoff_max_lines = 3\n' >"${h1proj}/.config/herdr/team.toml"
+RH1="$(new_run tab175 --repo "${h1proj}")"
+if [ -n "$RH1" ]; then
+  sent "${RH1}" T-01 D-01 exec-1
+  long_handoff T-01 "${RH1}" D-01 5
+  HERDR_TEAM_RUN_KEY=tab175 team_of "${TEAM}" report "${RH1}"
+  if [ "${code}" -eq 0 ] && grep -q '(T-01/D-01)' "${TMP}/out"; then
+    ok "175 a project's own handoff_max_lines is the cap report reads"
+  else
+    no "175 a project's own handoff_max_lines is the cap report reads" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+  fi
+else
+  no "175 a project's own handoff_max_lines is the cap report reads" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+fi
+reset
+
+# 176. H2: `run new --plan --repo` resolves and validates `--repo` before
+#      anything is written — no pointer for the key, no Run directory, and no
+#      by-plan link — so a caller who fixes the flag and retries under the
+#      same key and the same plan finds no half-made Run behind the first,
+#      refused attempt.
+h2plan="${FIXTURES}/plan-ok.md"
+h2key="tab176"
+h2ptr="$(pointer "$h2key")"
+h2planpath="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$h2plan")"
+h2link="${HERDR_TEAM_ROOT}/runs/by-plan/$(printf '%s' "$h2planpath" | shasum -a 1 | awk '{print $1}')"
+rm -f "$h2ptr" "$h2link"
+h2before="$(find "${HERDR_TEAM_ROOT}/runs" -maxdepth 1 -name 'R-*' 2>/dev/null | wc -l | tr -d ' ')"
+h2bare="${TMP}/h2-bare.git"
+git init --quiet --bare "${h2bare}"
+HERDR_TEAM_RUN_KEY="$h2key" "${TEAM}" run new --plan "$h2plan" --repo "$h2bare" \
+  >"${TMP}/out" 2>"${TMP}/err"
+code=$?
+h2after="$(find "${HERDR_TEAM_ROOT}/runs" -maxdepth 1 -name 'R-*' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] && [ ! -e "$h2ptr" ] &&
+  [ ! -e "$h2link" ] && [ "${h2before}" = "${h2after}" ]; then
+  ok "176 run new --plan with a bad --repo writes nothing"
+else
+  no "176 run new --plan with a bad --repo writes nothing" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err") | before=${h2before} after=${h2after}"
+fi
+
+h2proj="$(proj_repo h2)"
+RH2="$(new_run "$h2key" --plan "$h2plan" --repo "$h2proj")"
+if [ -n "$RH2" ] && [ "$(cat "$h2ptr" 2>/dev/null)" = "$RH2" ] &&
+  [ "$(cat "$h2link" 2>/dev/null)" = "$RH2" ]; then
+  ok "176b and retried with a valid --repo the same key and plan succeed"
+else
+  no "176b and retried with a valid --repo the same key and plan succeed" \
+    "run=${RH2:-<none>} ptr=$(cat "$h2ptr" 2>/dev/null) link=$(cat "$h2link" 2>/dev/null)"
+fi
+reset
+
+# 177. H3: a Run resolved by `--from-plan`, from a tab key with no pointer of
+#      its own at all, is bound to the repo that Run actually names — not to
+#      this checkout, which is what an unbound REPO would silently fall back
+#      to. Proven the same way #171 proves the gate fires at all: the project
+#      carries an untrusted layer's disallowed key, so `dispatch` refuses
+#      naming it only if `bind_run_repo` actually re-pointed REPO at the
+#      project before the second gate ran.
+h3proj="$(proj_repo h3)"
+mkdir -p "${h3proj}/.config/herdr"
+printf '[profile.x]\nlaunch = "true"\n' >"${h3proj}/.config/herdr/team.toml"
+h3plan="${FIXTURES}/plan-ok.md"
+RH3="$(new_run tab177src --plan "$h3plan" --repo "${h3proj}")"
+if [ -n "$RH3" ]; then
+  rm -f "$(pointer tab177src)"
+  HERDR_TEAM_RUN_KEY=tab177fresh team_of "${TEAM}" dispatch exec-1 --task T-01 \
+    --from-plan "$h3plan" --dry-run
+  if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+    grep -q 'profile\.x may not be set by an untrusted layer' "${TMP}/err"; then
+    ok "177 dispatch --from-plan binds the Run's own repo with no tab pointer"
+  else
+    no "177 dispatch --from-plan binds the Run's own repo with no tab pointer" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+else
+  no "177 dispatch --from-plan binds the Run's own repo with no tab pointer" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+fi
+reset
+
+# 178. M2: the second gate is fatal only for spawn, loop, dispatch and plan —
+#      everything else keeps the dotfiles' own knobs and warns rather than
+#      refusing, so a stale or untrusted project layer can never lock out the
+#      recovery verbs a human reaches for once something is already wrong.
+m2proj="$(proj_repo m2)"
+mkdir -p "${m2proj}/.config/herdr"
+printf '[profile.x]\nlaunch = "true"\n' >"${m2proj}/.config/herdr/team.toml"
+RM2="$(new_run tab178 --repo "${m2proj}")"
+if [ -n "$RM2" ]; then
+  HERDR_TEAM_RUN_KEY=tab178 team_of "${TEAM}" \
+    spawn exec-m2-1 --branch fixture-m2-1 --skip-provider-check
+  if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+    grep -q 'profile\.x may not be set by an untrusted layer' "${TMP}/err"; then
+    ok "178 spawn still refuses on a project's untrusted layer"
+  else
+    no "178 spawn still refuses on a project's untrusted layer" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+
+  # `status` opens with `herdr agent list`, ahead of anything the second gate
+  # decides — the default fixture `herdr` in this file always answers that
+  # with "no session" and exit 1, which is a fine stand-in everywhere else but
+  # would read here as `status` itself refusing, the very thing this case is
+  # proving it does not do. A stub that actually answers keeps the failure
+  # this case checks for down to the one thing it is about: the gate's own
+  # warn-and-continue, not an unrelated no-session exit.
+  mkdir -p "${TMP}/m2"
+  cat >"${TMP}/m2/herdr" <<'SH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "agent list") printf '{"result":{"agents":[]}}\n' ;;
+  *) exit 9 ;;
+esac
+SH
+  chmod +x "${TMP}/m2/herdr"
+  HERDR_TEAM_RUN_KEY=tab178 PATH="${TMP}/m2:${PATH}" team_of "${TEAM}" status
+  if [ "${code}" -eq 0 ] &&
+    grep -q "configuration does not resolve" "${TMP}/err"; then
+    ok "178b and status still runs, warning instead of refusing"
+  else
+    no "178b and status still runs, warning instead of refusing" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+  # 178c. HIGH-A: `collect --plan`'s own `bind_run_repo "$run" 0` (team.sh,
+  #       `cmd_collect`) used to be a plain statement whose return value was
+  #       `second_gate`'s non-fatal exit code — under `set -e` that aborted the
+  #       whole invocation right there, before `cmd_collect_plan` ever ran, so
+  #       a pointerless tab reading this same untrusted project Run by --plan
+  #       got a bare exit 1 instead of the warning-and-continue every other
+  #       verb already got. A fresh key that never ran `run new` — no pointer
+  #       file at all — proves the by-plan link alone carries it through.
+  plan178c="${TMP}/iso-plan-178c.md"
+  cp "${FIXTURES}/plan-ok.md" "$plan178c"
+  RM2C="$(new_run tab178c-owner --repo "${m2proj}" --plan "$plan178c")"
+  if [ -n "$RM2C" ]; then
+    handoff T-01 "$RM2C" succeeded verified
+    HERDR_TEAM_RUN_KEY=tab178c-caller team_of "${TEAM}" collect --plan "$plan178c"
+    if [ "${code}" -eq 0 ] && grep -q "configuration does not resolve" "${TMP}/err" &&
+      grep -qE '^T-01 +done' "${TMP}/out"; then
+      ok "178c collect --plan from a pointerless tab warns, exits per collect's own semantics"
+    else
+      no "178c collect --plan from a pointerless tab warns, exits per collect's own semantics" \
+        "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+    fi
+  else
+    no "178c collect --plan from a pointerless tab warns, exits per collect's own semantics" \
+      "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+else
+  no "178 spawn still refuses on a project's untrusted layer" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+  sk "178b and status still runs, warning instead of refusing" "run new failed"
+  sk "178c collect --plan from a pointerless tab warns, exits per collect's own semantics" \
+    "run new failed"
+fi
+reset
 
 echo
 echo "the ids"

@@ -175,10 +175,11 @@ value came from. `HERDR_TEAM_CONFIG=<file>` replaces every layer, which is the
 way back from a local file that will not parse.
 
 **A Run can work on a repo other than the dotfiles.** `run new --repo <path>`
-binds every later `spawn`/`teardown`/`config` in that Run to it; a bare
-`--repo` on a single `config` call does the same for one call. It must be
-passed explicitly — `run new` never infers it from `$PWD` — and the default
-with no `--repo` is the dotfiles checkout. `teardown` in a project repo only
+binds every later `spawn`/`teardown`/`config` in that Run to it; `--repo
+<path>` on a single `config` call instead names the repo for that one call,
+with nothing recorded anywhere a later call would read. It must be passed
+explicitly — `run new` never infers it from `$PWD` — and the default with no
+`--repo` is the dotfiles checkout. `teardown` in a project repo only
 removes the worktree (`worktree remove`/`worktree prune`); it never runs `git
 tidy`, which is a dotfiles-only alias. The project's own `.config/herdr/*.toml`
 is untrusted until `config trust` records the repo and a sha256 of both files;

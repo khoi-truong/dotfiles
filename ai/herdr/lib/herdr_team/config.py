@@ -28,8 +28,10 @@ profiles, so it can never route work onto the Pro login. Anything else is a
 finding, and so is a `never` list that shrinks. `config trust` is what lifts
 that: it records the project's path and the sha256 of both files in
 `<root>/trust` (`<root>` being `paths.root`, or `~/.dotfiles/.herdr` shipped),
-after a typed `yes` at a real terminal — an agent's own Bash has no TTY, so it
-cannot trust its own repo. `--revoke` removes the line. Any byte changed in
+after a typed `yes` at a real terminal — the TTY check is there to stop a
+script or an agent from answering the prompt by accident, not to keep one from
+trusting a repo on purpose; it can still run `config trust` from one that has
+a terminal. `--revoke` removes the line. Any byte changed in
 either file makes that trust stale — layers 3 and 4 fall back to untrusted and
 `config lint` names it — until `config trust` is run again.
 
@@ -249,6 +251,41 @@ def _common_dir(path: Path) -> str | None:
     return out or None
 
 
+def _checkout_from_common(path: Path, common: str | None) -> Path:
+    """`path`, normalized against an already-resolved `--git-common-dir` (or
+    `None`, when `path` names no checkout at all).
+
+    The fork-free half of `_main_checkout`, below, for a caller that has
+    already paid for `common` — `default_layers` and `_trust` both need it a
+    second time anyway, to compare `project` against `where`, and a second
+    `git -C path rev-parse --git-common-dir` for the same answer would be a
+    second fork for nothing.
+
+    A submodule or a `--separate-git-dir` checkout's `--git-common-dir` does
+    not end in `.git` at all, so `.parent` of it would name a directory one
+    level too high rather than a main checkout — taken only when the name
+    confirms there is a `.git` to be the parent of. Anything else that is not
+    `None` (an ordinary directory, a bare `tmp_path` in a test) comes back
+    unchanged, since there is nothing to normalize it against.
+    """
+    if not common:
+        return path
+    common_path = Path(common)
+    return common_path.parent if common_path.name == ".git" else path
+
+
+def _main_checkout(path: Path) -> Path:
+    """`path`, normalized to the git checkout it belongs to.
+
+    A linked worktree's `--git-common-dir` names the main checkout's `.git`
+    directory even when asked from inside the worktree, so trust granted
+    against a worktree and a layer lookup made from its main checkout — or the
+    reverse — still land on the same path: `.config/herdr/` lives once, in the
+    main checkout, not once per worktree.
+    """
+    return _checkout_from_common(path, _common_dir(path))
+
+
 class Layer(NamedTuple):
     """One file in the stack, and whether the repository behind it is trusted.
 
@@ -298,7 +335,14 @@ def default_layers(
         Layer(where / "ai/herdr/team.local.toml", True),
     ]
     project = Path(repo or env.get(ENV_REPO) or where).expanduser().resolve()
-    if not _same_repo(project, where):
+    project_common: str | None = None
+    if project != where:
+        # `_main_checkout` and `_same_repo` both want `--git-common-dir`; a
+        # dotfiles Run (`project == where`) needs neither, so it forks no
+        # git at all, and a project Run forks it once, not twice.
+        project_common = _common_dir(project)
+        project = _checkout_from_common(project, project_common)
+    if not _same_repo(project, where, project_common):
         # The trust file is read here, and only here: a dotfiles Run never
         # reaches this branch at all, and a foreign one pays for it once, not
         # once per verb that happens to ask for layers.
@@ -311,7 +355,7 @@ def default_layers(
     return layers
 
 
-def _same_repo(project: Path, where: Path) -> bool:
+def _same_repo(project: Path, where: Path, project_common: str | None = None) -> bool:
     """Whether `project` and `where` name one repository.
 
     Compared by git identity, not by path spelling: `project` and `where` name
@@ -320,10 +364,15 @@ def _same_repo(project: Path, where: Path) -> bool:
     side being a git checkout (a bare `tmp_path` in a test, say) falls back to
     the plain path comparison this replaces. The same path needs no `git` at
     all, which keeps a dotfiles Run's reads free of the two forks.
+
+    `project_common` lets a caller that already resolved `project`'s
+    `--git-common-dir` (normalizing it to its main checkout, say) hand that
+    fork's answer over instead of paying for a second one here.
     """
     if project == where:
         return True
-    project_common = _common_dir(project)
+    if project_common is None:
+        project_common = _common_dir(project)
     where_common = _common_dir(where)
     if project_common is not None and where_common is not None:
         return project_common == where_common
@@ -2050,7 +2099,11 @@ def _trust(repo: str | None, revoke: bool) -> int:
         Path(environment.get(ENV_DOTFILES) or _DERIVED_DOTFILES).expanduser().resolve()
     )
     project = Path(repo or environment.get(ENV_REPO) or where).expanduser().resolve()
-    if _same_repo(project, where):
+    project_common: str | None = None
+    if project != where:
+        project_common = _common_dir(project)
+        project = _checkout_from_common(project, project_common)
+    if _same_repo(project, where, project_common):
         sys.stderr.write("config trust: no project repo — nothing to trust\n")
         return 2
     target = str(project)
@@ -2090,7 +2143,15 @@ def _trust(repo: str | None, revoke: bool) -> int:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         sys.stderr.write("config trust: run this in a terminal to confirm\n")
         return 1
-    answer = input("Trust %s? [yes/N] " % target)
+    try:
+        answer = input("Trust %s? [yes/N] " % target)
+    except (EOFError, KeyboardInterrupt):
+        # A closed stdin or ^C mid-prompt is a "no", not a crash: the isatty
+        # check above already turned away the non-interactive case, so this is
+        # someone at a real terminal changing their mind, or piping something
+        # that ran dry.
+        print()
+        return 1
     if answer != "yes":
         return 1
 
