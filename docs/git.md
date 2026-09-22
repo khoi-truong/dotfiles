@@ -123,6 +123,9 @@ the macOS keychain and `hosts.yml` is machine-local. `gh/setup.sh` warns when
 
 - `git_protocol: ssh`, matching the remotes and `pushInsteadOf` in
   `git/gitconfig`.
+  `gh auth login` also writes a per-host protocol into `hosts.yml`, which
+  wins, so answer SSH there (or run
+  `gh config set -h github.com git_protocol ssh`).
 - `editor`, `pager` and `browser` are empty, so `$EDITOR`, `$PAGER` and the
   system browser apply.
 - `telemetry: disabled`; `color_labels: enabled`.
