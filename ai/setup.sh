@@ -209,7 +209,7 @@ else
   )
   mv -f "${SECRETS}.tmp" "$SECRETS"
   ok "wrote ai/env.local.zsh ($(grep -c '^export ' "$SECRETS") keys, mode 600)"
-  printf '%s\n' "$op_exports" | grep '^# skipped: ' | while read -r line; do
+  { printf '%s\n' "$op_exports" | grep '^# skipped: ' || true; } | while read -r line; do
     warn "${line#\# skipped: }"
   done
 fi
