@@ -17,7 +17,7 @@ export DOTFILES
 require_macos
 
 # Run on every bootstrap.
-DEFAULT_MODULES=(git brew mise macos gpg iterm ai misc)
+DEFAULT_MODULES=(git gh brew mise macos gpg iterm ai misc)
 
 # Opt-in: GUI apps that aren't always installed, or one-off machines.
 OPTIONAL_MODULES=(vscode xcode terminal)

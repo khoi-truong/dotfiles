@@ -6,6 +6,7 @@
 - [Worktrees](#worktrees)
 - [Aliases](#aliases)
 - [Diff and review](#diff-and-review)
+- [GitHub CLI](#github-cli)
 
 ## Configuration
 
@@ -111,3 +112,30 @@ again under `git.diffRenderers`; `|` cycles delta → difftastic →
 The merge decision still goes through `/code-review` and a signed PR. The AI
 review pass runs in its own session, separate from the one that wrote the
 code.
+
+## GitHub CLI
+
+`gh/config.yml` is linked to `~/.config/gh/config.yml`. `gh config set` and
+`gh alias set` write through the link and keep its comments, so review
+`git diff` after using them. Credentials stay out of the repo: the token is in
+the macOS keychain and `hosts.yml` is machine-local. `gh/setup.sh` warns when
+`gh auth login` hasn't been run.
+
+- `git_protocol: ssh`, matching the remotes and `pushInsteadOf` in
+  `git/gitconfig`.
+  `gh auth login` also writes a per-host protocol into `hosts.yml`, which
+  wins, so answer SSH there (or run
+  `gh config set -h github.com git_protocol ssh`).
+- `editor`, `pager` and `browser` are empty, so `$EDITOR`, `$PAGER` and the
+  system browser apply.
+- `telemetry: disabled`; `color_labels: enabled`.
+
+| Alias | Does |
+| --- | --- |
+| `gh co <n>` | Check out a PR |
+| `gh pc` | Create a PR, title and body from the commits |
+| `gh pv`, `gh rv` | Open the current PR / repo in the browser |
+| `gh pd` | Diff of the current PR |
+| `gh mine`, `gh review` | My open PRs / PRs waiting for my review |
+| `gh land` | Squash-merge and delete the branch |
+| `gh runs`, `gh watch` | Recent workflow runs / follow one, failing if it fails |
