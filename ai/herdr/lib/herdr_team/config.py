@@ -15,15 +15,23 @@ Seven layers, lowest to highest, deep-merged tables and replacing arrays:
     6  HERDR_TEAM_* in the environment
     7  flags on the command line
 
+Layers 3 and 4 are read when a Run is bound to a project repo — `run new
+--repo` at Run start, or `--repo <path>` / `HERDR_TEAM_REPO` on a single
+call — rather than this checkout; a repo named that way is otherwise ignored
+for anything but these two files.
+
 Layers 1 and 2 are trusted. Layers 3 and 4 are not: a project file that could
 name a launch command would be a project file that can run code, so an
 untrusted layer may set `limits`, `role.<r>.profiles` and `max_per_run`,
 `route`, `preset`, and `fallback.<p>.to`/`never` — and may name only cheap
 profiles, so it can never route work onto the Pro login. Anything else is a
-finding, and so is a `never` list that shrinks. `config trust`, which records a
-repo's path and its file's sha in `~/.dotfiles/.herdr/trust`, is what lifts
-that; until it lands a project layer is always untrusted, and layers 3 and 4
-are only read when a checkout other than this one is named.
+finding, and so is a `never` list that shrinks. `config trust` is what lifts
+that: it records the project's path and the sha256 of both files in
+`<root>/trust` (`<root>` being `paths.root`, or `~/.dotfiles/.herdr` shipped),
+after a typed `yes` at a real terminal — an agent's own Bash has no TTY, so it
+cannot trust its own repo. `--revoke` removes the line. Any byte changed in
+either file makes that trust stale — layers 3 and 4 fall back to untrusted and
+`config lint` names it — until `config trust` is run again.
 
 Values may name three things the reader expands:
 

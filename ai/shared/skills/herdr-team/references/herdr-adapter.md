@@ -46,6 +46,19 @@ Measured in a throwaway workspace:
 `HERDR_TEAM_HANDOFFS` overrides one Run's handoff directory whole: the fixture
 suite's hook, not a spawn's.
 
+- **`HERDR_TEAM_REPO` is the transport for a Run bound to a project repo.**
+  `run new --repo <path>` writes it once, to `runs/<id>/repo`; `--repo <path>`
+  on a single `config`/`config trust` call sets it for that call alone. Never
+  inferred from `$PWD` — omit it and every verb reads the dotfiles checkout,
+  which is the default. Layers 3–4
+  (`<repo>/.config/herdr/team*.toml`) stay untrusted until `config trust`
+  records the repo's path and the sha256 of both files; that record is not a
+  security boundary against an agent that already has a shell, since anything
+  with a shell can edit the trust file directly. `teardown` on a project repo
+  only removes the worktree (`worktree remove` or, on the checkout's own
+  cleanup path, `worktree prune`) and never runs `git tidy`, which is a
+  dotfiles-only alias the project repo has no reason to define.
+
 ## Hazards
 
 - `agent prompt --wait` **rejects** an already-blocked agent with
@@ -327,3 +340,7 @@ the difference a record makes is that the next reader gets to decide.
 
 Agent names match `[a-z][a-z0-9_-]{0,31}` and must be unique among live
 agents; `team.sh` enforces both at spawn.
+
+`git wta` names a worktree by the repo's basename under `~/.worktrees/`, not
+by the repo's full path — two repos that share a basename collide there, one
+more reason `--repo` on a project Run names a real, distinguishable path.

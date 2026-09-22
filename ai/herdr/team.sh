@@ -17,7 +17,7 @@
 #   team.sh spawn exec-<run-suffix>-N --branch <b>   # caps: team.sh config get role.exec.max_per_run
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
-#   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
+#   team.sh run [new [--plan <plan.md>] [--repo <path>] | show [--repo] | resolve <plan.md> | list]
 #   team.sh status
 #   team.sh collect [<run-id>] [--plan <plan.md>]
 #   team.sh report [<run-id>] [--plan <plan.md>] [--no-write]
@@ -26,6 +26,7 @@
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
 #   team.sh config [show [--sources] | get <key> | lint | doctor]
+#   team.sh config trust [--repo <path>] [--revoke]   # lift a project repo's layers
 #   team.sh settle <name> <reuse|retain|release> [--clear]
 #   team.sh teardown <name> [--force | --abandon-only]
 #
