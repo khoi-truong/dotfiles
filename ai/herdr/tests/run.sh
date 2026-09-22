@@ -2688,6 +2688,19 @@ pane_state() {
 
 case "\$1 \$2" in
   "agent list")
+    # A pane still starting: \`agent rename\` left it \`working\` with a count of
+    # reads, and it comes free on the read that spends the last one.
+    if [ -f "${TMP}/loop-starting" ]; then
+      left=\$((\$(cat "${TMP}/loop-starting") - 1))
+      if [ "\$left" -le 0 ]; then
+        rm -f "${TMP}/loop-starting"
+        awk -F'\t' 'BEGIN{OFS="\t"} \$1!="-" && \$2=="working"{\$2="idle"} {print}' \
+          "${TMP}/loop-panes" >"${TMP}/loop-panes.new"
+        mv "${TMP}/loop-panes.new" "${TMP}/loop-panes"
+      else
+        printf '%s\n' "\$left" >"${TMP}/loop-starting"
+      fi
+    fi
     printf '{"result":{"agents":['
     sep=""
     while IFS=\$'\t' read -r n s p; do
@@ -2713,8 +2726,14 @@ case "\$1 \$2" in
   "agent rename")
     # Naming a pane herdr already had: unnamed and working becomes named and
     # idle, which is the state \`spawn\` polls for and the state the loop seats
-    # a Dispatch on.
-    awk -F'\t' -v p="\$3" -v n="\$4" 'BEGIN{OFS="\t"} \$3==p{\$1=n; \$2="idle"} {print}' \
+    # a Dispatch on. With \`loop-slow-start\` it stays \`working\` for that many
+    # list reads instead, which is what a real agent does while it boots.
+    st=idle
+    if [ -f "${TMP}/loop-slow-start" ]; then
+      st=working
+      cp "${TMP}/loop-slow-start" "${TMP}/loop-starting"
+    fi
+    awk -F'\t' -v p="\$3" -v n="\$4" -v s="\$st" 'BEGIN{OFS="\t"} \$3==p{\$1=n; \$2=s} {print}' \
       "${TMP}/loop-panes" >"${TMP}/loop-panes.new"
     mv "${TMP}/loop-panes.new" "${TMP}/loop-panes"
     ;;
@@ -2795,7 +2814,8 @@ loop_fresh() {
   rm -f "${TMP}/loop-called" "${TMP}/loop-prompted" \
     "${TMP}/loop-seq" "${TMP}/loop-branches" "${TMP}/loop-git-called" \
     "${TMP}/loop-status-after-prompt" "${TMP}/loop-slow-wait" \
-    "${TMP}/loop-no-write" "${TMP}/loop-unproven"
+    "${TMP}/loop-no-write" "${TMP}/loop-unproven" \
+    "${TMP}/loop-slow-start" "${TMP}/loop-starting"
   : >"${TMP}/loop-panes"
   reset
   for line in "$@"; do
@@ -4695,6 +4715,26 @@ else
   no "164c and the start after it says nothing, that edit having been reported" \
     "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
 fi
+
+# 165. A pane `spawn` hands back is detected, not ready: a real agent reads
+#      `working` for its first seconds. The wave polls it instead of reading
+#      once, so a slow start is seated and the chain runs; one that never comes
+#      free inside the detect timeout is named in the stop.
+loop_fresh
+printf '3\n' >"${TMP}/loop-slow-start"
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+export FIXTURE_REF HERDR_FIXTURE_KEY
+loop_on 0 '^wave 5: dispatched T-05, waiting$' \
+  "165 a spawned pane still starting is waited for, then seated" \
+  --plan "${FIXTURES}/plan-deep.md" --spawn feat/slow
+called 1 '^worktree open' "165b and it is the one pane the chain needed"
+loop_fresh
+printf '99\n' >"${TMP}/loop-slow-start"
+HERDR_TEAM_DETECT_TIMEOUT=2 loop_on 6 'exec-0001-1 spawned but is working after 2s' \
+  "165c a pane that never comes free is named in the stop" \
+  --plan "${FIXTURES}/plan-deep.md" --spawn feat/slow --max-waves 1
+unset FIXTURE_REF HERDR_FIXTURE_KEY
 
 echo
 echo "the ids"
