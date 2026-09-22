@@ -303,8 +303,78 @@ run_key() {
   printf '%s\n' "$key"
 }
 
-# run_file — this key's pointer to the Run it is in.
-run_file() { printf '%s\n' "${ROOT}/state/run-$(run_key)"; }
+# run_file — this key's pointer to the Run it is in. Resolved once, below,
+# where REPO is: the key cannot change inside one invocation, and `run_key` is
+# a pipeline every later call would otherwise fork again.
+run_file() { printf '%s\n' "${_RUN_FILE:-${ROOT}/state/run-$(run_key)}"; }
+
+# repo_common_dir <path> — that path's real identity as a git checkout: the
+# absolute `--git-common-dir`, which is the same string for every worktree of
+# one repository and different for every other one, submodule or not. `run
+# new --repo` reads this before writing anything, because a submodule or a
+# bare repository is not a place `spawn` can grow a worktree from, and saying
+# so here is cheaper than a `git worktree add` failing three commands later.
+repo_common_dir() {
+  local dir="$1" common bare
+  common="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
+    die "run: ${dir} is not a git repository"
+  case "$common" in
+    */.git/modules/*) die "run: ${dir} is a submodule — team.sh works on the repository that owns it" ;;
+  esac
+  bare="$(git -C "$dir" rev-parse --is-bare-repository 2>/dev/null)" ||
+    die "run: ${dir} is not a git repository"
+  [ "$bare" = "false" ] || die "run: ${dir} is a bare repository — nothing to spawn a worktree from"
+  printf '%s\n' "$common"
+}
+
+# REPO — the repository this Run's worktrees are grown from. `spawn` and
+# `teardown` read this in place of `${DOTFILES}` wherever a worktree, a branch
+# or `herdr worktree open --cwd` needs one. The default is this checkout;
+# `run new --repo <path>` is the one place that changes it, once, written to
+# `runs/<id>/repo` so every shell that later lands in the same Run agrees.
+#
+# That file is written only when the resolved repository differs from this
+# checkout's own — the common case leaves no file, so a Run started without
+# `--repo` costs nothing to read back and looks exactly like a Run from
+# before this existed.
+REPO="${DOTFILES}"
+_RUN_FILE="$(run_file)"
+if [ -s "$_RUN_FILE" ]; then
+  _repo_file="${ROOT}/runs/$(<"$_RUN_FILE")/repo"
+  [ -s "$_repo_file" ] && REPO="$(<"$_repo_file")"
+  unset _repo_file
+fi
+
+# `HERDR_TEAM_REPO` is the one transport from here to the Python config
+# reader: exported once, at the point REPO is resolved, so `herdr_cfg` and
+# every gated verb's `config.route`/`config.resolve` call inherit it without
+# each call site naming it again. Unset rather than exported empty when this
+# shell is not in a project Run, so a stale value from a parent shell's
+# environment cannot outlive the Run it was resolved for.
+if [ "$REPO" = "${DOTFILES}" ]; then
+  unset HERDR_TEAM_REPO
+else
+  export HERDR_TEAM_REPO="$REPO"
+fi
+
+# The second gate: a Run bound to a project repository re-resolves the
+# configuration under it before any gated verb runs, the same way the first
+# gate above resolved it for this checkout. `env` is the only round trip a
+# project repo costs, and only a Run whose `repo` file names one pays it.
+if [ -n "${HERDR_TEAM_REPO:-}" ]; then
+  case "${1:-}" in
+    config | -h | --help | help | "") ;;
+    *)
+      _cfg="$(herdr_cfg env)" || {
+        _rc=$?
+        [ "${_rc}" -eq 3 ] \
+          || printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+        exit "${_rc}"
+      }
+      eval "${_cfg}"
+      ;;
+  esac
+fi
 
 # handoffs_dir <run> — that Run's handoffs, and its journal inside them.
 #
@@ -377,23 +447,43 @@ panes_dir() { printf '%s\n' "${ROOT}/state/panes"; }
 
 pane_record() { printf '%s\n' "$(panes_dir)/${1}"; }
 
-# pane_record_field <name> <name|provider|run|worktree|spawned|fallback> — that
-# field, or empty for a pane with no record. Empty and successful rather than a
-# status: callers test the value, and a reader left to handle two spellings of
-# "no record" would eventually handle one of them wrong.
+# pane_record_field <name> <name|provider|run|worktree|spawned|fallback|repo> —
+# that field, or empty for a pane with no record. Empty and successful rather
+# than a status: callers test the value, and a reader left to handle two
+# spellings of "no record" would eventually handle one of them wrong.
+#
+# `repo` is the seventh field, absent from any record `spawn` wrote before it
+# existed — a short line answers empty for it, so an old record falls back to
+# `${DOTFILES}`, exactly the repository those panes were actually spawned in.
+#
+# The line is split by hand, not with `IFS=$'\t' read`: tab is IFS whitespace
+# even when IFS is narrowed to just tab, so `read` collapses a run of them —
+# the very shape an empty `fallback` next to a populated `repo` takes — and
+# silently shifts every field after it left by one. Parameter expansion keeps
+# the empty field and forks nothing; callers read these in loops.
 pane_record_field() {
-  local f f1 f2 f3 f4 f5 f6
+  local f col line i=1
   f="$(pane_record "$1")"
   [ -f "$f" ] || return 0
-  IFS=$'\t' read -r f1 f2 f3 f4 f5 f6 <"$f" || true
   case "${2:-}" in
-    name) printf '%s' "$f1" ;;
-    provider) printf '%s' "$f2" ;;
-    run) printf '%s' "$f3" ;;
-    worktree) printf '%s' "$f4" ;;
-    spawned) printf '%s' "$f5" ;;
-    fallback) printf '%s' "$f6" ;;
+    name) col=1 ;;
+    provider) col=2 ;;
+    run) col=3 ;;
+    worktree) col=4 ;;
+    spawned) col=5 ;;
+    fallback) col=6 ;;
+    repo) col=7 ;;
+    *) return 0 ;;
   esac
+  IFS= read -r line <"$f" || true
+  while [ "$i" -lt "$col" ]; do
+    case "$line" in
+      *$'\t'*) line="${line#*$'\t'}" ;;
+      *) return 0 ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s' "${line%%$'\t'*}"
 }
 
 # reap_pane_records — forget the records whose pane is gone. A pane that exits
@@ -792,7 +882,7 @@ bad_knob() {
 # rebuilt from the `git wta` layout, so moving that layout cannot silently
 # leave spawn predicting a path nothing is at.
 worktree_path() {
-  git -C "${DOTFILES}" worktree list --porcelain |
+  git -C "${REPO}" worktree list --porcelain |
     awk -v b="refs/heads/$1" '/^worktree /{p=substr($0,10)} /^branch /{if($2==b){print p;exit}}'
 }
 
@@ -1085,7 +1175,7 @@ cmd_spawn() {
   dir="$(worktree_path "$branch")"
   if [ -z "$dir" ]; then
     info "creating worktree for ${branch}"
-    (cd "${DOTFILES}" && git wta "$branch") >/dev/null
+    (cd "${REPO}" && git wta "$branch") >/dev/null
     dir="$(worktree_path "$branch")"
     [ -n "$dir" ] || die "spawn: git wta ${branch} created no worktree"
     made_worktree=1
@@ -1109,7 +1199,7 @@ cmd_spawn() {
   # idempotent — an already-open checkout comes back as `already_open` with its
   # existing workspace — so only a space this call opened may be rolled back.
   local created ws pane reused
-  created="$(herdr worktree open --cwd "${DOTFILES}" --path "$dir" \
+  created="$(herdr worktree open --cwd "${REPO}" --path "$dir" \
     --label "$name" --no-focus)"
   ws="$(printf '%s' "$created" | jget "d['result']['workspace']['workspace_id']")"
   # The agent must occupy the root pane: the env below is typed into that
@@ -1123,7 +1213,7 @@ cmd_spawn() {
   tab="$(printf '%s' "$created" | jget "d['result']['workspace'].get('active_tab_id','')")"
   [ -z "$tab" ] || herdr tab rename "$tab" "$branch" >/dev/null 2>&1 || true
   if [ -z "$ws" ] || [ -z "$pane" ]; then
-    [ "$made_worktree" -eq 1 ] && git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null
+    [ "$made_worktree" -eq 1 ] && git -C "${REPO}" worktree remove --force "$dir" 2>/dev/null
     die "spawn: worktree open returned no workspace/pane id"
   fi
 
@@ -1131,8 +1221,8 @@ cmd_spawn() {
   spawn_rollback() {
     [ -n "$reused" ] || herdr workspace close "$ws" >/dev/null 2>&1 || true
     if [ "$made_worktree" -eq 1 ]; then
-      git -C "${DOTFILES}" worktree remove --force "$dir" 2>/dev/null || true
-      git -C "${DOTFILES}" branch -D "$branch" >/dev/null 2>&1 || true
+      git -C "${REPO}" worktree remove --force "$dir" 2>/dev/null || true
+      git -C "${REPO}" branch -D "$branch" >/dev/null 2>&1 || true
     fi
   }
 
@@ -1204,10 +1294,17 @@ cmd_spawn() {
   # wave as if nothing had gone wrong. Written as its own field rather than
   # folded into the provider, so the five-field records older Runs wrote still
   # parse and the ceiling still counts them.
+  #
+  # The seventh field is the repository this pane's worktree was cut from,
+  # empty when it is this checkout's own — `teardown` reads it back to know
+  # which repository's worktree to remove, falling back to `${DOTFILES}` for
+  # this field and for every six-field record older Runs wrote.
   local note=""
   [ -z "$fallback_from" ] || note=", fell back from ${fallback_from}"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
-    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$fallback_from" >"$(pane_record "$name")"
+  local record_repo=""
+  [ "$REPO" = "${DOTFILES}" ] || record_repo="$REPO"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$provider" "${run:--}" "$dir" \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$fallback_from" "$record_repo" >"$(pane_record "$name")"
 
   ok "${name} → ${pane} (${provider}${note}) in ${dir}"
 }
@@ -2266,6 +2363,10 @@ resolve_run() {
 cmd_run() {
   case "${1:-show}" in
     show)
+      if [ "${2:-}" = "--repo" ]; then
+        printf '%s\n' "${REPO}"
+        return 0
+      fi
       local run
       run="$(current_run)" || die "run: none started — team.sh run new"
       printf '%s\n' "$run"
@@ -2288,12 +2389,17 @@ cmd_run() {
       ;;
     new)
       shift
-      local plan="" run="" existing="" dir=""
+      local plan="" run="" existing="" dir="" repo_arg="" common="" checkout_common=""
       while [ $# -gt 0 ]; do
         case "$1" in
           --plan)
             [ $# -ge 2 ] || die "run: --plan needs a plan file"
             plan="$2"
+            shift 2
+            ;;
+          --repo)
+            [ $# -ge 2 ] || die "run: --repo needs a path"
+            repo_arg="$2"
             shift 2
             ;;
           *) die "run: unknown option $1" ;;
@@ -2330,6 +2436,19 @@ cmd_run() {
         printf '%s\n' "$plan" >"${dir}/plan"
         mkdir -p "${ROOT}/runs/by-plan"
         printf '%s\n' "$run" >"${ROOT}/runs/by-plan/$(plan_key "$plan")"
+      fi
+      # `--repo` binds every later shell in this Run to a project repository
+      # rather than this checkout: `repo_common_dir` refuses a submodule or a
+      # bare repository before anything is written, and the file is written
+      # only when the resolved repository is not this checkout's own — a
+      # `--repo` naming the checkout itself, by whichever path, leaves this
+      # Run looking exactly like one that never took the flag.
+      if [ -n "$repo_arg" ]; then
+        common="$(repo_common_dir "$repo_arg")" || exit 1
+        checkout_common="$(repo_common_dir "${_CHECKOUT}")" || exit 1
+        if [ "$common" != "$checkout_common" ]; then
+          printf '%s\n' "$(dirname "$common")" >"${dir}/repo"
+        fi
       fi
       ok "run ${run}"
       ;;
@@ -2368,6 +2487,10 @@ cmd_plan() {
 # `config doctor` says what this machine would have to be for a spawn to work.
 # `herdr_cfg` tells the reader which checkout to read the same way that arm
 # does: one file, one answer, whether a verb got as far as `eval` or not.
+#
+# `show`, `get`, `lint` and `env` answer for this Run's repository without a
+# `--repo`: the exported `HERDR_TEAM_REPO` above is what the reader reads, and
+# an explicit `--repo` on the command line still wins over it.
 cmd_config() { herdr_cfg "$@"; }
 
 # --- dispatch --------------------------------------------------------------
@@ -2851,17 +2974,34 @@ cmd_teardown() {
   # above can refuse, and a refusal leaves a pane that is still live and still
   # holding its provider. `settle … release` reaches this same line, so the two
   # ways a pane ends both forget it.
+  # The repository this pane's worktree came from — the pane record's own
+  # answer, since that is the only place `spawn` wrote it, falling back to
+  # `${DOTFILES}` for a record with no seventh field and for a pane no record
+  # names at all (dead by the time `pane_record` is read, or never spawned by
+  # this file).
+  local repo
+  repo="$(pane_record_field "$name" repo)"
+  [ -n "$repo" ] || repo="${DOTFILES}"
   rm -f "$(pane_record "$name")"
-  if [ -n "$cwd" ] && [ "$cwd" != "${DOTFILES}" ]; then
+  if [ -n "$cwd" ] && [ "$cwd" != "${repo}" ]; then
     if [ "$force" -eq 1 ]; then
-      git -C "${DOTFILES}" worktree remove --force "$cwd" 2>/dev/null ||
+      git -C "${repo}" worktree remove --force "$cwd" 2>/dev/null ||
         warn "worktree remove failed for ${cwd} — remove it by hand"
     else
-      git -C "${DOTFILES}" worktree remove "$cwd" 2>/dev/null ||
+      git -C "${repo}" worktree remove "$cwd" 2>/dev/null ||
         warn "worktree remove failed for ${cwd} — remove it by hand"
     fi
   fi
-  git -C "${DOTFILES}" tidy >/dev/null 2>&1 || true
+  # `tidy` is this checkout's own housekeeping alias, not a git built-in, and
+  # running it against a project repository would ask that repository for a
+  # command it has no reason to define. A foreign repo gets the plain
+  # built-in instead — `worktree prune` clears the entry teardown just
+  # removed, and nothing more.
+  if [ "$repo" = "${DOTFILES}" ]; then
+    git -C "${repo}" tidy >/dev/null 2>&1 || true
+  else
+    git -C "${repo}" worktree prune >/dev/null 2>&1 || true
+  fi
   ok "${name} torn down"
 }
 

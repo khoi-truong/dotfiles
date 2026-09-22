@@ -23,6 +23,7 @@ two are merged as an untrusted project layer, which is what fills in the
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -1003,3 +1004,117 @@ def test_expand_leaves_an_unset_reference_empty() -> None:
 def test_expand_only_rewrites_a_leading_tilde() -> None:
     assert config._expand("~/x", {"HOME": "/h"}) == "/h/x"
     assert config._expand("/a/~/b", {"HOME": "/h"}) == "/a/~/b"
+
+
+# --- the project's own repository (T-01: run-bound repo) --------------------
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        },
+    )
+
+
+def test_common_dir_of_a_non_git_path_is_none(tmp_path: Path) -> None:
+    assert config._common_dir(tmp_path) is None
+
+
+def test_common_dir_of_a_git_checkout_is_stable() -> None:
+    # Not asserting a particular string — only that a real checkout answers,
+    # and answers the same way twice, since that stability is the whole of
+    # what the comparison in `default_layers` depends on.
+    common = config._common_dir(DOTFILES)
+    assert common is not None
+    assert common == config._common_dir(DOTFILES)
+
+
+def test_default_layers_reads_the_repo_from_the_environment(tmp_path: Path) -> None:
+    # AC5/AC8's transport: `team.sh` exports `HERDR_TEAM_REPO` rather than
+    # passing `--repo` to the Python reader, so `default_layers` has to fall
+    # back to it exactly the way it falls back to `DOTFILES`.
+    from_env = config.default_layers(
+        dotfiles=DOTFILES, env={config.ENV_REPO: str(tmp_path)}
+    )
+    assert [layer.trusted for layer in from_env] == [True, True, False, False]
+    assert from_env[2].path == tmp_path / ".config/herdr/team.toml"
+    # An explicit `repo=` still wins over the environment.
+    explicit = config.default_layers(
+        dotfiles=DOTFILES, repo=DOTFILES, env={config.ENV_REPO: str(tmp_path)}
+    )
+    assert [layer.path for layer in explicit] == [
+        DOTFILES / "ai/herdr/team.toml",
+        DOTFILES / "ai/herdr/team.local.toml",
+    ]
+
+
+def test_default_layers_treats_a_worktree_as_the_same_repository(
+    tmp_path: Path,
+) -> None:
+    # The comparison is git identity, not path spelling: a linked worktree of
+    # `dotfiles` is a different directory but the same repository, and reading
+    # its `.config/herdr/` as a project layer would be reading the dotfiles'
+    # own directory back as if it belonged to someone else.
+    main_repo = tmp_path / "main"
+    main_repo.mkdir()
+    _git("init", "-q", cwd=main_repo)
+    _git("commit", "-q", "--allow-empty", "-m", "x", cwd=main_repo)
+    wt = tmp_path / "wt"
+    _git("worktree", "add", "-q", "-b", "feature", str(wt), cwd=main_repo)
+    layers = config.default_layers(dotfiles=main_repo, repo=wt, env={})
+    assert [layer.path for layer in layers] == [
+        main_repo / "ai/herdr/team.toml",
+        main_repo / "ai/herdr/team.local.toml",
+    ]
+
+
+def test_default_layers_treats_an_unrelated_repository_as_a_project(
+    tmp_path: Path,
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    _git("init", "-q", cwd=other)
+    layers = config.default_layers(dotfiles=DOTFILES, repo=other, env={})
+    assert [layer.trusted for layer in layers] == [True, True, False, False]
+    assert layers[2].path == other / ".config/herdr/team.toml"
+
+
+def test_main_repo_flag_reads_the_project_layer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # AC8: `show`, `get`, `lint` and `env` accept `--repo`, which is how
+    # `team.sh config` (via `cmd_config`) hands the reader the Run's project
+    # without every caller having to export `HERDR_TEAM_REPO` first.
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    project = tmp_path / "project"
+    (project / ".config/herdr").mkdir(parents=True)
+    (project / ".config/herdr/team.toml").write_text("[limits]\ndetect_timeout_s = 5\n")
+    assert config.main(["get", "limits.detect_timeout_s", "--repo", str(project)]) == 0
+    assert capsys.readouterr().out == "5\n"
+    assert config.main(["show", "--repo", str(project)]) == 0
+    assert "detect_timeout_s = 5" in capsys.readouterr().out
+    assert config.main(["lint", "--repo", str(project)]) == 0
+    assert config.main(["env", "--repo", str(project)]) == 0
+    assert "HERDR_TEAM_DETECT_TIMEOUT=5\n" in capsys.readouterr().out
+
+
+def test_main_repo_flag_needs_a_path(capsys: pytest.CaptureFixture[str]) -> None:
+    assert config.main(["show", "--repo"]) == 1
+    assert "--repo: needs a path" in capsys.readouterr().err
+
+
+def test_main_env_refuses_an_argument_that_is_not_repo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(config.ENV_CONFIG, str(TEAM))
+    monkeypatch.setenv("DOTFILES", str(DOTFILES))
+    assert config.main(["env", "--bad"]) == 2

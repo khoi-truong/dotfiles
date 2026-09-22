@@ -4737,6 +4737,331 @@ HERDR_TEAM_DETECT_TIMEOUT=2 loop_on 6 'exec-0001-1 spawned but is working after 
 unset FIXTURE_REF HERDR_FIXTURE_KEY
 
 echo
+echo "run new --repo: project layers"
+
+# proj_repo <name> — a real, throwaway git repository under ${TMP}, its own
+# identity for `repo_common_dir` to answer: one commit on `main`, so a worktree
+# has something to be cut from and a default branch this suite's own guards
+# would recognise. Hooks are skipped for the same reason the teardown fixtures
+# skip them — this repo does not depend on any. Printed through `pwd -P`, the
+# same normalisation case 153g reaches for: `mktemp -d` hands back a `/var/...`
+# path on macOS and `repo_common_dir` answers in the `/private/var/...` a
+# symlink resolves it to, so a caller comparing the two literally would be
+# comparing two spellings of the same directory and calling them different.
+proj_repo() {
+  local dir="${TMP}/proj-$1"
+  mkdir -p "$dir"
+  dir="$(cd "$dir" && pwd -P)"
+  git -C "$dir" init --quiet -b main
+  git -C "$dir" -c commit.gpgsign=false -c user.email=fixture@example.com \
+    -c user.name=fixture commit --quiet --no-verify --allow-empty -m "project ${1}"
+  printf '%s\n' "$dir"
+}
+
+# 166. AC3's default: a Run started with no `--repo` at all answers `run show
+#      --repo` with this checkout, exactly as `run new` always has — the flag
+#      is additive, and a Run that never took it costs nothing to read back.
+RB="$(new_run tab166)"
+if [ -n "$RB" ]; then
+  HERDR_TEAM_RUN_KEY=tab166 team_of "${TEAM}" run show --repo
+  if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "${DOTFILES}" ]; then
+    ok "166 run new with no --repo answers run show --repo with this checkout"
+  else
+    no "166 run new with no --repo answers run show --repo with this checkout" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+  fi
+else
+  no "166 run new with no --repo answers run show --repo with this checkout" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 167. AC3, bound to a project: `run new --repo` writes the repo file, and
+#      `run show --repo` reads it back — the one round trip every later gated
+#      verb in this Run relies on to find the project rather than this checkout.
+proj="$(proj_repo bound)"
+RC="$(new_run tab167 --repo "${proj}")"
+if [ -n "$RC" ]; then
+  HERDR_TEAM_RUN_KEY=tab167 team_of "${TEAM}" run show --repo
+  if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "${proj}" ]; then
+    ok "167 run new --repo binds the Run, and run show --repo reads it back"
+  else
+    no "167 run new --repo binds the Run, and run show --repo reads it back" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+  fi
+else
+  no "167 run new --repo binds the Run, and run show --repo reads it back" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 167b. A `--repo` naming this checkout itself, by whichever path, leaves the
+#       Run looking exactly like one that never took the flag: no repo file,
+#       and run show --repo still answers this checkout.
+RD="$(new_run tab167b --repo "${DOTFILES}")"
+if [ -n "$RD" ]; then
+  if [ ! -e "${HERDR_TEAM_ROOT}/runs/${RD}/repo" ]; then
+    ok "167b --repo naming this checkout writes no repo file"
+  else
+    no "167b --repo naming this checkout writes no repo file" \
+      "repo file: $(cat "${HERDR_TEAM_ROOT}/runs/${RD}/repo")"
+  fi
+else
+  no "167b --repo naming this checkout writes no repo file" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 168. AC3, refused before anything is written: a plain directory with no git
+#      identity at all.
+nongit="${TMP}/not-a-repo"
+mkdir -p "${nongit}"
+team_of "${TEAM}" run new --repo "${nongit}"
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+  grep -q 'is not a git repository' "${TMP}/err"; then
+  ok "168 run new --repo naming a plain directory is refused, nothing written"
+else
+  no "168 run new --repo naming a plain directory is refused, nothing written" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 168b. And a bare repository — nothing to grow a worktree from.
+bare="${TMP}/bare.git"
+git init --quiet --bare "${bare}"
+team_of "${TEAM}" run new --repo "${bare}"
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] && grep -q 'bare repository' "${TMP}/err"; then
+  ok "168b and a bare repository is refused the same way"
+else
+  no "168b and a bare repository is refused the same way" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 168c. And a submodule — team.sh works on the repository that owns it, not the
+#       one nested inside it. `protocol.file.allow=always` only relaxes the
+#       local-clone guard `git submodule add` otherwise applies to a file:// —
+#       there is no network here, both repos are on disk already.
+outer="$(proj_repo submodule-outer)"
+inner="$(proj_repo submodule-inner)"
+git -C "${outer}" -c protocol.file.allow=always submodule --quiet add \
+  "${inner}" sub >/dev/null 2>"${TMP}/err" || true
+if [ -f "${outer}/sub/.git" ] || [ -d "${outer}/sub/.git" ]; then
+  team_of "${TEAM}" run new --repo "${outer}/sub"
+  if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] && grep -q 'submodule' "${TMP}/err"; then
+    ok "168c and a submodule is refused, naming what it is"
+  else
+    no "168c and a submodule is refused, naming what it is" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+else
+  sk "168c and a submodule is refused, naming what it is" \
+    "git submodule add did not register: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 169. AC2: from a linked worktree of a project, `run new --repo` records the
+#      main checkout `repo_common_dir` resolves to, not the worktree it was
+#      asked from — the same identity `dirname` of a `--git-common-dir` names
+#      for every worktree of one repository.
+linkproj="$(proj_repo linked)"
+linkwt="${TMP}/proj-linked-wt"
+git -C "${linkproj}" worktree add --quiet --detach "${linkwt}" >/dev/null 2>"${TMP}/err"
+if [ -d "${linkwt}" ]; then
+  RL="$(new_run tab169 --repo "${linkwt}")"
+  if [ -n "$RL" ] &&
+    [ "$(cat "${HERDR_TEAM_ROOT}/runs/${RL}/repo" 2>/dev/null)" = "${linkproj}" ]; then
+    ok "169 run new --repo from a linked worktree records the main checkout"
+  else
+    no "169 run new --repo from a linked worktree records the main checkout" \
+      "run=${RL:-<none>} repo-file=$(cat "${HERDR_TEAM_ROOT}/runs/${RL:-x}/repo" 2>/dev/null)"
+  fi
+  git -C "${linkproj}" worktree remove --force "${linkwt}" 2>/dev/null
+else
+  sk "169 run new --repo from a linked worktree records the main checkout" \
+    "no linked worktree: $(head -1 "${TMP}/err")"
+fi
+
+# 170. AC5: a project's own team.toml sets `role.exec.max_per_run`, and once a
+#      Run is bound to it, `config get` (threaded through the Run's own repo by
+#      `cmd_config`, with no `--repo` on the command line) answers from that
+#      file rather than this checkout's shipped one.
+capproj="$(proj_repo cap)"
+mkdir -p "${capproj}/.config/herdr"
+printf '[role.exec]\nmax_per_run = 1\n' >"${capproj}/.config/herdr/team.toml"
+RP="$(new_run tab170 --repo "${capproj}")"
+if [ -n "$RP" ]; then
+  HERDR_TEAM_RUN_KEY=tab170 team_of "${TEAM}" config get role.exec.max_per_run
+  if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "1" ]; then
+    ok "170 a project's team.toml overrides role.exec.max_per_run for its own Run"
+  else
+    no "170 a project's team.toml overrides role.exec.max_per_run for its own Run" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+  fi
+
+  # 170b. And the lane cap `spawn` enforces reads the same number: staged at
+  #       its cap of 1 already-held pane, a second `exec` spawn is refused —
+  #       naming the cap this project's file set, not the shipped default of 2.
+  #       `reap_pane_records` would otherwise delete the staged record the
+  #       moment anything asks `herdr agent list`, so this section's own herdr
+  #       stub reports it live rather than reusing `loop_fresh`, which resets
+  #       every Run on disk including this one's `--repo` binding.
+  record exec-cap-1 ccd "${RP}"
+  mkdir -p "${TMP}/cap"
+  cat >"${TMP}/cap/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list")
+    printf '{"result":{"agents":[{"name":"exec-cap-1","pane_id":"wC:p1","agent_status":"working"}]}}\n'
+    ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "${TMP}/cap/herdr"
+  HERDR_TEAM_RUN_KEY=tab170 env PATH="${TMP}/cap:${PATH}" "${TEAM}" \
+    spawn exec-cap-2 --branch fixture-cap-2 --skip-provider-check \
+    >"${TMP}/out" 2>"${TMP}/err"
+  code=$?
+  if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+    grep -q 'this Run already holds 1 executor' "${TMP}/err" &&
+    grep -q 'the cap is 1 executors per Run' "${TMP}/err"; then
+    ok "170b and spawn refuses past the project's own cap of 1"
+  else
+    no "170b and spawn refuses past the project's own cap of 1" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+else
+  no "170 a project's team.toml overrides role.exec.max_per_run for its own Run" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+  sk "170b and spawn refuses past the project's own cap of 1" "run new failed"
+fi
+
+# 171. AC6: a project's untrusted layer may not set a key that is not one of
+#      limits, role.<r>.profiles/max_per_run, route, preset or
+#      fallback.<p>.to/never — here a whole new `[profile.x]` table, which is
+#      the harness/key-spending kind of key #85 reserved to trusted layers only.
+#      A gated verb refuses before anything is started, naming the file and the
+#      disallowed key.
+untrustedproj="$(proj_repo untrusted)"
+mkdir -p "${untrustedproj}/.config/herdr"
+printf '[profile.x]\nlaunch = "true"\n' >"${untrustedproj}/.config/herdr/team.toml"
+RU="$(new_run tab171 --repo "${untrustedproj}")"
+if [ -n "$RU" ]; then
+  HERDR_TEAM_RUN_KEY=tab171 team_of "${TEAM}" plan lint "${FIXTURES}/plan-ok.md"
+  if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+    grep -q 'profile\.x may not be set by an untrusted layer' "${TMP}/err" &&
+    grep -q 'nothing was started' "${TMP}/err"; then
+    ok "171 a project's untrusted layer stops a gated verb, naming the key"
+  else
+    no "171 a project's untrusted layer stops a gated verb, naming the key" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+  fi
+else
+  no "171 a project's untrusted layer stops a gated verb, naming the key" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 172. AC8: `--repo` on `config` itself answers for a project with no Run bound
+#      to it at all — the same flag the six verbs above read the Run's repo
+#      through when there is no Run to read it from.
+ac8proj="$(proj_repo ac8)"
+mkdir -p "${ac8proj}/.config/herdr"
+printf '[role.exec]\nmax_per_run = 5\n' >"${ac8proj}/.config/herdr/team.toml"
+team_of "${TEAM}" config get --repo "${ac8proj}" role.exec.max_per_run
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "5" ]; then
+  ok "172 config get --repo reads a project outside any Run"
+else
+  no "172 config get --repo reads a project outside any Run" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+fi
+
+# 172b. And inside a Run bound to this checkout itself, an explicit --repo
+#       still overrides what cmd_config would otherwise supply.
+use_run "${OTHER}" tab172b
+HERDR_TEAM_RUN_KEY=tab172b team_of "${TEAM}" config get --repo "${ac8proj}" role.exec.max_per_run
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "5" ]; then
+  ok "172b and --repo overrides a dotfiles-bound Run's own repo"
+else
+  no "172b and --repo overrides a dotfiles-bound Run's own repo" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+fi
+reset
+
+# 173. AC4: `spawn` cuts a project's worktree from the project, not this
+#      checkout, when the branch has no worktree yet — the code path the
+#      existing spawn section never reaches, because every case there
+#      pre-creates the worktree with `wt_add`. `HOME` points at a fresh
+#      directory so no personal `~/.gitconfig` `wta` alias, and no real
+#      `~/.worktrees`, can answer for the wrapper below; the wrapper answers
+#      `wta` itself and passes everything else straight through to the real
+#      git, logging `$PWD` and argv either way.
+REAL_GIT="$(command -v git)"
+ac4proj="$(proj_repo ac4)"
+mkdir -p "${TMP}/ac4" "${TMP}/ac4-wt" "${TMP}/ac4-home"
+: >"${TMP}/ac4-git-log"
+cat >"${TMP}/ac4/git" <<SH
+#!/usr/bin/env bash
+printf '%s\t%s\n' "\$PWD" "\$*" >>"${TMP}/ac4-git-log"
+if [ "\$1" = "wta" ]; then
+  branch="\$2"
+  exec "${REAL_GIT}" worktree add -b "\$branch" "${TMP}/ac4-wt/\${branch}"
+fi
+exec "${REAL_GIT}" "\$@"
+SH
+chmod +x "${TMP}/ac4/git"
+cat >"${TMP}/ac4/herdr" <<SH
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "agent list")
+    n=\$(cat "${TMP}/ac4-list-calls" 2>/dev/null || echo 0)
+    n=\$((n + 1))
+    printf '%s\n' "\$n" >"${TMP}/ac4-list-calls"
+    if [ "\$n" -ge 2 ]; then
+      printf '{"result":{"agents":[{"name":"exec-ac4-1","pane_id":"wA:p1","workspace_id":"wA:t1","agent_status":"working","cwd":"${TMP}/ac4-wt/fixture-ac4-1"}]}}\n'
+    else
+      printf '{"result":{"agents":[]}}\n'
+    fi
+    ;;
+  "worktree open")
+    printf '{"result":{"workspace":{"workspace_id":"wA:t1","active_tab_id":"wA:t1"},"root_pane":{"pane_id":"wA:p1"},"already_open":false}}\n'
+    ;;
+  "tab rename" | "pane run" | "pane send-keys" | "agent rename" | "workspace close") ;;
+  *) exit 9 ;;
+esac
+exit 0
+SH
+chmod +x "${TMP}/ac4/herdr"
+RA4="$(new_run tab173 --repo "${ac4proj}")"
+if [ -n "$RA4" ]; then
+  HERDR_TEAM_RUN_KEY=tab173 HOME="${TMP}/ac4-home" \
+    env PATH="${TMP}/ac4:${PATH}" "${TEAM}" \
+    spawn exec-ac4-1 --branch fixture-ac4-1 --skip-provider-check \
+    >"${TMP}/out" 2>"${TMP}/err"
+  code=$?
+  ac4_record_repo="$(awk -F'\t' 'NR==1{print $7}' "${HERDR_TEAM_ROOT}/state/panes/exec-ac4-1" 2>/dev/null)"
+  if [ "${code}" -eq 0 ] &&
+    [ "${ac4_record_repo}" = "${ac4proj}" ] &&
+    grep -qF "$(printf '%s\twta fixture-ac4-1' "${ac4proj}")" "${TMP}/ac4-git-log"; then
+    ok "173 spawn cuts a new worktree from the project, not this checkout"
+  else
+    no "173 spawn cuts a new worktree from the project, not this checkout" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err") | record: ${ac4_record_repo} | log: $(tr '\n' '|' <"${TMP}/ac4-git-log")"
+  fi
+
+  : >"${TMP}/ac4-git-log"
+  HERDR_TEAM_RUN_KEY=tab173 HOME="${TMP}/ac4-home" \
+    env PATH="${TMP}/ac4:${PATH}" "${TEAM}" teardown exec-ac4-1 \
+    >"${TMP}/out" 2>"${TMP}/err"
+  code=$?
+  if [ "${code}" -eq 0 ] && grep -q 'worktree prune' "${TMP}/ac4-git-log" &&
+    ! grep -q 'tidy' "${TMP}/ac4-git-log"; then
+    ok "173b and teardown prunes the project, never tidy"
+  else
+    no "173b and teardown prunes the project, never tidy" \
+      "exit ${code}: $(tr '\n' '|' <"${TMP}/err") | log: $(tr '\n' '|' <"${TMP}/ac4-git-log")"
+  fi
+else
+  no "173 spawn cuts a new worktree from the project, not this checkout" \
+    "run new failed: $(tr '\n' '|' <"${TMP}/err")"
+  sk "173b and teardown prunes the project, never tidy" "run new failed"
+fi
+reset
+
+echo
 echo "the ids"
 
 # case_ids — every id this file labels a case with, as the id and the whole

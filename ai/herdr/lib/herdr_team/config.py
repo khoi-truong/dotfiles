@@ -110,6 +110,7 @@ _NUMERIC_ENV = frozenset(
 ENV_PRESET = "HERDR_TEAM_PRESET"
 ENV_DOTFILES = "DOTFILES"
 ENV_CONFIG = "HERDR_TEAM_CONFIG"
+ENV_REPO = "HERDR_TEAM_REPO"
 
 _ROOT_KEYS = frozenset(
     {
@@ -205,6 +206,38 @@ class ConfigError(ValueError):
         super().__init__("%s: %s" % (at, reason))
 
 
+def _common_dir(path: Path) -> str | None:
+    """That path's `--git-common-dir`, absolute, or `None` when it names no
+    git checkout at all.
+
+    Two worktrees of one repository answer with the same string; a bare
+    repository, a submodule and an unrelated repository each answer with a
+    different one. Used to tell "this checkout" from "a project" by identity
+    rather than by path spelling, so a linked worktree of the dotfiles is
+    still the dotfiles and not a project of its own.
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(path),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    return out or None
+
+
 class Layer(NamedTuple):
     """One file in the stack, and whether the repository behind it is trusted.
 
@@ -246,8 +279,21 @@ def default_layers(
         Layer(where / "ai/herdr/team.toml", True),
         Layer(where / "ai/herdr/team.local.toml", True),
     ]
-    project = Path(repo or where).expanduser().resolve()
-    if project != where:
+    project = Path(repo or env.get(ENV_REPO) or where).expanduser().resolve()
+    # Compared by git identity, not by path spelling: `project` and `where`
+    # name the same repository whenever their `--git-common-dir`s agree, which
+    # is what makes a linked worktree of the dotfiles still read as the
+    # dotfiles. Neither side being a git checkout (a bare `tmp_path` in a
+    # test, say) falls back to the plain path comparison this replaces. The
+    # same path needs no `git` at all, which keeps a dotfiles Run's reads free
+    # of the two forks.
+    same = project == where
+    if not same:
+        project_common = _common_dir(project)
+        where_common = _common_dir(where)
+        if project_common is not None and where_common is not None:
+            same = project_common == where_common
+    if not same:
         layers += [
             Layer(project / ".config/herdr/team.toml", False),
             Layer(project / ".config/herdr/team.local.toml", False),
@@ -1824,6 +1870,29 @@ def _shell_defines(names: list[str], env: dict[str, str]) -> dict[str, bool] | N
 # --- the command line -------------------------------------------------------
 
 
+def _extract_repo(args: list[str]) -> tuple[list[str], str | None]:
+    """Pull a `--repo <path>` out of `args`, if there is one.
+
+    Returns the remaining arguments and the path, so a caller keeps checking
+    the rest of its own arguments for anything else it does not recognise —
+    `--repo` is not a verb-specific option, and every verb that takes it takes
+    it the same way.
+    """
+    out: list[str] = []
+    repo: str | None = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--repo":
+            if i + 1 >= len(args):
+                raise ConfigError("--repo", "needs a path")
+            repo = args[i + 1]
+            i += 2
+            continue
+        out.append(args[i])
+        i += 1
+    return out, repo
+
+
 def main(argv: list[str]) -> int:
     if not argv:
         sys.stderr.write("usage: config <env|show|get|lint|resolve|route|doctor>\n")
@@ -1831,7 +1900,8 @@ def main(argv: list[str]) -> int:
     verb, rest = argv[0], argv[1:]
     try:
         if verb == "lint":
-            findings = load().lint()
+            rest, repo = _extract_repo(rest)
+            findings = load(repo=repo).lint()
             for finding in findings:
                 print("config: %s" % finding)
             if not findings:
@@ -1850,22 +1920,28 @@ def main(argv: list[str]) -> int:
                 print("config: ok")
             return 1 if findings else 0
         if verb == "show":
+            rest, repo = _extract_repo(rest)
             unknown = [arg for arg in rest if arg != "--sources"]
             if unknown:
                 sys.stderr.write("config show: unknown option %s\n" % " ".join(unknown))
                 return 2
-            for line in load().show("--sources" in rest):
+            for line in load(repo=repo).show("--sources" in rest):
                 print(line)
             return 0
         if verb == "env":
-            for line in load().env_lines():
+            rest, repo = _extract_repo(rest)
+            if rest:
+                sys.stderr.write("usage: config env [--repo <path>]\n")
+                return 2
+            for line in load(repo=repo).env_lines():
                 print(line)
             return 0
         if verb == "get":
+            rest, repo = _extract_repo(rest)
             if len(rest) != 1:
-                sys.stderr.write("usage: config get <dotted.key>\n")
+                sys.stderr.write("usage: config get <dotted.key> [--repo <path>]\n")
                 return 2
-            config = load()
+            config = load(repo=repo)
             config.clean()
             if document_value(config.document, rest[0]) is None:
                 sys.stderr.write(
