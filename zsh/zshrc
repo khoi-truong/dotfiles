@@ -13,7 +13,7 @@
 #   ai CLIs     after mise, whose python3 their launcher cache is built with
 #   extra.zsh   machine-local, gitignored
 #
-# Profiling: `ZSH_PROFILE=1 zsh -i -c exit` prints a zprof report. See README.
+# Profiling: `ZSH_PROFILE=1 zsh -i -c exit` prints a zprof report. See docs/shell.md.
 
 [[ -n ${ZSH_PROFILE:-} ]] && zmodload zsh/zprof
 
