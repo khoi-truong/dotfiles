@@ -1,0 +1,134 @@
+# ai/providers.toml — every credential this checkout can spend, and the
+# endpoint behind it.
+#
+# One entry per thing a pane holds, not per agent CLI or per model: two
+# profiles that launch the same CLI against the same key are one entry here,
+# because they are one budget. That is the whole reason the ceiling lives on
+# this table rather than in team.toml — `HERDR_TEAM_PROVIDER_CAP` counts panes
+# per key, and a key is what an entry is.
+#
+# Three readers, all through ai/herdr/lib/providers.py:
+#   * ai/claude/providers.zsh, through the cache it regenerates, so `ccd` and
+#     the `claude-<name>` commands exist in a shell
+#   * the `credential = "<name>"` field of ai/herdr/team.toml's profiles
+#   * `team.sh config lint` and `doctor`, which check those refs resolve
+#
+# No secret is ever written down here. `key` is `env:VAR`: the value lives in
+# ai/env.local.zsh, dumped from 1Password by ai/setup.sh, or in a login this
+# file cannot see. This file is committed.
+#
+# An entry is enabled unless it says otherwise, and a disabled one is still
+# linted: turning one on is a one-word edit once its spike has passed.
+
+schema = 1
+
+# --- DeepSeek: the credential every executable Task runs on -----------------
+#
+# `env:` rather than `op://`, because `_cc_run` resolves the key on every
+# launch and an `op read` puts a biometric prompt in front of an unattended
+# pane, where it is indistinguishable from a hung spawn. 1Password stays where
+# the key is *kept*; ai/setup.sh dumps the item to ai/env.local.zsh under the
+# field label verbatim, which is where this name comes from.
+#
+# `models.default` is the only model id a profile needs, and every Claude Code
+# role — Opus and Haiku included — is served by it: the endpoint has one model
+# worth routing to, so `ANTHROPIC_DEFAULT_*_MODEL` all point at it.
+
+[provider.deepseek]
+protocol = "anthropic"
+url = "https://api.deepseek.com/anthropic"
+key = "env:CLAUDE_CODE_DEEPSEEK_API_KEY"
+models = { default = "deepseek-flash" }
+ceiling = 4
+launcher = { short = "ccd", label = "DS" }
+
+# omp holds its own DeepSeek key — one key per consumer, so either can be
+# rotated alone — and reads it through ai/omp/models.yml rather than from
+# here. The entry exists anyway: the ceiling counts panes, and an `omp` pane
+# holds this credential whether or not this file is where the key is read.
+# No `url`: nothing launches it through `cc_provider`.
+
+[provider.deepseek-omp]
+protocol = "anthropic"
+key = "env:PI_CODING_AGENT_DEEPSEEK_API_KEY"
+harnesses = ["omp"]
+ceiling = 4
+
+# --- the Pro subscription: no url, no key, only a login --------------------
+#
+# `quota` is what the fallback guard is measured against: the same cache
+# ai/claude/statusline.sh writes on every render of a Pro pane's status line
+# and ai/claude/quota-advice.sh advises from. Account-wide by design — the
+# windows are, so whichever pane rendered last refreshed them for all of them.
+# `${CLAUDE_CONFIG_DIR:-…}` and `${HOME}` are expanded by the reader, not by
+# TOML, so a `CLAUDE_CONFIG_DIR` set in the shell still wins here.
+#
+# The age past which the cache describes a window nobody is working in is a
+# judgement, not a measurement: long enough to survive a thinking pause, short
+# enough to be inside the same 5h window.
+
+[provider.anthropic-pro]
+protocol = "login"
+harnesses = ["claude"]
+ceiling = 4
+quota = { cache = "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json", max_age_s = 900 }
+
+# --- disabled until a spike says otherwise ---------------------------------
+#
+# Each of these is a credential that exists, that someone could turn on today,
+# and that nothing here has yet proved a pane can be launched on. Shipping them
+# disabled is what makes "add a provider" a config edit rather than a code
+# change: the entry, the harness and the profile are already written, and
+# enabling one is flipping `enabled` after the spike in the plan's follow-ups.
+
+# Kimi's Anthropic-compatible endpoint, reached through Claude Code — no new
+# harness, so the only unverified part is the model id and the URL.
+# https://platform.moonshot.ai/docs/guide/agent-support#claude-code
+
+[provider.kimi]
+protocol = "anthropic"
+url = "https://api.moonshot.ai/anthropic"
+key = "env:KIMI_API_KEY"
+models = { default = "kimi-k2" }
+ceiling = 4
+launcher = { short = "cck" }
+enabled = false
+
+# OpenRouter's Anthropic-compatible surface. The model id is provider/model,
+# which is OpenRouter's own naming, not the upstream's.
+# https://openrouter.ai/docs/guides/community/anthropic-agent-sdk
+
+[provider.openrouter]
+protocol = "anthropic"
+url = "https://openrouter.ai/api"
+key = "env:OPENROUTER_API_KEY"
+models = { default = "anthropic/claude-sonnet-4.5" }
+ceiling = 4
+launcher = { short = "cco" }
+enabled = false
+
+# Codex, Cursor and Copilot authenticate through their own CLI, so there is no
+# url and no key to inject — and they still need an entry, because the entry is
+# the thing a ceiling counts. Two panes on the ChatGPT login share one budget
+# the same way two `ccd` panes share one DeepSeek key.
+# https://github.com/openai/codex  (codex login)
+# https://cursor.com/docs/cli/overview  (cursor-agent login)
+# https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli  (gh auth)
+
+[provider.openai]
+protocol = "login"
+harnesses = ["codex"]
+ceiling = 4
+enabled = false
+
+[provider.cursor]
+protocol = "login"
+harnesses = ["cursor"]
+ceiling = 4
+enabled = false
+
+[provider.copilot]
+protocol = "login"
+harnesses = ["copilot"]
+ceiling = 4
+enabled = false

@@ -1,0 +1,12 @@
+# A project file routing a role onto the Pro login.
+#
+# `role.<r>.profiles` is a key an untrusted layer may set — it is how a repo
+# says its spec panes should be cheap — but `cc` is premium, and naming it is
+# the whole of the attack this rule closes: a checkout the user cloned could
+# otherwise put every spec pane on the subscription, with no `--tier-reason`
+# and no `tier:` line anywhere in the Run to account for it.
+#
+# Loaded as an untrusted layer over ai/herdr/team.toml.
+
+[role.spec]
+profiles = ["cc"]

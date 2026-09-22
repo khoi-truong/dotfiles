@@ -32,14 +32,22 @@ A role earns a pane only if it needs a different provider, a different cwd, a
 long life, or visibility. Everything else is an in-process subagent — critic,
 architect and verifier always are; for fan-out inside one pane use OMC `/team`.
 
-| Role | Pane | Provider | Location |
+| Role | Pane | Provider (from `team.toml`) | Location |
 | --- | --- | --- | --- |
 | `orchestrator` | standing | `cc` | main checkout |
 | `spec-<round>` | ephemeral | `cc` | main checkout |
 | `res-<topic>` | ephemeral | `omp` | main checkout |
 | `plan-<task>` | ephemeral | `cc` | main checkout |
-| `exec-<run-suffix>-N` | 2 live, 3 by config | `ccd` | one worktree each |
+| `exec-<run-suffix>-N` | 2 as shipped | `ccd` | one worktree each |
 | `rev-<task>` | ephemeral | `cc` | the executor's worktree |
+
+**The Provider column comes from `ai/herdr/team.toml`, not from this file.**
+Each cell is that role's `profiles` there, and the pane names, lifetimes and
+locations are its `prefix`, `lifetime` and `cwd`. The table is a reading of the
+shipped file, not a second source of truth for it: renaming what a role
+launches, or routing a kind of row to another role, is an edit to that file.
+`team.sh config show` prints what this machine resolves, and `config show
+--sources` names the layer every value came from.
 
 **A suffix means there can be more than one of me.** `orchestrator` is bare
 because it is singular, and the only standing role. There is no standing
@@ -47,13 +55,19 @@ because it is singular, and the only standing role. There is no standing
 artifact, and settles. A long-lived planning pane's only asset is accumulated
 context, which rule 5 already says to distrust.
 
-Pool roles match by prefix, and two limits bound them. **Per Run: 2
-executors** — the discipline limit, so one tab cannot take the machine, and the
-number a plan's width is read against. **Per provider, across every Run: 4
-panes** — the resource limit, because what is contended is auth: one DeepSeek
-key, one Pro login, and every tab on the machine shares it. One machine-wide
-count of executors did both jobs badly — a `cc` pane refused because two `ccd`
-panes are live is a refusal with no resource behind it.
+Pool roles match by prefix, and two limits bound them — numbers in those files,
+not here. **Per Run: a role's own `max_per_run`** (2 on `role.exec` and 1 on
+`role.review` as shipped, and a role that states none — `spec`, `plan`,
+`research` — is bounded by the credential's ceiling alone, which is why the
+bound sits beside the role rather than in one global knob; `HERDR_TEAM_EXEC_CAP`
+is the environment's word on the exec lane's number) — the discipline limit, so
+one tab cannot take the machine, and the number a plan's width is read against. **Per provider,
+across every Run: one credential's `ceiling` in `ai/providers.toml`** (4 as
+shipped, and `HERDR_TEAM_PROVIDER_CAP` over every ceiling) — the resource
+limit, because what is contended is auth: one DeepSeek key, one Pro login, and
+every tab on the machine shares it. One machine-wide count of executors did
+both jobs badly — a `cc` pane refused because two `ccd` panes are live is a
+refusal with no resource behind it.
 
 Executor names carry the Run's `hhmmss` as their suffix — a readability
 convention, not an enforced one, so a status table spanning three orchestrators
@@ -93,22 +107,29 @@ cheap tier is safe wherever a command catches a wrong answer. The orchestrator
 routes rather than judges, so it is never the most expensive thing running.
 Table in `references/cost.md`.
 
-A plan row states its tier in `provider` and, when that is `cc`, why in
-`tier_reason` — a task that shapes later work, a spec, or a review. `plan lint`
-warns on a `cc` row without one and `spawn --provider cc` refuses it, so the
-question is answered by the plan's author rather than by whoever is spawning
-under quota pressure.
+A plan row names a profile when it has one, and `ai/herdr/team.toml`'s
+`[[route]]` table places it otherwise — so which tier a row runs on is the route
+table's answer rather than a name repeated here. What a row owes is
+`tier_reason`, and the profile says whether it is owed: `requires_reason = true`
+on `[profile.cc]` is what makes `plan lint` warn on a row that has a `verify`
+and no reason, and what makes `spawn` refuse one. A task that shapes later work,
+a spec, or a review is what that reason says; the question is answered by the
+plan's author rather than by whoever is spawning under quota pressure.
 
-A `ccd` spawn whose key is missing may fall back to `cc`, and only inside a
-bounded Pro window: under 70% of the 5h window, read from the cache
-`ai/claude/quota-advice.sh` advises from and fresh enough to describe the
-window it names. Unknown is not headroom — a missing or stale cache is a gate
-for a human, not a fallback. **`omp` is never that fallback**: it is a
-different agent spending a DeepSeek key of its own (`ai/omp/models.yml`), so
+The fallback is a line of that file too: `[fallback.ccd]` states
+`to = ["cc"]`, `on = ["key-missing"]`, and
+`guard = { credential = "anthropic-pro", quota_max_pct = 70 }`. So a `ccd`
+spawn whose key is missing may fall back to `cc`, and only inside a bounded Pro
+window: under 70% of the 5h window, read from the quota cache that credential's
+block in `ai/providers.toml` names, fresh enough to describe the window it
+names. Unknown is not headroom — a missing or stale cache is a gate for a
+human, not a fallback. **`omp` is never that fallback**, and the same table
+says so: `never = ["omp"]`, which `config lint` checks against the chain. It is
+a different agent spending a DeepSeek key of its own (`ai/omp/models.yml`), so
 it relieves nothing the fallback exists to relieve. Any fallback is written to
 the pane record and to the Run's `.providers` note: `status` reads the record
-back as `ccd→cc`, and `report` lists it from the note, which outlives the pane
-`release` deletes.
+back as `ccd→cc` — the profile it asked for, then the one it got — and `report`
+lists it from the note, which outlives the pane `release` deletes.
 
 ## Reviewing a PR
 
@@ -139,9 +160,19 @@ Per PR, in this order:
 ## Tooling
 
 `ai/herdr/team.sh` — `run`, `spawn`, `dispatch`, `status`, `collect`, `wait`,
-`loop`, `report`, `surface`, `plan`, `settle`, `teardown`; `prefix+alt+t` shows the status table.
+`loop`, `report`, `surface`, `plan`, `settle`, `teardown`, `config`;
+`prefix+alt+t` shows the status table.
 The script owns topology, this skill owns the protocol, and the flags and exit
 codes are stated once, in `references/herdr-adapter.md`.
+
+`config` is the verb for the settings themselves, and the settings are
+`ai/herdr/team.toml` — the shipped file, then `ai/herdr/team.local.toml` beside
+it for this machine. `config lint` says they resolve at all: a profile nothing
+can launch, a fallback that cycles, a value that is not a key. `config doctor`
+reports what is not an error (this shell's provider against the orchestrator's
+role). `config show` prints the resolved keys, and `--sources` the layer each
+value came from. `HERDR_TEAM_CONFIG=<file>` replaces every layer, which is the
+way back from a local file that will not parse.
 
 Only `team.sh` starts an agent: it is the only place that knows `cc` and `ccd`
 are shell functions rather than binaries, which is what keeps work off the

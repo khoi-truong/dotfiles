@@ -13,8 +13,8 @@
 # silently bills the Pro plan. Every spawn here goes through
 # `zsh -ic <wrapper>` instead, and the provider is asserted afterwards.
 #
-#   team.sh spawn <name> --branch <b> [--provider ccd|cc|omp] [--tier-reason <text>]
-#   team.sh spawn exec-<run-suffix>-N --branch <b>   # 2 per Run, 4 on one provider
+#   team.sh spawn <name> --branch <b> [--provider <profile>] [--tier-reason <text>]
+#   team.sh spawn exec-<run-suffix>-N --branch <b>   # caps: team.sh config get role.exec.max_per_run
 #   team.sh dispatch <name> --task T-nn [--dispatch D-nn] [--dry-run] [text]
 #   team.sh dispatch <name> --task T-nn --from-plan <plan.md> [--force]
 #   team.sh run [new [--plan <plan.md>] | show | resolve <plan.md> | list]
@@ -25,6 +25,7 @@
 #   team.sh loop --plan <plan.md> [--max-waves <n>] [--timeout <ms>] [--spawn <branch-prefix>]
 #   team.sh surface <name>
 #   team.sh plan lint <plan.md>
+#   team.sh config [show [--sources] | get <key> | lint | doctor]
 #   team.sh settle <name> <reuse|retain|release> [--clear]
 #   team.sh teardown <name> [--force | --abandon-only]
 #
@@ -71,6 +72,109 @@ herdr_py() {
   PYTHONPATH="${HERDR_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 "$@"
 }
 
+# The checkout the configuration is read from, which is the one this file is in
+# and not necessarily `${DOTFILES}`. Those name the same directory wherever
+# team.sh is run the way it is meant to be — out of the checkout `DOTFILES`
+# points at — and they part company the moment they do not: `~/.zshrc` exports
+# `DOTFILES=${HOME}/.dotfiles`, so a team.sh run out of a linked worktree would
+# otherwise read the *main* checkout's `ai/herdr/team.toml` and answer for
+# defaults that are not the branch's. The tree read has to be the tree running,
+# which is why `herdr_py` above resolves its package from `_self` too — and why
+# the path every other path here is relative to (lib/common.sh, the state root,
+# the worktrees `spawn` cuts) keeps coming from `DOTFILES`, which is the
+# checkout the Run it belongs to actually lives in.
+_CHECKOUT="$(cd "$(dirname "${_self}")/../.." && pwd)"
+
+# Before the configuration is read, because reading it is a `python3` the
+# `command not found` at line one of it would otherwise explain badly.
+command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
+command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
+
+# The floor under that python3, run *by* it in front of the module each verb
+# needs: the reader is stdlib `tomllib`, which 3.11 added, so an older python3
+# fails on the import with a `No module named` that names the wrong thing.
+# Prefixed rather than probed, so the version costs no fork of its own: `herdr_cfg`
+# below is the only way a reader is launched, and the configuration read — the
+# fork every verb already paid before it could do anything — now pays for this
+# too.
+#
+# Deliberately old-syntax python: `%` rather than an f-string, no `sys.exit`
+# message, nothing a 3.9 could not evaluate, because an interpreter that cannot
+# parse this is an interpreter that cannot report how old it is. Exit 3 is the
+# gate's own code — `herdr_team.config` does not use it — so the caller can tell
+# "your python is too old" from "your configuration does not resolve" without
+# reading stderr back.
+_PY_GATE='
+import sys
+if sys.version_info < (3, 11):
+    sys.stderr.write(
+        "team.sh: needs python3 >= 3.11 (mise provides it); found %d.%d\n"
+        % sys.version_info[:2]
+    )
+    raise SystemExit(3)
+'
+
+# _PY_GATE's other half, and the one place the reader is launched from: `-c`
+# rather than `-m`, because `-m` cannot carry anything in front of the module it
+# names. `DOTFILES` is set here for the reason it always was — the reader
+# resolves its layers against that name, and `_CHECKOUT` is the checkout this
+# file is in.
+herdr_cfg() {
+  DOTFILES="${_CHECKOUT}" herdr_py -c "${_PY_GATE}
+from herdr_team import config
+raise SystemExit(config.main(sys.argv[1:]))" "$@"
+}
+
+# --- the knobs -------------------------------------------------------------
+#
+# Every knob below is a value in ai/herdr/team.toml, resolved by the reader in
+# ai/herdr/lib/herdr_team/config.py and read here in one `eval`. The names in
+# the environment still win: the reader emits a name already set there with its
+# own value, untouched, so `HERDR_TEAM_EXEC_CAP=3 team.sh …` behaves as it
+# always did — and `HERDR_TEAM_PRO_FALLBACK_MAX=70%` still reaches `bad_knob`
+# below, where the gate that is named after it lives, rather than being
+# corrected into a number here.
+#
+# Fail closed. A layer that will not parse, a key the schema does not know, an
+# override that is not a whole number: the reader exits non-zero naming the
+# file and line, and this stops on that message rather than starting a pane on
+# defaults nobody chose. Two things cannot be gated on the configuration
+# resolving — `config`, the verb that explains a broken one, and the usage
+# anyone reads while fixing it — and they are why this is a case and not an
+# unconditional load.
+#
+# `DOTFILES` is set on the reader rather than merely inherited: the reader
+# resolves its layers against that name, and `_CHECKOUT` is the checkout this
+# file is in. Nothing is exported — the assignments here last as long as the
+# command does — so the shell's own `DOTFILES` is still the one every path
+# below is relative to.
+#
+# Two knobs are read first and held under names of their own, because the reader
+# emits a name already set in the environment with its own value untouched and
+# the `eval` below would leave this shell unable to tell the caller's word from
+# the file's. They are not the same statement either way:
+#
+#   `HERDR_TEAM_EXEC_CAP` — the caller's is this Run saying it can carry one more
+#   executor, where the file's is the bound written beside the role. A lane's
+#   bound is `lane_bound`'s to answer, and this is the reading it needs.
+#
+#   `HERDR_TEAM_PRO_FALLBACK_MAX` — the caller's is a decision made for this
+#   spawn, where the emitted one is the guard on the profile's own fallback.
+_ENV_EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-}"
+_ENV_PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-}"
+case "${1:-}" in
+  config | -h | --help | help | "") ;;
+  *)
+    _cfg="$(herdr_cfg env)" || {
+      _rc=$?
+      [ "${_rc}" -eq 3 ] \
+        || printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+      exit "${_rc}"
+    }
+    eval "${_cfg}"
+    ;;
+esac
+
 # The state root: every Run this checkout has started, and the pointer naming
 # the one this shell is in. Deliberately not `${DOTFILES}/.omc`, which is OMC's
 # own root: an agent writes OMC artifacts of its own under it, and a Run's
@@ -82,21 +186,14 @@ herdr_py() {
 #   runs/<run-id>/        the Run: its handoffs, and the plan it was cut from
 #   runs/by-plan/<sha1>   plan path → the Run that plan started
 #
-# Overridable, so a test run can point the whole script at a throwaway
-# directory instead of reading and writing live state.
+# `paths.root`, and then `[limits]`. The `:-` is a fallback and not the default:
+# if the reader ever stops emitting a name, the short name is still bound and
+# `set -u` does not turn a missing knob into a crash mid-wave. A test run points
+# the root at a throwaway directory, which is the same override it always was.
 ROOT="${HERDR_TEAM_ROOT:-${DOTFILES}/.herdr}"
-# Detection took ~4s in testing; 60s covers a cold start plus an `op read`.
-DETECT_TIMEOUT=60
-
-# Two limits, because one number was doing two jobs.
-#
-# `EXEC_CAP` is the discipline limit: how many executors one orchestrator may
-# hold at once. It stops a single tab from taking the whole machine, and it is
-# the number a plan's width is read against. Counted over the panes *this Run*
-# holds — the agents its journal names, plus the panes it spawned and has not
-# dispatched to yet — so one tab cannot hand out a third executor and another
-# tab's executors are not its business.
-EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
+DETECT_TIMEOUT="${HERDR_TEAM_DETECT_TIMEOUT:-60}"
+HANDOFF_MAX="${HERDR_TEAM_HANDOFF_MAX:-150}"
+CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
 
 # `PROVIDER_CAP` is the machine ceiling: how many panes may be live on one
 # provider across every Run. The resource is the credential, not the executor —
@@ -113,23 +210,44 @@ EXEC_CAP="${HERDR_TEAM_EXEC_CAP:-2}"
 # provider's load rather than ignored: what such a pane holds is exactly what
 # is not known, so the error goes the way of a refusal that could have been
 # allowed, never of a key that runs out.
-PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-4}"
+#
+# The number itself is the credential's `ceiling =` in ai/providers.toml, not a
+# constant here: the budget belongs to the entry, two profiles on one key share
+# it, and a number beside each profile would be two ideas of one budget.
+# `HERDR_TEAM_PROVIDER_CAP` overrides every one of them at once, which is what
+# makes it a ceiling for the machine rather than a quieter second opinion about
+# one entry. Unset, the file answers; an entry that states no ceiling is refused
+# rather than guessed at — see `provider_ceiling`, and `config resolve profiles`
+# for the table this reads it from.
+PROVIDER_CAP="${HERDR_TEAM_PROVIDER_CAP:-}"
 
 # `ccd` is the tier every executable task runs on, so the one case that has to
 # be decided is what a spawn does when the key it needs is not there. Falling
 # back to the Pro login is the alternative that costs money, so it is bounded:
 #
-# `PRO_FALLBACK_MAX` is the 5h window, in percent, a fallback is allowed at.
-# Measured against the same cache `ai/claude/quota-advice.sh` advises from, and
-# below quota-advice's own "Prefer ccd ... on Pro" threshold of 50% on purpose —
-# the further the window is from full, the cheaper the mistake.
+# `PRO_FALLBACK_MAX` is the 5h window, in percent, a fallback is allowed at —
+# `fallback.ccd.guard.quota_max_pct` in team.toml, since the window belongs to
+# the credential the guard is measured against and not to this file. Measured
+# against the same cache `ai/claude/quota-advice.sh` advises from, and below
+# quota-advice's own "Prefer ccd ... on Pro" threshold of 50% on purpose — the
+# further the window is from full, the cheaper the mistake. Overridden in the
+# environment, it is emitted back untouched and reaches `bad_knob`, which is
+# where "70% is not a whole number" is said.
+#
+# This is the floor and not the answer for a spawn: `spawn` asks the profile it
+# resolved, which states the guard on its own fallback, so a profile guarded
+# more tightly than the one the reader picked for this name falls back less. What
+# is left here is the number for a config that guards nothing, and the `:-` for a
+# reader that emitted nothing at all.
 PRO_FALLBACK_MAX="${HERDR_TEAM_PRO_FALLBACK_MAX:-70}"
 
 # The cache `ai/claude/statusline.sh` writes on every render of a Pro session's
 # status line, and `ai/claude/quota-advice.sh` reads. Account-wide by design:
 # the windows are, so whichever pane rendered last refreshed them for all of
-# them. `HERDR_TEAM_PRO_QUOTA_CACHE` exists for the tests, which must not have
-# the fallback's answer depend on how much of this machine's window is spent.
+# them. Both this and the age below are the Pro credential's `[quota]` table in
+# ai/providers.toml; `HERDR_TEAM_PRO_QUOTA_CACHE` exists for the tests, which
+# must not have the fallback's answer depend on how much of this machine's
+# window is spent.
 PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json}"
 
 # How old that cache may be and still describe the window it names. The status
@@ -139,22 +257,6 @@ PRO_QUOTA_CACHE="${HERDR_TEAM_PRO_QUOTA_CACHE:-${CLAUDE_CONFIG_DIR:-${HOME}/.cla
 # number is a judgement, not a measurement: it is long enough to survive a
 # thinking pause and short enough to be inside the same 5h window.
 PRO_QUOTA_MAX_AGE="${HERDR_TEAM_PRO_QUOTA_MAX_AGE:-900}"
-
-# protocol.md states the cap on a handoff — "over 150 lines is a defect" — and
-# nothing has ever checked it. `report` counts them. A count rather than a
-# refusal, because by the time anyone could object the handoff is already
-# written and is the only record of what the agent did.
-HANDOFF_MAX=150
-
-# How long a clear may spend proving the pane took its name back. A rename that
-# holds answers on the first read pair, so this is only ever reached by a pane
-# that lost its name — and spending it there buys the difference between a
-# nameless pane and a recorded decision that says one is ready to dispatch to.
-# Overridable so a test can drive the expiry without waiting it out.
-CLEAR_CONFIRM_TIMEOUT="${HERDR_TEAM_CLEAR_CONFIRM_TIMEOUT:-15}"
-
-command -v herdr >/dev/null 2>&1 || die "herdr not found — see README."
-command -v python3 >/dev/null 2>&1 || die "python3 not found (mise/global.toml pins it)."
 
 # --- helpers ---------------------------------------------------------------
 
@@ -217,36 +319,40 @@ agent_field() {
     "next((a.get('$2','') for a in d['result']['agents'] if a.get('name')=='$1'), '')"
 }
 
-# exec_live — the executors live right now, one name per line. Every Run's, not
-# this one's: it is the pool a Dispatch can be seated on, and `exec_held` is
-# what narrows it to the panes one Run is answerable for. A name this repo
-# never minted is still counted, because a pane still running work costs what
-# it costs however it was named; the count is on panes, not on the spelling.
-# Empty output when there are none, so a caller can loop over it.
-#
-# `or ''` because herdr reports a pane whose title was cleared with a null name,
-# which would otherwise be an AttributeError rather than the not-an-executor it
-# is. Whether the key is missing or null differs between panes; both mean the
-# same thing here.
-exec_live() {
-  local names
-  names="$(herdr agent list 2>/dev/null |
-    jget "','.join(a['name'] for a in d['result']['agents'] if (a.get('name') or '').startswith('exec-'))")"
-  [ -n "$names" ] || return 0
-  printf '%s\n' "$names" | tr ',' '\n'
-}
-
 # panes_live — every named pane, one per line. The provider ceiling counts
 # credentials rather than executors, and a `rev-` or `spec-` pane holds one
-# too, so it reads the whole pool where `exec_live` reads a subset. A pane
+# too, so it reads the whole pool where `lane_live` reads one lane. A pane
 # herdr is showing with no name at all is not here: nothing can address it, so
 # there is no key to look a record up under.
+#
+# `or ''` because herdr reports a pane whose title was cleared with a null name,
+# which would otherwise be an AttributeError rather than the no-pane it is.
+# Whether the key is missing or null differs between panes; both mean the same
+# thing here.
 panes_live() {
   local names
   names="$(herdr agent list 2>/dev/null |
     jget "','.join((a.get('name') or '') for a in d['result']['agents'])")"
   [ -n "$names" ] || return 0
   printf '%s\n' "$names" | tr ',' '\n' | grep .
+}
+
+# lane_live <lane> — the panes of that lane live right now, one name per line.
+# Every Run's, not this one's: it is the pool a Dispatch can be seated on, and
+# `lane_held` is what narrows it to the panes one Run is answerable for. A name
+# this repo never minted is still counted, because a pane still running work
+# costs what it costs however it was named; the count is on panes, not on the
+# spelling. Empty output when there are none, so a caller can loop over it.
+#
+# The lane is the name prefix — `exec-2`, `rev-t-01` — which is the only thing
+# about a pane this file can read without asking it anything. Narrowed from
+# `panes_live` rather than asked of herdr again: the question is the same one,
+# and `grep` cannot disagree with the list it was handed.
+lane_live() {
+  local names
+  names="$(panes_live | grep "^${1}-" || true)"
+  [ -n "$names" ] || return 0
+  printf '%s\n' "$names"
 }
 
 # count_lines — how many non-empty lines arrived on stdin. `wc -l` and
@@ -308,23 +414,114 @@ reap_pane_records() {
   return 0
 }
 
-# provider_load_for <provider> — what that provider's ceiling would be measured
-# against: `<count>|<recorded panes>|<unrecorded panes>`, names
-# space-separated. The unrecorded panes are in the count as well as in their own
-# list, because a pane whose provider is unknown may be holding the credential
-# being asked about and there is no way to show otherwise.
+# The profile table: `name<TAB>credential<TAB>ceiling<TAB>reset` a profile, the
+# whole inventory in one call. It exists because the ceiling's two halves live
+# under different names — `ceiling =` belongs to the credential, while every
+# pane record, every message and every plan row in this file names a *profile* —
+# so counting one credential's panes means knowing which profiles spend it, and
+# a lookup per pane would fork per pane. The reset is in the same table for the
+# same shape of reason: `settle` holds a record, not a profile.
+#
+# Read lazily and held: a shell that never asks about a ceiling never forks for
+# it. Held rather than re-read, because the answer cannot change under a spawn
+# that has already decided what to launch, and because a `$(…)` lookup cannot
+# write back to the shell that asked — so the shell that loads it is the shell
+# whose `$(…)` calls can read it warm.
+_PROFILE_TABLE=""
+profile_table_load() {
+  [ -n "$_PROFILE_TABLE" ] && return 0
+  if ! _PROFILE_TABLE="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config resolve profiles)"; then
+    _PROFILE_TABLE=""
+    return 1
+  fi
+  return 0
+}
+
+# provider_table — load it, or refuse in the shell that asked. Every ceiling
+# question starts here rather than inside the loader, because a `die` inside a
+# `$(…)` exits the subshell and a refusal that cannot stop its caller is not a
+# refusal.
+provider_table() {
+  profile_table_load ||
+    die "team.sh: the profile table does not resolve — nothing was started"
+}
+
+# table_row <profile> — that profile's four columns, tab-separated, or nothing
+# for a profile the table does not place. `awk` over a string already in memory:
+# a fork, not a reader.
+table_row() {
+  printf '%s\n' "$_PROFILE_TABLE" | awk -F'\t' -v p="$1" '$1 == p {print; exit}'
+}
+
+# table_col <column> <profile> — one of those columns, empty when the profile is
+# not there or the column is. 2 is the credential, 3 the ceiling, 4 the reset.
+table_col() {
+  printf '%s\n' "$_PROFILE_TABLE" | awk -F'\t' -v p="$2" -v c="$1" '$1 == p {print $c; exit}'
+}
+
+# profiles_on <credential> — `|a|b|`, every profile that spends it, the shape a
+# `case` matches without forking. `|` because no profile name holds one, and a
+# trailing `|` even when none do, so `*"|x|"*` cannot match the empty set.
+profiles_on() {
+  printf '%s\n' "$_PROFILE_TABLE" |
+    awk -F'\t' -v c="$1" '$2 == c {s = s "|" $1} END {printf "%s|\n", s}'
+}
+
+# profiles_off <credential> — the same shape for every profile that does not
+# spend it. One call decides which panes *cannot* be holding the credential
+# being asked about, which is what keeps a pane on another key from being
+# counted as unknown and every spawn counting panes that are none of its
+# business.
+profiles_off() {
+  printf '%s\n' "$_PROFILE_TABLE" |
+    awk -F'\t' -v c="$1" '$2 != c {s = s "|" $1} END {printf "%s|\n", s}'
+}
+
+# in_set <"|a|b|"> <name> — whether that name is one of them.
+in_set() {
+  case "$1" in
+    *"|$2|"*) return 0 ;;
+  esac
+  return 1
+}
+
+# provider_cap <profile> — the number of panes that profile's credential may
+# hold: `HERDR_TEAM_PROVIDER_CAP` when it is set, since a ceiling only some
+# entries obeyed would be no ceiling at all, and otherwise the `ceiling =` of
+# the entry the profile spends. Empty when neither says, which the callers
+# refuse: a number nobody wrote down is not headroom.
+provider_cap() {
+  if [ -n "$PROVIDER_CAP" ]; then
+    printf '%s\n' "$PROVIDER_CAP"
+    return 0
+  fi
+  table_col 3 "$1"
+}
+
+# provider_load_for <profile> — what that profile's ceiling is measured against:
+# `<count>|<recorded panes>|<unrecorded panes>`, names space-separated. The count
+# is over every pane holding the *credential* the profile spends, not the panes
+# whose record names this profile: two profiles on one key are one budget, and
+# the record carries the profile because that is what a launch, a status column
+# and a Dispatch name. The unrecorded panes are in the count as well as in their
+# own list, because a pane whose provider is unknown may be holding the
+# credential being asked about and there is no way to show otherwise — and so is
+# a pane whose provider no entry places, which is the same unknown one step on.
 provider_load_for() {
-  local want="$1" p name n=0 rec="" unk=""
+  local want="$1" p="" name="" n=0 rec="" unk="" on="" off="" cred=""
+  cred="$(table_col 2 "$want")"
+  on="$(profiles_on "$cred")"
+  off="$(profiles_off "$cred")"
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     p="$(pane_record_field "$name" provider)"
     [ -n "$p" ] || p=unknown
-    if [ "$p" = "$want" ]; then
-      n=$((n + 1))
-      rec="${rec:+${rec} }${name}"
-    elif [ "$p" = unknown ]; then
+    if [ "$p" = unknown ] || { ! in_set "$on" "$p" && ! in_set "$off" "$p"; }; then
       n=$((n + 1))
       unk="${unk:+${unk} }${name}"
+    elif in_set "$on" "$p"; then
+      n=$((n + 1))
+      rec="${rec:+${rec} }${name}"
     fi
   done <<<"$(panes_live)"
   # `|` rather than a tab: a tab is IFS whitespace, so `read` collapses a run of
@@ -334,22 +531,33 @@ provider_load_for() {
   printf '%s|%s|%s\n' "$n" "$rec" "$unk"
 }
 
-# provider_ceiling <provider> — refuse when one more pane on that provider would
-# take the machine past the ceiling. Its own function because a spawn asks about
-# two providers when it falls back: the one it was told to use, and the one it
-# ends up using.
+# provider_ceiling <profile> — refuse when one more pane holding that profile's
+# credential would take the machine past the ceiling. Its own function because a
+# spawn asks about two profiles when it falls back: the one it was told to use,
+# and the one it ends up using.
 provider_ceiling() {
-  local p="$1" load="" rec="" unk="" holds=""
+  local p="$1" cred="" cap="" load="" rec="" unk="" holds="" noun="panes"
+  provider_table
+  cred="$(table_col 2 "$p")"
+  [ -n "$cred" ] ||
+    die "spawn: unknown provider ${p} — a provider is a profile in ai/herdr/team.toml, and no layer defines this one"
+  cap="$(provider_cap "$p")"
+  [ -n "$cap" ] ||
+    die "spawn: ai/providers.toml states no ceiling for ${cred}, which ${p} spends — write one there, or set HERDR_TEAM_PROVIDER_CAP to hold every credential to one number."
   reap_pane_records
   IFS='|' read -r load rec unk <<<"$(provider_load_for "$p")"
-  if [ "$load" -ge "$PROVIDER_CAP" ]; then
+  if [ "$load" -ge "$cap" ]; then
     holds="${rec:-none}"
     [ -z "$unk" ] || holds="${holds} and ${unk} with no provider record"
-    die "spawn: ${load} panes count against ${p}'s ceiling (${holds}) — the ceiling is ${PROVIDER_CAP} panes on one provider across every Run (HERDR_TEAM_PROVIDER_CAP); settle one, or raise it if that credential can carry another."
+    # `1 panes count against` is the sentence a reader stops trusting; the
+    # count is the only thing that varies, so the noun follows it.
+    [ "$load" -ne 1 ] || noun="pane"
+    die "spawn: ${load} ${noun} count against ${p}'s ceiling (${holds}) — the ceiling is ${cap} panes on one provider across every Run, the ${cred} entry in ai/providers.toml (HERDR_TEAM_PROVIDER_CAP overrides every ceiling); settle one, or raise it if that credential can carry another."
   fi
 }
 
-# exec_held <run> — the executors that Run is holding, one name per line.
+# lane_held <run> <lane> — the panes of that lane Run is holding, one name per
+# line.
 #
 # Two sources, because a Run can hold a pane before it has dispatched to it: the
 # journal names the agents its Dispatches went to, and the pane record names the
@@ -361,12 +569,12 @@ provider_ceiling() {
 # A pane another Run spawned and this one then dispatched to counts for both.
 # That is conservative in the direction that matters and it matches the remedy:
 # anybody can settle it.
-exec_held() {
-  local run="$1" f name mine="" journal=""
+lane_held() {
+  local run="$1" lane="$2" name mine="" journal=""
   [ -n "$run" ] || return 0
   journal="$(handoffs_dir "$run")/.dispatched"
   if [ -f "$journal" ]; then
-    mine="$(awk -F'\t' -v r="$run" '$1==r && $4 ~ /^exec-/ {print $4}' "$journal" | sort -u)"
+    mine="$(awk -F'\t' -v r="$run" -v l="$lane" '$1==r && $4 ~ "^" l "-" {print $4}' "$journal" | sort -u)"
   fi
   while IFS= read -r name; do
     [ -n "$name" ] || continue
@@ -374,7 +582,124 @@ exec_held() {
       printf '%s\n' "$mine" | grep -qxF "$name"; then
       printf '%s\n' "$name"
     fi
-  done <<<"$(exec_live)"
+  done <<<"$(lane_live "$lane")"
+}
+
+# The role table: one `lane<TAB>role<TAB>max_per_run` line per role that both
+# states a bound and has a prefix, the whole set in one call. It exists because
+# the bound is written per *role* and the thing being bounded is a *lane*:
+# `role.review` is prefix `rev-` with `max_per_run = 1`, which is the line
+# `rev	review	1`, and a wave asking how many `rev-` panes one Run may hold is
+# asking that line's third column. The bound travels with the role that names
+# the lane, so a lane added to `team.toml` — a new prefix, a new
+# `max_per_run` — is bounded without a line here. A role that states no bound is
+# absent rather than zero: no number is not "no panes", it is the credential's
+# ceiling being the only bound, which is how `spec`, `plan` and `research` ship.
+#
+# Read lazily and held, for the reason the profile table is: `spawn` asks once
+# per pane and a wave asks once per pool, and a `$(…)` cannot warm the shell
+# that made it. Held under a flag of its own rather than by being non-empty,
+# because a config whose roles all state no bound resolves to an empty table,
+# and that is an answer rather than a miss.
+_LANE_TABLE=""
+_LANE_TABLE_READ=0
+lane_table_load() {
+  [ "$_LANE_TABLE_READ" -eq 1 ] && return 0
+  local doc=""
+  if ! doc="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config show)"; then
+    _LANE_TABLE=""
+    return 1
+  fi
+  # `show` prints `key = value`, so the prefix is matched to the number through
+  # the role name in the key rather than by position — and the prefix is printed
+  # without its trailing `-`, which is what `spawn` reads off a pane name
+  # (`${name%%-*}`) and what the wave's pools are spelled with.
+  _LANE_TABLE="$(printf '%s\n' "$doc" | awk -F' = ' '
+    /^role\.[^.]+\.max_per_run = / {
+      r = $1; sub(/^role\./, "", r); sub(/\.max_per_run$/, "", r); cap[r] = $2
+    }
+    /^role\.[^.]+\.prefix = / {
+      r = $1; sub(/^role\./, "", r); sub(/\.prefix$/, "", r); prefix[r] = $2
+    }
+    END {
+      for (r in cap) {
+        lane = prefix[r]
+        if (lane == "") continue
+        sub(/-$/, "", lane)
+        print lane "\t" r "\t" cap[r]
+      }
+    }
+  ')"
+  # Set once there is a table, so a reader that would not resolve is retried by
+  # the next caller rather than remembered as "no role states a bound" — which
+  # is the answer that refuses nobody.
+  _LANE_TABLE_READ=1
+  return 0
+}
+
+# lane_table — load it, or refuse in the shell that asked. The shape of
+# `provider_table`, for the same reason: a `die` inside a `$(…)` exits the
+# subshell and a refusal that cannot stop its caller is not a refusal.
+lane_table() {
+  lane_table_load ||
+    die "team.sh: the role table does not resolve — nothing was started"
+}
+
+# lane_col <column> <lane> — one column of that lane's line: 2 is the role, 3
+# the bound. Empty for a lane no role bounds, which callers refuse rather than
+# read as zero.
+lane_col() {
+  printf '%s\n' "$_LANE_TABLE" | awk -F'\t' -v l="$2" -v c="$1" '$1 == l {print $c; exit}'
+}
+
+# lane_bound <lane> — `<number><TAB><where it came from>`, the number empty when
+# nothing bounds that lane.
+#
+# The number is the role's `max_per_run`: how many panes of that lane one Run
+# may hold, stated beside the role so that a lane's bound is a line of
+# `team.toml` rather than a constant in this file. The exec lane has a second
+# name for the same number — the caller's `HERDR_TEAM_EXEC_CAP`, whose value the
+# reader has already written onto `role.exec.max_per_run` — and the column is
+# read first, so what the environment said is what the refusal prints as its
+# source:
+#
+#   1. the caller's `HERDR_TEAM_EXEC_CAP`, a Run saying it can carry another
+#      worktree. Nothing a file says outranks that, and it is why the knob works
+#      the same across a config that states a bound of its own.
+#   2. `role.exec.max_per_run`, the exec lane's line — the same column every
+#      other lane is bounded by, and four of them under `preset.all-cheap`.
+#
+# Where the number came from is printed beside it because every refusal below
+# names it: "the cap is 4" is a number nobody can act on, where "the cap is 4
+# (role.exec.max_per_run in ai/herdr/team.toml)" is a line to go and edit.
+lane_bound() {
+  local lane="$1" role="" cap="" from=""
+  lane_table
+  role="$(lane_col 2 "$lane")"
+  cap="$(lane_col 3 "$lane")"
+  if [ -n "$cap" ]; then
+    from="role.${role}.max_per_run in ai/herdr/team.toml"
+  fi
+  if [ "$lane" = exec ] && [ -n "$_ENV_EXEC_CAP" ]; then
+    cap="${_ENV_EXEC_CAP}"
+    from="HERDR_TEAM_EXEC_CAP"
+  fi
+  printf '%s\t%s\n' "$cap" "$from"
+}
+
+# lane_full <role> <held-count> <held-names> <cap> <where> — refuse, in the shell
+# that asked, one more pane of a lane this Run already holds its fill of. `exec`
+# keeps the sentence it has always had, name for name: the references and the
+# Run scripts quote it, and `HERDR_TEAM_EXEC_CAP` stays the knob it names
+# whatever number the cap was read from.
+lane_full() {
+  local role="$1" n="$2" held="$3" cap="$4" from="$5" noun="panes"
+  [ "$n" -ne 1 ] || noun="pane"
+  [ -n "$role" ] || role="lane"
+  if [ "$role" = exec ]; then
+    die "spawn: this Run already holds ${n} executors (${held}) — the cap is ${cap} executors per Run (${from}); settle one, or raise it if this Run can carry another worktree."
+  fi
+  die "spawn: this Run already holds ${n} ${role} ${noun} (${held}) — the cap is ${cap} per Run (${from}); settle one, or raise it if this Run can carry another."
 }
 
 # provider_key <command> — what the login shell says about the key that
@@ -526,7 +851,7 @@ landed_in() {
 # reaches that pane, not panes split from it afterwards.
 
 cmd_spawn() {
-  local name="${1:-}" branch="" provider="ccd" skip_provider_check=0 tier_reason=""
+  local name="${1:-}" branch="" provider="" skip_provider_check=0 tier_reason=""
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -541,7 +866,39 @@ cmd_spawn() {
   [ -n "$name" ] || usage
   valid_name "$name" || die "spawn: name must match [a-z][a-z0-9_-]{0,31}: $name"
   [ -n "$branch" ] || die "spawn: --branch is required"
-  case "$provider" in cc | ccd | omp) ;; *) die "spawn: unknown provider $provider" ;; esac
+
+  # A spawn that names no profile asks the route table the same question a plan
+  # row with no `provider` asks it: what does this configuration launch here?
+  # The answer is the matched role's first usable profile, which is `ccd` while
+  # `role.exec.profiles` names it — so the default is where the config says it is
+  # rather than a name written into this file, and a config that stops naming
+  # `ccd` stops getting `ccd`. An empty answer means no role places a profile
+  # this machine can launch: nothing to start, which is not a default to invent.
+  if [ -z "$provider" ]; then
+    provider="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config route '{}' |
+      sed -n 's/^profile=//p')" ||
+      die "spawn: the route table does not resolve — nothing was started"
+    [ -n "$provider" ] ||
+      die "spawn: nothing to launch for a pane that names no provider — the route table's role places no usable profile. Name one with --provider."
+  fi
+
+  # The profile the caller named, resolved in one call: what to launch, whether
+  # there is a key to probe for, where a missing one goes, and which credential
+  # the pane counts against. None of that is decided here — `--provider` names a
+  # profile in ai/herdr/team.toml, and `cc`, `ccd` and `omp` are three rows of
+  # that file rather than the whole set this script knows.
+  #
+  # Prefixed before the `eval` because the reader emits bare names, and two of
+  # them are this function's own: `launch` is built below, and `provider` is the
+  # name a record, a ceiling and a message are all spelled with. The reader
+  # refuses a name nothing defines, a profile that ships disabled, and a layer
+  # that will not parse, so the `||` here is the shape of "not launchable".
+  local p_launch="" p_launch_args="" p_url="" p_key=""
+  local p_fallback="" p_fallback_on="" p_requires_reason="" _res=""
+  local p_model="" p_model_arg="" p_quota_max_pct="" p_guard_credential=""
+  _res="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config resolve profile "$provider")" ||
+    die "spawn: ${provider} is not a profile this machine can launch (the reader's refusal is above) — --provider takes a [profile.*] name from ai/herdr/team.toml."
+  eval "$(printf '%s\n' "$_res" | sed 's/^/p_/')"
 
   # A `cc` pane spends the Pro login, and the tiers are not a price list: the
   # cheap tier is safe wherever a command catches a wrong answer, so a Task a
@@ -551,11 +908,13 @@ cmd_spawn() {
   # sentence, and requiring it is the whole check: what it forbids is the pane
   # nobody can account for afterwards, not the pane on Pro.
   #
-  # Asked of the provider the caller named, before the fallback below: a `ccd`
+  # Asked of the profile the caller named, before the fallback below: a `ccd`
   # spawn that falls back to `cc` spends Pro for a reason of its own, which is
-  # recorded rather than argued.
-  if [ "$provider" = "cc" ] && [ -z "$tier_reason" ]; then
-    die "spawn: --provider cc needs --tier-reason \"<why>\" — a row a command settles is ccd, and cc is for work that shapes later work, a spec, or a review (references/cost.md). Nothing here can tell which of those this pane is."
+  # recorded rather than argued. `requires_reason` is the profile's own word for
+  # whether its tier needs accounting for, so a second premium profile costs a
+  # line in team.toml rather than a third branch here.
+  if [ "$p_requires_reason" = "true" ] && [ -z "$tier_reason" ]; then
+    die "spawn: --provider ${provider} needs --tier-reason \"<why>\" — a row a command settles is ccd, and ${provider} is for work that shapes later work, a spec, or a review (references/cost.md). Nothing here can tell which of those this pane is."
   fi
 
   if [ -n "$(agent_field "$name" pane_id)" ]; then
@@ -575,19 +934,27 @@ cmd_spawn() {
   # credential the fallback spends rather than the one it asked for.
   provider_ceiling "$provider"
 
-  # Then the per-Run cap, and only for executors: a `spec-`, `res-` or `rev-`
-  # pane is how a blocked executor gets unblocked, so a busy executor pool must
-  # never be what stops one. The panes named are the ones this Run holds, which
-  # is the difference between a next move and a pane belonging to somebody else
-  # that the caller has no standing to settle.
-  if printf '%s' "$name" | grep -q '^exec-'; then
+  # Then the lane's own cap, which is the role's `max_per_run` (see
+  # `lane_bound`): how many panes of that lane one Run may hold. A lane the
+  # config states no bound for is not refused here at all — the credential's
+  # ceiling above is the only one it has. The panes named are the ones this Run
+  # holds, which is the difference between a next move and a pane belonging to
+  # somebody else that the caller has no standing to settle.
+  local lane="" cap="" from="" role=""
+  lane="${name%%-*}"
+  # Loaded here, in this shell, before the two `$(…)` calls below: a `$(…)`
+  # exits the subshell that loaded it, and the refusal needs the role's name out
+  # of the same table the number came from.
+  lane_table
+  IFS=$'\t' read -r cap from <<<"$(lane_bound "$lane")"
+  role="$(lane_col 2 "$lane")"
+  if [ -n "$cap" ]; then
     local held="" nheld=0
     # Joined here rather than left one per line: the refusal is one sentence,
     # and a name list that arrives as newlines would break it in two.
-    held="$(exec_held "$run" | awk 'NF{printf "%s%s", (n++ ? " " : ""), $0}')"
-    nheld="$(exec_held "$run" | count_lines)"
-    [ "$nheld" -lt "$EXEC_CAP" ] ||
-      die "spawn: this Run already holds ${nheld} executors (${held}) — the cap is ${EXEC_CAP} executors per Run (HERDR_TEAM_EXEC_CAP); settle one, or raise it if this Run can carry another worktree."
+    held="$(lane_held "$run" "$lane" | awk 'NF{printf "%s%s", (n++ ? " " : ""), $0}')"
+    nheld="$(lane_held "$run" "$lane" | count_lines)"
+    [ "$nheld" -lt "$cap" ] || lane_full "$role" "$nheld" "$held" "$cap" "$from"
   fi
 
   # The provider check, before anything exists to undo. A `ccd` pane launched
@@ -595,22 +962,30 @@ cmd_spawn() {
   # a silent failure to everything watching from outside; asserting the launch's
   # own precondition is the only check that cannot come apart from the launch.
   #
-  # `cc` is the Pro login and has no key ref to resolve, and omp is a different
-  # agent whose key lives in ai/omp/models.yml: neither has a `cc_provider` to
-  # ask about, so neither is checked here. What is left is `ccd`, and `ccd` is
-  # the one provider with somewhere to go when its key is not there: the fallback
-  # below, which spends the Pro login instead. It is bounded, and it is recorded
-  # — an unrecorded one is the silent Pro spend cost.md's checklist forbids.
-  if [ "$skip_provider_check" -eq 0 ] && [ "$provider" != "cc" ] && [ "$provider" != "omp" ]; then
+  # Whether there is a key to check at all is the credential's answer, not a
+  # list of names here. A ref is what `cc_provider` launches with: an entry with
+  # a url and a key is reached through it, and the key is what this shell can
+  # resolve ahead of that launch. `cc` holds a login and has neither field; omp
+  # has a key omp reads from its own config and no url, so nothing launches it
+  # through `cc_provider` and there is no ref for this shell to find. Both
+  # arrive here as two empty fields, which is the profile naming them rather
+  # than a second list of names this file would have to keep in step.
+  #
+  # That leaves the profiles with a key, and a key is the one precondition a
+  # pane cannot show from the outside: the launch it protects is the only thing
+  # that can fail on it. A missing one has somewhere to go — the fallback below,
+  # which spends the Pro login instead. That path is bounded and recorded, since
+  # an unrecorded one is the silent Pro spend cost.md's checklist forbids.
+  if [ "$skip_provider_check" -eq 0 ] && [ -n "$p_url" ] && [ -n "$p_key" ]; then
     local ref="" var="" state="" probe="" why="" used="" knob=""
-    if ! probe="$(provider_key "$provider")"; then
+    if ! probe="$(provider_key "$p_launch")"; then
       why="could not ask the login shell about ${provider}'s key"
     else
       IFS=' ' read -r ref var state <<<"$probe"
       case "$ref" in
         env:*)
           if [ "$state" != "set" ]; then
-            why="${provider} would launch with ${var} empty (ai/claude/providers.zsh: key=${ref})"
+            why="${provider} would launch with ${var} empty (ai/providers.toml: key=${ref})"
           fi
           ;;
         op://*)
@@ -633,11 +1008,34 @@ cmd_spawn() {
       # should be the one to spend. Unknown and over-the-line answer the same
       # way for the reason `quota-advice.sh` states — absence of data is not
       # evidence of headroom.
+      # The threshold, and whose window it is measured on: the guard on this
+      # profile's own fallback, resolved with the profile above — a line of
+      # `[fallback.<profile>]` in ai/herdr/team.toml, so a second fallback
+      # guarded more tightly than the reader's own pick is that file's answer
+      # rather than a second constant here. The caller's
+      # `HERDR_TEAM_PRO_FALLBACK_MAX` outranks it and is read as it was written,
+      # which is what lets `bad_knob` below say "70% is not a whole number"
+      # rather than a number this shell corrected for it. Where the number came
+      # from is named in the refusals, because "the cap is 70%" is not a line
+      # anyone can go and edit.
+      local fb_max="" fb_where="" fb_guard=""
+      if [ -n "$_ENV_PRO_FALLBACK_MAX" ]; then
+        fb_max="${_ENV_PRO_FALLBACK_MAX}"
+        fb_where="HERDR_TEAM_PRO_FALLBACK_MAX"
+      elif [ -n "$p_quota_max_pct" ]; then
+        fb_max="${p_quota_max_pct}"
+        fb_where="fallback.${provider}.guard.quota_max_pct in ai/herdr/team.toml"
+      else
+        fb_max="${PRO_FALLBACK_MAX}"
+        fb_where="the fallback guard in ai/herdr/team.toml"
+      fi
+      [ -z "$p_guard_credential" ] ||
+        fb_guard=", on the ${p_guard_credential} window"
       # Both limits, before either is read, and both of them: a malformed one is
       # a gate rather than a default, because a fallback decided under a
       # threshold nobody can read is the same silent Pro spend as one decided
       # from a cache nobody can read.
-      knob="$(bad_knob HERDR_TEAM_PRO_FALLBACK_MAX "$PRO_FALLBACK_MAX")"
+      knob="$(bad_knob HERDR_TEAM_PRO_FALLBACK_MAX "$fb_max")"
       [ -n "$knob" ] || knob="$(bad_knob HERDR_TEAM_PRO_QUOTA_MAX_AGE "$PRO_QUOTA_MAX_AGE")"
       if [ -n "$knob" ]; then
         gate "spawn: ${knob} is not a whole number, and a limit nobody can read is not a limit — a fallback decided under it is the silent Pro spend cost.md's checklist forbids. Fix the setting, pass --skip-provider-check to launch ${provider} anyway, or fix the key."
@@ -646,16 +1044,40 @@ cmd_spawn() {
       if [ -z "$used" ]; then
         gate "spawn: the Pro 5h window is unknown — ${PRO_QUOTA_CACHE} is missing, stale, or names a window that has already reset — and a fallback decided from a cache nobody can read is the silent Pro spend cost.md's checklist forbids. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or let a Pro session render its status line to refresh that cache."
       fi
-      if [ "$used" -ge "$PRO_FALLBACK_MAX" ]; then
-        gate "spawn: the Pro 5h window is ${used}% used, at or over the ${PRO_FALLBACK_MAX}% a fallback is allowed at (HERDR_TEAM_PRO_FALLBACK_MAX) — Pro is what a full window cannot spare, and this decision is a human's. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or wait for the window to reset."
+      if [ "$used" -ge "$fb_max" ]; then
+        gate "spawn: the Pro 5h window is ${used}% used, at or over the ${fb_max}% a fallback is allowed at (${fb_where})${fb_guard} — Pro is what a full window cannot spare, and this decision is a human's. Fix the key, pass --skip-provider-check to launch ${provider} anyway, or wait for the window to reset."
       fi
+      # The chain the profile carries, walked for the first target this machine
+      # can actually launch. A `to` naming a profile that ships disabled, or one
+      # no layer defines, is not a fallback — and the reader refuses each of them
+      # the way it refused the `--provider` above, which is the whole test: what
+      # makes a profile launchable is the same answer both times.
+      case " $p_fallback_on " in
+        *" key-missing "*)
+          ;;
+        *)
+          die "spawn: ${provider} names no fallback for a missing key (its chain answers ${p_fallback_on:-nothing}, and this is a missing key) — fix the key, pass --skip-provider-check to launch ${provider} anyway, or fix the chain in ai/herdr/team.toml."
+          ;;
+      esac
       fallback_from="$provider"
-      provider="cc"
+      local target="" target_res="" fb=""
+      for fb in $p_fallback; do
+        if target_res="$(DOTFILES="${_CHECKOUT}" herdr_py -m herdr_team.config resolve profile "$fb")"; then
+          target="$fb"
+          break
+        fi
+        warn "spawn: ${fb} is in ${provider}'s fallback chain and nothing here can launch it — trying the next one."
+      done
+      [ -n "$target" ] ||
+        die "spawn: no fallback in ${provider}'s chain can be launched here (${p_fallback:-the chain is empty}) — fix the key, pass --skip-provider-check to launch ${provider} anyway, or fix the chain in ai/herdr/team.toml."
+      eval "$(printf '%s\n' "$target_res" | sed 's/^/p_/')"
+      provider="$target"
       # The ceiling again, about the credential this pane now takes: the check
-      # above counted `ccd` panes, and a fallback that walked past `cc`'s own
-      # ceiling would spend the one credential the ceiling exists to protect.
+      # above counted the panes on the credential it asked for, and a fallback
+      # that walked past its own ceiling would spend the one credential the
+      # ceiling exists to protect.
       provider_ceiling "$provider"
-      warn "spawn: running on cc instead — the Pro 5h window is ${used}%, under the ${PRO_FALLBACK_MAX}% a fallback is allowed at, and the pane record says it fell back (status and report read it)."
+      warn "spawn: running on ${provider} instead — the Pro 5h window is ${used}%, under the ${fb_max}% a fallback is allowed at (${fb_where})${fb_guard}, and the pane record says it fell back (status and report read it)."
     fi
   fi
 
@@ -732,9 +1154,23 @@ cmd_spawn() {
   # script spawned has nobody at its pane to answer, so it would block on its
   # first probe. ai/omp/executor.yml lifts exactly that one prompt; every other
   # approval rule is inherited, so a `prompt` still blocks and gets surfaced.
-  local launch="$provider"
-  [ "$provider" != "omp" ] ||
-    launch="omp --config ${DOTFILES}/ai/omp/executor.yml"
+  # The command is the profile's, not this file's: the launcher (or the
+  # harness's own binary) and its arguments, resolved together by the reader —
+  # omp's `--config` among them, expanded from the `{dotfiles}` its harness
+  # states so a worktree gets the worktree's own executor.yml.
+  # A profile that names a model says so on the command line, in the form its
+  # harness takes it: `model = "gpt-5-codex"` on `[profile.cdx]` and `model_arg =
+  # "-m"` on `[harness.codex]`. Both halves are the file's, so a profile that
+  # names no model launches exactly as it did — which is what `ccd` does, and
+  # what the case reading `zsh -ic 'ccd'` pins. Both halves have to be there:
+  # a harness that states no `model_arg` has no way to be told one, so a profile
+  # on it launches without the model its layer named rather than with a bare
+  # word the CLI would take for a subcommand.
+  local launch="$p_launch"
+  [ -z "$p_launch_args" ] || launch="${launch} ${p_launch_args}"
+  if [ -n "$p_model" ] && [ -n "$p_model_arg" ]; then
+    launch="${launch} ${p_model_arg} ${p_model}"
+  fi
 
   herdr pane run "$pane" \
     "export OMC_STATE_DIR=${DOTFILES}/.omc/state HERDR_TEAM_ROOT=${ROOT}; zsh -ic '${launch}'" \
@@ -1349,6 +1785,11 @@ loop_wave() {
   # travels with the route rather than being turned back here: both lines below
   # rebuild a tab-separated record out of these fields, and a real empty one
   # would collapse in the reader the same way it did on the way in.
+  #
+  # A free pane is seated whatever the lane's bound says, because the bound is
+  # on the panes this Run *holds* and this is a pane that already exists: the
+  # lane decides which pool a row draws from, and `spawn` below is where a pane
+  # is created and where the bound is enforced.
   while IFS=$'\t' read -r tid lane provider reason; do
     [ -n "$tid" ] || continue
     if [ "$lane" = rev ] && [ "$ri" -lt "${#free_rev[@]}" ]; then
@@ -1369,29 +1810,43 @@ loop_wave() {
   # 4. A ready row with no free pane in its lane. Spawning creates a worktree,
   #    so it is opt-in: without `--spawn` the wave stops and hands the decision
   #    back, which trades the one turn this verb exists to save for not creating
-  #    a worktree unasked. With it, up to the cap and no further. Review rows are
-  #    not counted against that cap — a `rev-` pane is a login, not a worktree,
-  #    and a review that had to wait for a free executor would serialize behind
-  #    the thing it exists to check.
+  #    a worktree unasked. With it, up to each lane's own bound and no further:
+  #    the number is the role's `max_per_run`, which is why a `rev` row is
+  #    bounded by `role.review.max_per_run` rather than by the executor cap — a
+  #    `rev-` pane is a login, not a worktree, and how many of them one Run may
+  #    hold is the reviewer role's to say.
   if [ "${#waiting[@]}" -gt 0 ] && [ "$spawn" -eq 1 ]; then
     local -a still=()
-    local i name branch src st spawned="" pv="" pload="" reserved=""
-    # Counted the way `spawn` counts it, and counted once: the panes held are
-    # the ones this Run can still settle, so a wave cannot seat a third
-    # executor on a cap of two and another tab's executors are not in the way of
-    # this one's. `spawned` below is the panes this wave drew, which are not in
-    # the count yet because nothing has dispatched to them.
-    local held=""
-    held="$(exec_held "$run")"
-    local live_exec
-    live_exec="$(printf '%s\n' "$held" | count_lines)"
+    local i name branch src st spawned="" pv="" pload="" pcap="" reserved=""
+    local reserved_below="" reserved_creds="" cred=""
+    # The profile table, before the wave asks it anything: the two counts below
+    # are `$(…)` calls, and a `$(…)` cannot load it into the shell that made it.
+    provider_table
+    # One number and one count per pool, read once for the wave. The number is
+    # the role's `max_per_run` (`lane_bound`); the count starts at the panes this
+    # Run is already answerable for and grows with each pane the wave draws. A
+    # seat on a pane that was already free is not counted, because it is a pane
+    # that already exists — the bound is on what this Run adds, and `spawn`'s own
+    # gate counts the same way when a pane is drawn by hand.
+    lane_table
+    local cap_exec="" from_exec="" cap_rev="" from_rev="" n_exec=0 n_rev=0
+    local lane_full_note=""
+    IFS=$'\t' read -r cap_exec from_exec <<<"$(lane_bound exec)"
+    IFS=$'\t' read -r cap_rev from_rev <<<"$(lane_bound rev)"
+    n_exec="$(lane_held "$run" exec | count_lines)"
+    n_rev="$(lane_held "$run" rev | count_lines)"
     for i in "${!waiting[@]}"; do
       IFS=$'\t' read -r lane tid provider reason <<<"${waiting[$i]}"
-      # Back to empty for the one reader that decides a tier, so `${provider:-
-      # ccd}` below means the same thing here as it does everywhere else: the
-      # row named no provider, so the default stands. `-` would be a provider
-      # name nothing knows, and `spawn` would refuse it.
-      if [ "$provider" = "-" ]; then provider=""; fi
+      # A row the route places no profile for is a row nothing can launch: the
+      # route table answered `-`, which is what it says when the matched role
+      # names no usable profile. A default written here would be a provider this
+      # file chose rather than one the config states, and the row waits for a
+      # human instead.
+      if [ "$provider" = "-" ] || [ -z "$provider" ]; then
+        printf '%s\n' "$table"
+        loop_log "$log" "wave ${wave}: no profile places ${tid} — nothing to launch"
+        return 6
+      fi
       # An unattended loop never takes a provider's last seat. The ceiling is a
       # credential shared with every other tab on the machine, and a loop that
       # spends down to it holds what it took for the Run's life — it never
@@ -1399,22 +1854,50 @@ loop_wave() {
       # nobody at a keyboard to free it. One seat is left for a human spawning
       # by hand, who is there to decide. A ceiling of 1 reserves nothing: that
       # is a setting that means one pane, not none.
-      pv="${provider:-ccd}"
+      pv="$provider"
+      # The ceiling is the credential's, so a row is reserved against the entry
+      # its provider spends — and a profile whose entry states none is refused
+      # rather than left to a number nothing wrote down.
+      pcap="$(provider_cap "$pv")"
+      [ -n "$pcap" ] ||
+        die "loop: ${pv} has no ceiling to leave a seat under — a ceiling is the entry's in ai/providers.toml, and HERDR_TEAM_PROVIDER_CAP overrides every one of them."
       pload="$(provider_load_for "$pv" | cut -d'|' -f1)"
-      if [ "$PROVIDER_CAP" -gt 1 ] && [ "$pload" -ge $((PROVIDER_CAP - 1)) ]; then
+      if [ "$pcap" -gt 1 ] && [ "$pload" -ge $((pcap - 1)) ]; then
         still+=("${waiting[$i]}")
         printf '%s\n' "$reserved" | grep -qxF "$pv" ||
-          reserved="${reserved:+${reserved} }${pv}"
+          {
+            reserved="${reserved:+${reserved} }${pv}"
+            # One clause per profile, because two rows can be reserved against
+            # two ceilings that are not the same number; and the credentials are
+            # named once between them, since the seat being left is the entry's
+            # and a reader deciding whether to spend it is deciding about a key.
+            reserved_below="${reserved_below:+${reserved_below} and }${pv} is one pane below its ceiling of ${pcap}"
+            cred="$(table_col 2 "$pv")"
+            case " ${reserved_creds} " in
+              *" ${cred} "*) ;;
+              *) reserved_creds="${reserved_creds:+${reserved_creds}, }${cred}" ;;
+            esac
+          }
         continue
       fi
       name=""
       branch=""
+      # The lane's own bound, and the count grows at the draw rather than at the
+      # seat below: a pane herdr started but has not finished starting is a pane
+      # this Run holds, and the next row of the same lane waits for it.
       if [ "$lane" = rev ]; then
+        if [ -n "$cap_rev" ] && [ "$n_rev" -ge "$cap_rev" ]; then
+          still+=("${waiting[$i]}")
+          lane_full_note="${lane_full_note:+${lane_full_note} and }this Run already holds its ${n_rev} review panes (cap ${cap_rev} per Run, ${from_rev})"
+          continue
+        fi
         name="$(printf 'rev-%s' "$(printf '%s' "$tid" | tr '[:upper:]' '[:lower:]')")"
         branch="${prefix}-rev-$(printf '%s' "$tid" | tr '[:upper:]' '[:lower:]')"
+        n_rev=$((n_rev + 1))
       else
-        if [ "$live_exec" -ge "$EXEC_CAP" ]; then
+        if [ -n "$cap_exec" ] && [ "$n_exec" -ge "$cap_exec" ]; then
           still+=("${waiting[$i]}")
+          lane_full_note="${lane_full_note:+${lane_full_note} and }this Run already holds its ${n_exec} executors (cap ${cap_exec} per Run, ${from_exec})"
           continue
         fi
         name="$(loop_next_exec "$run" "$names_all" "$spawned")" || {
@@ -1422,7 +1905,7 @@ loop_wave() {
           continue
         }
         branch="${prefix}-$(printf '%s' "$tid" | tr '[:upper:]' '[:lower:]')"
-        live_exec=$((live_exec + 1))
+        n_exec=$((n_exec + 1))
       fi
       src=0
       # In a subshell, and that is the whole point: `spawn` refuses through
@@ -1436,7 +1919,7 @@ loop_wave() {
       # `cc` row, and the row is where the answer lives. An empty one on a `cc`
       # row is a plan that did not state its reason, which `spawn` refuses —
       # below, as the gate it is.
-      ( cmd_spawn "$name" --branch "$branch" --provider "${provider:-ccd}" \
+      ( cmd_spawn "$name" --branch "$branch" --provider "$provider" \
         --tier-reason "$reason" ) || src=$?
       if [ "$src" -ne 0 ]; then
         # A refusal is not a full pool, and it is not a row to leave for the
@@ -1458,7 +1941,7 @@ loop_wave() {
       st="$(agent_field "$name" agent_status 2>/dev/null || true)"
       case "$st" in
         ready | idle | done)
-          seats+=("$(printf '%s\t%s\t%s\t%s' "$name" "$tid" "${provider:-ccd}" "$lane")")
+          seats+=("$(printf '%s\t%s\t%s\t%s' "$name" "$tid" "$provider" "$lane")")
           spawned="$(printf '%s\n%s' "$spawned" "$name")"
           ;;
         *) still+=("${waiting[$i]}") ;;
@@ -1476,7 +1959,7 @@ loop_wave() {
   # that thinks the loop is idle while a Dispatch it issued is still out. The
   # gate is "this wave can move nothing", which is the same words as the
   # table row — ready rows, and not one free pane to put them on.
-  local ready_list="" i
+  local ready_list="" i reserved_note=""
   for i in "${!waiting[@]}"; do
     IFS=$'\t' read -r lane tid provider reason <<<"${waiting[$i]}"
     ready_list="${ready_list}${ready_list:+ }${tid}"
@@ -1484,13 +1967,23 @@ loop_wave() {
   if [ -n "$ready_list" ] && [ "${#seats[@]}" -eq 0 ]; then
     printf '%s\n' "$table"
     if [ "$spawn" -eq 1 ] && [ -n "${reserved:-}" ]; then
-      printf 'loop: %s ready and no pane free for them — %s is one pane below its ceiling of %s (HERDR_TEAM_PROVIDER_CAP) and the loop leaves that seat for a human; spawn it by hand, settle a pane, or raise the ceiling\n' \
-        "$ready_list" "$reserved" "$PROVIDER_CAP"
+      # The seat belongs to a credential — the entry in ai/providers.toml — so
+      # the note names one, or several when more than one entry is at its
+      # ceiling. A comma is the only shape `reserved_creds` ever separates on.
+      reserved_note="the ${reserved_creds} entry in ai/providers.toml"
+      case "$reserved_creds" in
+        *,*) reserved_note="the ${reserved_creds} entries in ai/providers.toml" ;;
+      esac
+      printf 'loop: %s ready and no pane free for them — %s (%s, HERDR_TEAM_PROVIDER_CAP overrides every ceiling) and the loop leaves that seat for a human; spawn it by hand, settle a pane, or raise the ceiling\n' \
+        "$ready_list" "$reserved_below" "$reserved_note"
     elif [ "$spawn" -eq 1 ]; then
-      printf 'loop: %s ready and no pane free for them — this Run holds %s (cap %s executors per Run, HERDR_TEAM_EXEC_CAP); settle one, or raise the cap\n' \
-        "$ready_list" \
-        "$(printf '%s' "${held:-none}" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/ $//')" \
-        "$EXEC_CAP"
+      # The lane's own bound rather than the executor cap: `lane_full_note` is
+      # built where the row was refused and names the number and where it came
+      # from, so a `rev` row stopped by `role.review.max_per_run` says so. A wave
+      # with no note drew nothing for a reason that is not a bound — the names
+      # are exhausted, or every pane it drew came back busy — and says only that.
+      printf 'loop: %s ready and no pane free for them — %s; settle one, or raise it if this lane can carry another\n' \
+        "$ready_list" "${lane_full_note:-no pane this wave may draw}"
     else
       printf 'loop: %s ready and no pane free for them — %s live; --spawn <branch-prefix>, or settle one\n' \
         "$ready_list" "${live_all:-none}"
@@ -1844,6 +2337,23 @@ cmd_plan() {
   esac
 }
 
+# --- config ----------------------------------------------------------------
+# One verb for the settings this script reads its knobs from, and the only
+# reason it is a verb here rather than a module to remember: the reader in
+# lib/herdr_team/config.py is the whole of the parser, and asking it a question
+# about `team.toml` should not require knowing its name, its PYTHONPATH or
+# which of its verbs take an argument. Passed through whole, including the
+# exit code — `lint` and `doctor` answer in it, and a wrapper that swallowed it
+# would turn both into a printout nobody could branch on.
+#
+# It runs with the configuration *unread* — the case arm at the top of the file
+# is why — which is what makes it the verb to reach for when the configuration
+# is the thing that is broken: `config lint` names the file and the line, and
+# `config doctor` says what this machine would have to be for a spawn to work.
+# `herdr_cfg` tells the reader which checkout to read the same way that arm
+# does: one file, one answer, whether a verb got as far as `eval` or not.
+cmd_config() { herdr_cfg "$@"; }
+
 # --- dispatch --------------------------------------------------------------
 # The completion contract is handed over verbatim, never reconstructed by the
 # orchestrator from memory: that is the whole point of having a command for it.
@@ -2134,16 +2644,35 @@ cmd_settle() {
   [ -n "$pane" ] || die "settle: no live agent named ${name}"
 
   # Clearing first, and refusing before anything is sent. A pane holding a
-  # question is the one case where /clear destroys something that exists
+  # question is the one case where the reset destroys something that exists
   # nowhere else, so the blocked agent is refused the way `dispatch` refuses
   # one: asked, not assumed, and with the remedy named.
+  #
+  # The command sent is the record's harness's, not this file's: `/clear` for
+  # Claude, `/new` for codex. The record names a *profile*, the profile names a
+  # harness, and the harness states its `reset =`, which is why this reads the
+  # table rather than a constant — and why a profile the inventory no longer
+  # defines, or a harness that states no reset, is refused here instead of
+  # quietly sending a Claude command to a codex pane. A pane with no record at
+  # all predates the inventory or was spawned by hand, and `/clear` is what this
+  # verb has always sent it.
   local cleared=0
+  local clear_cmd="/clear" rec=""
   if [ "$clear" -eq 1 ]; then
-    if [ "$(agent_field "$name" agent_status)" = "blocked" ]; then
-      die "settle: ${name} is blocked on a question — answer it, then team.sh surface ${name}; /clear would destroy the question"
+    rec="$(pane_record_field "$name" provider)"
+    if [ -n "$rec" ]; then
+      provider_table
+      [ -n "$(table_row "$rec")" ] ||
+        die "settle: ${name}'s record names ${rec}, and no layer defines that profile — nothing here knows what this pane clears with; release it instead of reusing it, or restore the profile in ai/herdr/team.toml."
+      clear_cmd="$(table_col 4 "$rec")"
+      [ -n "$clear_cmd" ] ||
+        die "settle: ${name} was launched as ${rec}, whose harness states no reset — this pane has no command to be cleared with; release it instead of reusing it, or state reset = on that harness in ai/herdr/team.toml."
     fi
-    herdr agent prompt "$name" "/clear" >/dev/null ||
-      die "settle: herdr refused to send /clear to ${name} — read ${name}; nothing was cleared and ${name} is not settled"
+    if [ "$(agent_field "$name" agent_status)" = "blocked" ]; then
+      die "settle: ${name} is blocked on a question — answer it, then team.sh surface ${name}; ${clear_cmd} would destroy the question"
+    fi
+    herdr agent prompt "$name" "$clear_cmd" >/dev/null ||
+      die "settle: herdr refused to send ${clear_cmd} to ${name} — read ${name}; nothing was cleared and ${name} is not settled"
     # The name comes back after the clear, never before: /clear resets the
     # pane's terminal title and the title is what carries the `agent rename`
     # `spawn` bound, so clearing unbinds it. Measured live on the first real use
@@ -2333,6 +2862,7 @@ case "${1:-}" in
   loop) shift; cmd_loop "$@" ;;
   surface) shift; cmd_surface "$@" ;;
   plan) shift; cmd_plan "$@" ;;
+  config) shift; cmd_config "$@" ;;
   settle) shift; cmd_settle "$@" ;;
   teardown) shift; cmd_teardown "$@" ;;
   -h | --help | help) usage 0 ;;

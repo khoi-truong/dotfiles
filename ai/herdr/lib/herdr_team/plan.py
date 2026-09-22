@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
+
+from herdr_team import config
 
 __all__ = ["plan_rows"]
 
@@ -26,7 +29,42 @@ DEPTH_MAX = 4  # the longest chain of `blocks` edges a plan should have
 WIDTH_MIN = 2  # Tasks a plan should be able to run at once ...
 WIDTH_MIN_TASKS = 3  # ... once it has this many Tasks to run at all
 THIN_LINES = 8  # non-blank lines a chained row needs to earn its Dispatch
-FAT_FILES = 8  # paths a row may name before its verify stops localizing
+FAT_FILES = 8  # paths a row may name before its verify stops localizing ...
+# ... which is the shipped value of `limits.plan_max_paths`, and no longer the
+# last word on it: `_max_paths` reads the setting, so a machine that would
+# rather trade a wider row for a coarser retry gets that from team.toml.
+
+# The checkout this module is in — five directories up from
+# `ai/herdr/lib/herdr_team/plan.py`, which is `config.py`'s own
+# `_DERIVED_DOTFILES` and `team.sh`'s `_CHECKOUT`. A reader here that asked the
+# environment instead would be asking the wrong tree the moment
+# `DOTFILES=${HOME}/.dotfiles` (exported by `~/.zshrc`, see team.sh:75-86)
+# names a checkout other than the one running — a linked worktree's main
+# checkout, or this file imported by a test. Not resolved through symlinks: a
+# checkout reached with its `lib/` linked in, as run.sh's fixtures are, is the
+# checkout being tested.
+_CHECKOUT = Path(__file__).parents[4]
+
+
+def _max_paths() -> int:
+    """`limits.plan_max_paths` from ai/herdr/team.toml, else `FAT_FILES`.
+
+    Read here rather than handed in, because every caller of `plan_rows` —
+    `lint`, `dispatch`, `collect`, `loop`, `report` — would otherwise have to
+    be given the number, and the one that forgot would disagree with the rest
+    about the same plan.
+
+    A configuration that cannot be read falls back to the shipped default
+    instead of failing the plan: this is a warning threshold, and a `plan lint`
+    that refused to run because `team.local.toml` has a typo would be a plan
+    nobody could lint — with the reader's own failure reported by the verbs
+    that read the configuration for what it is.
+    """
+    try:
+        value = config.load(dotfiles=_CHECKOUT).get("limits.plan_max_paths")
+    except config.ConfigError:
+        return FAT_FILES
+    return value if isinstance(value, int) and value >= 1 else FAT_FILES
 
 
 def _cycles(by_id: dict[str, Any]) -> list[list[str]]:
@@ -191,6 +229,7 @@ def _granularity(by_id: dict[str, Any], bodies: dict[str, str]) -> list[str]:
     """
     out: list[str] = []
     pairs: set[frozenset[str]] = set()
+    fat = _max_paths()
     for tid in sorted(by_id):
         body = bodies.get(tid)
         # A row with no section is a finding of its own, and a proxy measured
@@ -204,12 +243,11 @@ def _granularity(by_id: dict[str, Any], bodies: dict[str, str]) -> list[str]:
                 "%s names %s, a directory — no verify can localize a "
                 "failure inside one, so a retry re-does all of it" % (tid, dirs[0])
             )
-        elif len(files) > FAT_FILES:
+        elif len(files) > fat:
             out.append(
                 "%s names %d paths, over the %d a verify can localize a "
                 "failure in — a retry would re-do all of them (%d is a "
-                "starting guess, not a measurement)"
-                % (tid, len(files), FAT_FILES, FAT_FILES)
+                "starting guess, not a measurement)" % (tid, len(files), fat, fat)
             )
         lines = len([ln for ln in body.splitlines() if ln.strip()])
         if len(files) != 1 or lines >= THIN_LINES:
@@ -229,28 +267,67 @@ def _granularity(by_id: dict[str, Any], bodies: dict[str, str]) -> list[str]:
     return out
 
 
+def _needs_reason(cfg: config.Config, provider: str) -> bool:
+    """Whether a profile's tier is one a row has to account for.
+
+    `requires_reason` is the profile's own word for that (and `config lint`
+    refuses a premium profile without it), so a second profile whose tier has to
+    be justified is a line of `team.toml` rather than a second name compared
+    here. Read from the profile's body rather than through `config.profile()`:
+    the question is what the *row* is claiming, and a profile this machine
+    cannot launch right now is still a claim a plan should state a reason for.
+    """
+    return cfg.get("profile.%s.requires_reason" % provider) is True
+
+
 def _tiers(by_id: dict[str, Any]) -> list[str]:
-    """Rows claiming the expensive tier with nothing saying why.
+    """Rows claiming a tier that needs a reason, with nothing saying why.
 
     The test is verifiability: a row whose `verify` command can catch a wrong
-    answer is a `ccd` row, and `cc` is for the work no command settles — the
-    row shapes later work, it is a spec, or it is a review (cost.md). So a `cc`
-    row that has a `verify` reads one of two ways, and both want the same thing
-    written down: a row that is really `ccd` and is mislabelled, or a row that
-    is really `cc` for a reason the plan has not stated. `tier_reason` is where
-    that reason goes — and `spawn --provider cc` refuses without one, so a plan
-    that omits it is a plan whose Dispatches are refused, or worse, quietly run
-    on the wrong credential.
+    answer is a `ccd` row, and a profile that costs what `cc` costs is for the
+    work no command settles — the row shapes later work, it is a spec, or it is
+    a review (cost.md). So a row on such a profile that has a `verify` reads one
+    of two ways, and both want the same thing written down: a row that is really
+    `ccd` and is mislabelled, or a row that is really `cc` for a reason the plan
+    has not stated. `tier_reason` is where that reason goes — and `spawn
+    --provider cc` refuses without one, so a plan that omits it is a plan whose
+    Dispatches are refused, or worse, quietly run on the wrong credential.
 
     A warning and never a finding, because the second reading is legitimate:
     a review row has a `verify` (it runs the suite) and is still `cc`. No
     parser can tell the two apart, so refusing would refuse correct plans —
     which is how a check stops being read.
+
+    A configuration that cannot be read draws one warning about the check it
+    stopped making, and not silence: no row can be measured against a profile
+    nobody can read, and a plan that reads clean because the checker fell over
+    is exactly the plan an author stops looking at. It still does not refuse to
+    run — the reader's own failure is the verbs' to report, and a `plan lint`
+    that stopped because `team.local.toml` has a typo would be a plan nobody
+    could lint — so the failure is named once, for the whole plan.
     """
+    why = ""
+    try:
+        cfg: config.Config | None = config.load(dotfiles=_CHECKOUT)
+    except config.ConfigError as exc:
+        cfg = None
+        why = str(exc)
     out: list[str] = []
+    if cfg is None:
+        out.append(
+            "no tier_reason check — the configuration does not resolve (%s), so "
+            "no row can be measured against a profile and a premium row missing "
+            "its reason passes here to be refused by spawn: fix that file and "
+            "lint again" % why
+        )
     for tid in sorted(by_id):
         row = by_id[tid]
-        if (row.get("provider") or "") != "cc":
+        provider = str(row.get("provider") or "")
+        # Read once for the plan rather than once per row, and asked of the
+        # profile's own word rather than of a name: a `ccd` row draws nothing
+        # because `ccd` does not require a reason, and a second profile that
+        # does draws the same warning without a line here.
+        if cfg is None or not provider or not _needs_reason(cfg, provider):
             continue
         if not (row.get("verify") or "").strip():
             continue

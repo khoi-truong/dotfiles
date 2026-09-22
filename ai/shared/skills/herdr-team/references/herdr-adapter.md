@@ -293,7 +293,7 @@ where it was asked to; a five-field record predates it and reads that way.
 
 ## The tier a spawn starts on
 
-`spawn <name> --branch <b> [--provider ccd|cc|omp] [--tier-reason <text>]`
+`spawn <name> --branch <b> [--provider <profile>] [--tier-reason <text>]`
 starts a pane on the tier it was asked for. Two things can move that:
 
 - **`--provider cc` requires `--tier-reason "<why>"`.** `ccd` is the tier for

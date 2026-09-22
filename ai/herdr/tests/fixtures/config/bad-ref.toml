@@ -1,0 +1,11 @@
+# A profile reference that resolves to nothing.
+#
+# `role.spec` keeps the shipped prefix and lifetime and replaces only its
+# `profiles` list, which is what a real edit looks like: arrays replace, so
+# naming a profile that does not exist is the whole of the mistake. Merged over
+# ai/herdr/team.toml as a trusted layer — a user's own file can write this, and
+# the finding should say which key and which name rather than refusing the
+# layer outright.
+
+[role.spec]
+profiles = ["nope"]

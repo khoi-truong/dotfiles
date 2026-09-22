@@ -1,0 +1,39 @@
+# A route table that names the profile its rows launch, and a role that is
+# nobody's shorthand.
+#
+# `[[route]]` replaces rather than merges, so the whole table is restated here:
+# the entry this file does not care about is copied verbatim, and the two
+# changes are the ones below. `role.audit` carries a prefix nothing else shares,
+# which is the point — the lane a row lands on is the matched role's prefix, so
+# a lane is a line of this file rather than a name a reader knows. `mid` is the
+# same claim for the profile: it is not `ccd`, and the route's own word is what
+# puts a row on it.
+#
+# Merged over ai/herdr/team.toml as a trusted layer.
+
+[profile.mid]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+requires_reason = true
+
+[role.audit]
+prefix = "audit-"
+profiles = ["mid"]
+
+[[route]]
+when = { provider_cost = "premium", has_blockers = true }
+role = "review"
+
+[[route]]
+when = { needs = "web" }
+role = "audit"
+
+[[route]]
+when = { has_verify = true }
+role = "exec"
+profile = "mid"
+
+[[route]]
+role = "audit"

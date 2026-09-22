@@ -712,17 +712,25 @@ chmod +x "${TMP}/panes/herdr"
 printf 'idle\n' >"${TMP}/status"
 
 # The window, for case 44: the handoff appears after the journal has been read.
-# python3 is what reads it, so a python3 that runs the real interpreter first
-# and writes the handoff after puts the file in the gap between the read and the
-# fan-out on every run, instead of hoping to win a race. The content is never
-# read — `wait` stats the path — and the herdr beside it is the poison one, so a
-# `wait` that falls through to herdr fails that case rather than passing it.
+# python3 is what reads it, so a python3 that runs the real interpreter and then
+# writes the handoff puts the file in the gap between the read and the fan-out
+# on every run, instead of hoping to win a race. Only the call that reads the
+# journal writes it: `team.sh` forks a python3 of its own before any verb runs,
+# and a handoff planted by that one has already settled the Dispatch by the time
+# the read happens — the case would be staging the wrong side of the window. The
+# content is never read — `wait` stats the path — and the herdr beside it is the
+# poison one, so a `wait` that falls through to herdr fails that case rather
+# than passing it.
 mkdir -p "${TMP}/window"
 REAL_PY="$(command -v python3)"
 export REAL_PY
 cat >"${TMP}/window/python3" <<'SH'
 #!/usr/bin/env bash
 "${REAL_PY}" "$@"
+case "$*" in
+  *herdr_team.wait*) ;;
+  *) exit 0 ;;
+esac
 printf -- '---\nrun: fixture\ntask: T-01\ndispatch: D-01\noutcome: succeeded\nevidence: verified\n---\n' \
   >"${HERDR_FIXTURE_HANDOFFS}/T-01-D-01.md"
 SH
@@ -4020,6 +4028,672 @@ then
 else
   no "151c and report.json still counts it, on the provider the Task ran on" \
     "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+
+echo
+echo "config: the verb, and the gate in front of it"
+
+# team_of <team.sh> <args...> — run that copy and record what it did: the exit
+# code in `${code}`, stdout in ${TMP}/out and stderr in ${TMP}/err. The copy is
+# a parameter because half of these cases are about the gate in front of the
+# verb, and the only way to put a broken layer in front of a team.sh is a
+# checkout of its own: a case that wrote one into this checkout would be writing
+# ai/herdr/team.local.toml, which is a file a developer may be relying on.
+team_of() {
+  local sh="$1"; shift
+  code=0
+  "${sh}" "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
+}
+
+# cfg_checkout <dir> — a checkout-shaped tree holding the three things the
+# configuration is read from and nothing else: a copy of team.sh, so the
+# `_CHECKOUT` resolved beside it is ${dir} rather than this checkout; the
+# shipped team.toml; and `lib/` symlinked at the real package, so what runs is
+# the module under test rather than a copy of it that a later edit here would
+# leave behind. The local layer, and the Run the fixture is in, are the case's
+# to write.
+cfg_checkout() {
+  mkdir -p "$1/ai/herdr"
+  cp "${TEAM}" "$1/ai/herdr/team.sh"
+  cp "${DOTFILES}/ai/herdr/team.toml" "$1/ai/herdr/team.toml"
+  ln -sfn "${DOTFILES}/ai/herdr/lib" "$1/ai/herdr/lib"
+  chmod +x "$1/ai/herdr/team.sh"
+}
+
+# 152. AC5. The discipline limit is `role.exec.max_per_run` in ai/herdr/team.toml
+#      now — beside the profile that spends it rather than in `[limits]` beside
+#      the timeouts — and the environment still wins over it: the reader emits a
+#      name it finds already set there with that environment's own value, so the
+#      `eval` above binds what it always bound. What changed is which of the two
+#      answered, and `--sources` is how a reader asks: the file for a default,
+#      the variable that did it for an override — the name rather than a bare
+#      "env", because five knobs come from the environment and "some override
+#      happened" is not an answer to which one to go and look at.
+team_of "${TEAM}" config get role.exec.max_per_run
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "2" ]; then
+  ok "152 role.exec.max_per_run still answers 2 on the shipped files"
+else
+  no "152 role.exec.max_per_run still answers 2 on the shipped files" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+fi
+team_of "${TEAM}" config show --sources
+if [ "${code}" -eq 0 ] &&
+  grep -qE '^role\.exec\.max_per_run = 2  # .*team\.toml$' "${TMP}/out"; then
+  ok "152b and --sources credits the file, not the reader's own default"
+else
+  no "152b and --sources credits the file, not the reader's own default" \
+    "$(grep -n 'max_per_run' "${TMP}/out" | tr '\n' '|')"
+fi
+HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config get role.exec.max_per_run
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "3" ]; then
+  ok "152c while HERDR_TEAM_EXEC_CAP=3 still overrides it"
+else
+  no "152c while HERDR_TEAM_EXEC_CAP=3 still overrides it" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -1 "${TMP}/err")"
+fi
+HERDR_TEAM_EXEC_CAP=3 team_of "${TEAM}" config show --sources
+if [ "${code}" -eq 0 ] &&
+  grep -q '^role\.exec\.max_per_run = 3  # HERDR_TEAM_EXEC_CAP$' "${TMP}/out"; then
+  ok "152d and --sources names the variable that did it"
+else
+  no "152d and --sources names the variable that did it" \
+    "$(grep -n 'max_per_run' "${TMP}/out" | tr '\n' '|')"
+fi
+
+# 153. AC6, fail closed. A local layer that will not parse used to be a file
+#      nothing read — the knobs lived in this script. It is the layer they come
+#      from now, so a typo in it is a typo in the numbers every verb runs on,
+#      and the one answer that is never right is the shipped defaults: they are
+#      not what the machine asked for, and nothing would say so. The gate stops
+#      the verb instead, naming the file and the line. The fixture runs a verb
+#      first, because a checkout that could not run one at all would pass every
+#      case under it for the wrong reason — and the verb is `plan lint`, which
+#      asks herdr nothing: a `status` here would fail on the stub session the
+#      suite runs under and the case would be reading the wrong refusal.
+#
+#      `pwd -P`, because the reader resolves the layer it names: a fixture under
+#      macOS's /var is reported as /private/var, and a case matching the path it
+#      wrote would be matching a path the message never holds.
+fix="$(cd "${TMP}" && pwd -P)/cfg-checkout"
+cfg_checkout "${fix}"
+team_of "${fix}/ai/herdr/team.sh" plan lint "${FIXTURES}/plan-ok.md"
+if [ "${code}" -eq 0 ] && grep -q 'plan-ok.md: ok' "${TMP}/out"; then
+  ok "153 the fixture checkout runs a verb while its layers parse"
+else
+  no "153 the fixture checkout runs a verb while its layers parse" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+printf '[limits\nbroken = \n' >"${fix}/ai/herdr/team.local.toml"
+team_of "${fix}/ai/herdr/team.sh" plan lint "${FIXTURES}/plan-ok.md"
+if [ "${code}" -ne 0 ] &&
+  grep -qE "^config: ${fix}/ai/herdr/team\.local\.toml:[0-9]+:[0-9]+: " "${TMP}/err" &&
+  grep -q 'nothing was started' "${TMP}/err"; then
+  ok "153b a syntax error in team.local.toml stops the verb, naming the file and line"
+else
+  no "153b a syntax error in team.local.toml stops the verb, naming the file and line" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+if [ ! -s "${TMP}/out" ]; then
+  ok "153c and the verb printed nothing, rather than running on defaults"
+else
+  no "153c and the verb printed nothing, rather than running on defaults" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+team_of "${fix}/ai/herdr/team.sh" config lint
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+  grep -q "team.local.toml:" "${TMP}/err"; then
+  ok "153d and the verb that explains a configuration answers with the same file and line"
+else
+  no "153d and the verb that explains a configuration answers with the same file and line" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+team_of "${fix}/ai/herdr/team.sh" config show
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ]; then
+  ok "153e and show refuses to answer from the layers that did parse"
+else
+  no "153e and show refuses to answer from the layers that did parse" \
+    "exit ${code}: $(head -2 "${TMP}/out" | tr '\n' ' ')"
+fi
+team_of "${fix}/ai/herdr/team.sh" -h
+if [ "${code}" -eq 0 ] && grep -qF 'team.sh config [show' "${TMP}/out"; then
+  ok "153f while the usage still prints — the one text that survives a broken file"
+else
+  no "153f while the usage still prints — the one text that survives a broken file" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+HERDR_TEAM_CONFIG="${DOTFILES}/ai/herdr/team.toml" \
+  team_of "${fix}/ai/herdr/team.sh" plan lint "${FIXTURES}/plan-ok.md"
+if [ "${code}" -eq 0 ] && grep -q 'plan-ok.md: ok' "${TMP}/out"; then
+  ok "153g and HERDR_TEAM_CONFIG replaces the broken layer, which is the way out"
+else
+  no "153g and HERDR_TEAM_CONFIG replaces the broken layer, which is the way out" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 154. The verb against the shipped pair of files. `lint` is the one verb here
+#      that can refuse the configuration this machine is actually running, and
+#      `config: ok` is the line a caller greps for; `get` is how another task
+#      reads one knob, and a key no layer wrote down is a refusal rather than an
+#      empty line, because the caller that read an empty line goes on with "".
+team_of "${TEAM}" config lint
+if [ "${code}" -eq 0 ] && [ "$(cat "${TMP}/out")" = "config: ok" ]; then
+  ok "154 config lint accepts the shipped files"
+else
+  no "154 config lint accepts the shipped files" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out") $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+team_of "${TEAM}" config show
+if [ "${code}" -eq 0 ] && grep -qx 'fallback.ccd.to = cc' "${TMP}/out"; then
+  ok "154b and show prints the resolved keys, the fallback chain among them"
+else
+  no "154b and show prints the resolved keys, the fallback chain among them" \
+    "$(grep -n 'fallback' "${TMP}/out" | tr '\n' '|')"
+fi
+team_of "${TEAM}" config get nope.nope
+if [ "${code}" -ne 0 ] && [ ! -s "${TMP}/out" ] &&
+  grep -q 'config get: no nope.nope' "${TMP}/err"; then
+  ok "154c while get refuses a key no layer wrote, rather than answering nothing"
+else
+  no "154c while get refuses a key no layer wrote, rather than answering nothing" \
+    "exit ${code}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+fi
+
+# 155. `doctor`'s contract, the half that refuses: a finding is a mismatch this
+#      reader is sure of, and a machine with one is a machine a spawn would fail
+#      on, so it exits non-zero. What this machine defines is not something a
+#      fixture gets to decide, so the case decides it instead — no HOME, no
+#      ZDOTDIR and an empty directory in front of PATH is a shell that defines
+#      no launcher, and `ccd` is defined nowhere but in ai/claude/providers.zsh.
+#      The stub herdr answers no session, so the kind question is a note: that
+#      difference is the one the exit code is being asked about.
+mkdir -p "${TMP}/cfg-home" "${TMP}/cfg-nolaunch" "${TMP}/cfg-bins"
+code=0
+env -u CC_PROVIDER -u ZDOTDIR -u CLAUDE_CODE_DEEPSEEK_API_KEY \
+  HOME="${TMP}/cfg-home" PATH="${TMP}/cfg-nolaunch:${PATH}" \
+  "${TEAM}" config doctor >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 1 ] &&
+  grep -q 'profile ccd is launched with ccd, which is not on PATH' "${TMP}/out"; then
+  ok "155 config doctor fails on a launcher no shell on this machine defines"
+else
+  no "155 config doctor fails on a launcher no shell on this machine defines" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+
+# 156. The half that does not refuse. A stub command for each launcher the
+#      shipped profiles name is a machine that has them, and the key that is not
+#      set is then a note: a spawn falls back to the Pro login, which is a
+#      substitution the guard above bounds, and not a machine that cannot start.
+#      Exit 0 is the contract — a note nobody can act on must not be the thing
+#      that stops a Run — and the note names the variable and where it falls to.
+for name in cc ccd omp; do
+  printf '#!/bin/sh\nexit 0\n' >"${TMP}/cfg-bins/${name}"
+  chmod +x "${TMP}/cfg-bins/${name}"
+done
+code=0
+env -u CC_PROVIDER -u ZDOTDIR -u CLAUDE_CODE_DEEPSEEK_API_KEY \
+  HOME="${TMP}/cfg-home" PATH="${TMP}/cfg-bins:${PATH}" \
+  "${TEAM}" config doctor >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 0 ] &&
+  grep -q "ccd's key CLAUDE_CODE_DEEPSEEK_API_KEY is not set, so a spawn falls back to cc" \
+    "${TMP}/out"; then
+  ok "156 and notes the key it does not hold, with the profile it falls to"
+else
+  no "156 and notes the key it does not hold, with the profile it falls to" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+
+echo
+echo "the credential: one key, however many profiles spend it"
+
+# 157. AC4. A ceiling belongs to the *entry* in ai/providers.toml — the key —
+#      and every profile that spends it draws on the same number. That is not
+#      what counting per profile would do, and the two agree only while no two
+#      enabled profiles share a credential: the shipped inventory keeps that
+#      true, and a local layer need not. `px1` and `px2` below are one harness
+#      on one key, and the second spawn is refused by the first pane's record.
+#      The `x` in that refusal is the entry, because the reader deciding whether
+#      to spend the last seat is deciding about a key.
+#
+#      Both halves of AC4 are here: `HERDR_TEAM_PROVIDER_CAP=1` states the
+#      ceiling for every entry, which is the override, and dropping it puts the
+#      registry's own `ceiling = 4` back — the same spawn that was refused then
+#      goes through, which is what says the override was what refused it.
+#
+#      A checkout of its own, for the reason the configuration cases use one:
+#      the two profiles are appended to a copy of team.toml, and writing them
+#      into the shipped file would be this suite editing a developer's config.
+fact="$(cd "${TMP}" && pwd -P)/cred-checkout"
+cfg_checkout "${fact}"
+cat >>"${fact}/ai/herdr/team.toml" <<'TOML'
+
+[profile.px1]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+
+[profile.px2]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+TOML
+
+# cred_spawn <want-exit> <label> <args...> — one spawn out of that checkout,
+# against the stubs and the provider check the ceiling cases already use. Its
+# own helper because `spawn_on` runs this checkout's team.sh, and the two
+# profiles are the fixture's.
+cred_spawn() {
+  local want="$1" label="$2" code=0
+  shift 2
+  rm -f "${TMP}/loop-called"
+  env PATH="${TMP}/loop:${PATH}" "${fact}/ai/herdr/team.sh" spawn "$@" \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  else
+    ok "$label"
+  fi
+}
+
+loop_fresh
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+HERDR_TEAM_PROVIDER_CAP=1
+export FIXTURE_REF HERDR_FIXTURE_KEY HERDR_TEAM_PROVIDER_CAP
+cred_spawn 0 "157 the first of two profiles on one credential spends its seat" \
+  px-a --branch feat/cred-a --provider px1
+if [ "$(pane_field px-a provider)" = px1 ]; then
+  ok "157b and the record names the profile, which is the noun the messages use"
+else
+  no "157b and the record names the profile, which is the noun the messages use" \
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/px-a" 2>/dev/null)"
+fi
+cred_spawn 1 "157c a second profile on that credential is refused by it" \
+  px-b --branch feat/cred-b --provider px2
+if grep -q "1 pane count against px2's ceiling (px-a)" "${TMP}/err" &&
+  grep -q 'the deepseek entry in ai/providers.toml' "${TMP}/err"; then
+  ok "157d and the refusal names the panes and the entry the ceiling belongs to"
+else
+  no "157d and the refusal names the panes and the entry the ceiling belongs to" \
+    "$(head -3 "${TMP}/err" | tr '\n' '|')"
+fi
+called 0 '^worktree open' "157e nothing was created for the refused spawn"
+unset HERDR_TEAM_PROVIDER_CAP
+cred_spawn 0 "157f and with the override gone the registry's own ceiling lets it through" \
+  px-b --branch feat/cred-b --provider px2
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+
+echo
+echo "settle: the reset belongs to the harness"
+
+# 158. `--clear` sends the command the *record's* harness clears with, not the
+#      one this file was written for. Claude clears with `/clear`; codex, which
+#      is the disabled `cdx` profile, clears with `/new` — and a `/clear` sent
+#      to a codex pane is a slash command its owner answers differently or not
+#      at all. The record names a profile and the profile names a harness, so
+#      the profile table is where the answer comes from; the table carries the
+#      reset for exactly this reason.
+#
+#      `/clear` is still what a pane with no record gets, which is why every
+#      case above this one is unchanged: they settle a pane that was never
+#      spawned.
+reset
+record exec-1 cdx
+settle_on idle 0 'settled: reuse \(wS:p1, cleared\)' \
+  "158 a pane whose harness clears with /new is cleared with /new" exec-1 reuse --clear
+recorded sent '^/new$' "158b and /new is all that was sent"
+recorded prompt '^agent prompt exec-1 /new$' \
+  "158c through the same helper a Dispatch goes out on"
+recorded meta '^pane report-metadata wS:p1 --source herdr-team --token settle=reuse,cleared=1$' \
+  "158d and the record still says the pane was cleared"
+
+# 158e. The end that refuses: a harness stating no reset has no command this
+#       verb may send, and a profile no layer defines is not something to guess
+#       at either. `ccur` is the first — cursor ships disabled and with no
+#       `reset =` — and the refusal has to land before anything is sent, which
+#       is what the untouched recordings say.
+record exec-1 ccur
+settle_on idle 1 '' "158e a harness with no reset is refused" exec-1 reuse --clear
+if grep -q 'release it instead of reusing it' "${TMP}/err"; then
+  ok "158f and the refusal names the way out"
+else
+  no "158f and the refusal names the way out" "$(head -2 "${TMP}/err" | tr '\n' '|')"
+fi
+untouched prompt "158g and nothing was sent to the pane"
+untouched meta "158h and no decision was recorded for it"
+
+echo
+echo "the config a case writes: routing, the lane bounds, the tier clause"
+
+# 159. AC3, and the whole of it: a checkout whose two files say one more thing,
+#      and no line of team.sh, loop.py or plan.py that names it. `profile.fake`
+#      is a `[profile.*]` table launched by a script on PATH, the route names
+#      that profile, and the row the plan leaves provider-less —
+#      plan-no-provider.md's T-01 — is the one that falls to it. The wave draws
+#      a pane on `fake` and launches it with `fake-agent`, which is what "a new
+#      provider is a config edit" has to mean: the profile is the only noun any
+#      of the three files names.
+#
+#      The `[[route]]` array is restated whole in the local layer because an
+#      array replaces rather than appends (config.py's `merge`), and the profile
+#      goes on the entry the row actually matches — `has_verify = true`, which
+#      the fixture's row is. The credential is `anthropic-pro`, a login with no
+#      url and no key: a keyed one would put the provider check in front of the
+#      thing this case is about, and case 142 already has the keyed reading.
+#
+#      The fixture's own team.sh is what runs, for the reason `cfg_checkout`
+#      exists: `_CHECKOUT` has to be the tree those two files are in.
+fake="$(cd "${TMP}" && pwd -P)/fake-checkout"
+cfg_checkout "${fake}"
+cat >>"${fake}/ai/herdr/team.toml" <<'TOML'
+
+[profile.fake]
+harness = "claude"
+credential = "anthropic-pro"
+launch = "fake-agent"
+cost = "cheap"
+TOML
+cat >"${fake}/ai/herdr/team.local.toml" <<'TOML'
+# The whole array, because an array replaces rather than appends: the entry a
+# provider-less row with a verify matches is the third one, so that is where
+# the profile this checkout launches goes.
+[[route]]
+when = { provider_cost = "premium", has_blockers = true }
+role = "review"
+
+[[route]]
+when = { needs = "web" }
+role = "research"
+
+[[route]]
+when = { has_verify = true }
+role = "exec"
+profile = "fake"
+
+[[route]]
+role = "exec"
+TOML
+mkdir -p "${TMP}/fake-bins"
+printf '#!/bin/sh\nexit 0\n' >"${TMP}/fake-bins/fake-agent"
+chmod +x "${TMP}/fake-bins/fake-agent"
+
+# fake_loop <want-exit> <label> <args...> — one `loop` out of that checkout,
+# against the loop stubs. `loop_on` runs this checkout's team.sh, and the
+# profile and the route are the fixture's. The bin directory is prepended so
+# the launcher the fixture names is a script on PATH, which is what AC3 says
+# the harness's launch is.
+fake_loop() {
+  local want="$1" label="$2" code=0
+  shift 2
+  rm -f "${TMP}/loop-called"
+  env PATH="${TMP}/fake-bins:${TMP}/loop:${PATH}" "${fake}/ai/herdr/team.sh" "$@" \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+  if [ "$code" -ne "$want" ]; then
+    no "$label" "exit ${code}, want ${want}: $(head -2 "${TMP}/err" | tr '\n' ' ')"
+  else
+    ok "$label"
+  fi
+}
+
+loop_fresh
+fake_loop 4 "159 a route table can place a row a plan leaves provider-less" \
+  loop "${RUN}" --plan "${FIXTURES}/plan-no-provider.md" --spawn feat/fake --max-waves 1
+if grep -qx 'wave 1: dispatched T-01, waiting' "${TMP}/out"; then
+  ok "159b and the row was routed to the lane the route names"
+else
+  no "159b and the row was routed to the lane the route names" \
+    "$(tr '\n' '|' <"${TMP}/out")"
+fi
+if [ "$(pane_field exec-0001-1 provider)" = fake ]; then
+  ok "159c and the pane it drew is on the profile the route named"
+else
+  no "159c and the pane it drew is on the profile the route named" \
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/exec-0001-1" 2>/dev/null)"
+fi
+called 1 "^pane run .*zsh -ic 'fake-agent'\$" \
+  "159d launched with the fixture's own launcher, a script on PATH"
+
+# 160. The lane bound, and the number it is read from. `role.exec.max_per_run`
+#      is 2 in the shipped files now, and the refusal is where that shows: it
+#      names the role's own line rather than a cap in `[limits]`, because the
+#      role's line is the number. Then the same Run, the same two panes and the
+#      same row under `preset.all-cheap` — whose only word is
+#      `role.exec.max_per_run = 4` — draws the pane it would not draw before.
+#      Nothing else in that preset moved, so what let the third pane through is
+#      the number on the role.
+loop_fresh "exec-0001-1 busy" "exec-0001-2 busy"
+record exec-0001-1 ccd "${RUN}"
+record exec-0001-2 ccd "${RUN}"
+loop_on 6 'ready and no pane free for them — this Run already holds its 2 executors \(cap 2 per Run, role\.exec\.max_per_run in ai/herdr/team\.toml\)' \
+  "160 a lane that is full refuses the row, naming the role's line" \
+  --plan "${FIXTURES}/plan-ok.md" --spawn feat/bound
+called 0 '^worktree open' "160b and nothing was drawn for it"
+FIXTURE_REF=env:HERDR_FIXTURE_KEY
+HERDR_FIXTURE_KEY=fixture
+export FIXTURE_REF HERDR_FIXTURE_KEY
+env HERDR_TEAM_PRESET=all-cheap PATH="${TMP}/loop:${PATH}" "${TEAM}" loop "${RUN}" \
+  --plan "${FIXTURES}/plan-ok.md" --spawn feat/bound --max-waves 1 \
+  >"${TMP}/out" 2>"${TMP}/err"
+code=$?
+if [ "$code" -eq 4 ] && grep -qx 'wave 1: dispatched T-01, waiting' "${TMP}/out"; then
+  ok "160c while the same Run under preset.all-cheap draws the row it could not"
+else
+  no "160c while the same Run under preset.all-cheap draws the row it could not" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/out")"
+fi
+if [ "$(pane_field exec-0001-3 provider)" = ccd ]; then
+  ok "160d and the pane is the third one, which is the number the role now states"
+else
+  no "160d and the pane is the third one, which is the number the role now states" \
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/exec-0001-3" 2>/dev/null)"
+fi
+unset FIXTURE_REF HERDR_FIXTURE_KEY
+
+# 161. The tier warning follows the profile's own word rather than the name
+#      `cc`, which is the other half of what T-04 changed and the reason plan.py
+#      reads `requires_reason`. `plan-cc-tier.md`'s T-02 is what case 133 reads:
+#      `cc` is premium in the shipped file and a premium profile without the word
+#      is a lint finding, so there a row on it always has to account for itself.
+#      This checkout says otherwise twice over — `cc` is stated cheap with
+#      nothing to account for, and `mid`, which is not `cc` at all, requires a
+#      reason. The plan is written here as well, because the question is a
+#      question about a plan's rows and there is no fixture pairing those two
+#      rows with those two profiles.
+#
+#      The sentence is byte-identical either way: the warning still says "is cc
+#      with a verify", because that text is frozen and what moved is which
+#      profiles draw it.
+tier="$(cd "${TMP}" && pwd -P)/tier-checkout"
+cfg_checkout "${tier}"
+cat >"${tier}/ai/herdr/team.local.toml" <<'TOML'
+# `requires_reason` is the profile's own word for whether a row on it has to say
+# why, so the check cannot be the name `cc`: this layer takes the reason away
+# from a profile called cc and gives it to one that is not.
+[profile.cc]
+cost = "cheap"
+requires_reason = false
+
+[profile.mid]
+harness = "claude"
+credential = "deepseek"
+launch = "ccd"
+cost = "cheap"
+requires_reason = true
+TOML
+cat >"${TMP}/tier-plan.md" <<'MD'
+# Fixture plan — two rows, read against the profile table
+
+Status: fixture. Both rows have a `verify` and neither says why it is on the
+profile it names, so the pair is the warning and nothing else.
+
+## Tasks
+
+```json
+[
+  {"task": "T-01", "provider": "cc", "files": ["README.md"],
+    "verify": "npx markdownlint-cli2 README.md", "blocks": []},
+  {"task": "T-02", "provider": "mid", "files": ["ai/herdr/team.sh"],
+    "verify": "bash ai/herdr/tests/run.sh", "blocks": []}
+]
+```
+
+### T-01 — A cc row the profile says nothing about
+
+The profile is stated cheap with no reason to account for, so the name it
+carries is not what the tier rule is about.
+
+### T-02 — A row on a profile that is not cc
+
+Same shape, a different profile, and this one requires a reason. It is the row
+the warning names.
+MD
+"${tier}/ai/herdr/team.sh" plan lint "${TMP}/tier-plan.md" >"${TMP}/out" 2>"${TMP}/err"
+code=$?
+if [ "$code" -eq 0 ] && grep -qE '^lint: T-02 is cc with a verify' "${TMP}/err"; then
+  ok "161 a profile that is not cc can still be the one the tier warning names"
+else
+  no "161 a profile that is not cc can still be the one the tier warning names" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+if [ "$(grep -c 'is cc with a verify' "${TMP}/err")" -eq 1 ]; then
+  ok "161b and a cc row on a profile that requires nothing draws none"
+else
+  no "161b and a cc row on a profile that requires nothing draws none" \
+    "$(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 162. AC7, as a case rather than as something someone ran once. The first
+#      pattern is a comparison against, or a `${x:-…}` default of, one of the
+#      three shipped profiles: the answer now comes from the route table, and a
+#      second place it is written down is a second place it can disagree. The
+#      second is the `case` arms that read a name as a set of providers, which
+#      is the same claim for the shape a list is written in. Prose still names
+#      all three — the first pattern only matches an operator, so a docstring
+#      that mentions `ccd` passes, which is the point.
+named="$(grep -nE '(==|!=) *"?(cc|ccd|omp)"?|:-(cc|ccd|omp)\}' \
+  "${TEAM}" \
+  "${DOTFILES}/ai/herdr/lib/herdr_team/loop.py" \
+  "${DOTFILES}/ai/herdr/lib/herdr_team/plan.py" || true)"
+if [ -z "${named}" ]; then
+  ok "162 no comparison and no default names a provider in the three files"
+else
+  no "162 no comparison and no default names a provider in the three files" \
+    "$(printf '%s' "${named}" | tr '\n' '|')"
+fi
+listed="$(grep -nE 'in ([a-z| ]*\b)?(cc|ccd|omp) *[|)]' "${TEAM}" || true)"
+if [ -z "${listed}" ]; then
+  ok "162b nor does any case arm read one as a set of providers"
+else
+  no "162b nor does any case arm read one as a set of providers" \
+    "$(printf '%s' "${listed}" | tr '\n' '|')"
+fi
+
+# 163. The runtime floor, from the outside. The reader is the standard library's
+#      `tomllib` now, which is 3.11's, so a machine whose PATH python3 is older
+#      has to be told which python to install rather than shown a
+#      `No module named 'tomllib'` from the middle of a spawn. Refused by name,
+#      naming mise, before the module is imported at all — and with an exit code
+#      of its own, because the two ways this line can fail are different
+#      findings: too old a python3, or a configuration that will not resolve.
+mkdir -p "${TMP}/old-py"
+cat >"${TMP}/old-py/python3" <<'SH'
+#!/usr/bin/env bash
+# Reports 3.9 to whatever runs under it: a `-c` program is compiled and run by
+# the real interpreter in a namespace whose `sys.version_info` is the tuple a
+# 3.9 would have, and everything else — `-m`, a script path — is delegated
+# untouched. `sys` is a plain module, so assigning the attribute is a lie both
+# the reader's check and team.sh's actually compare against.
+[ "${1:-}" = "-c" ] || exec "${REAL_PY}" "$@"
+prog=$2
+shift 2
+exec "${REAL_PY}" -c 'import sys
+sys.version_info = (3, 9)
+_prog = sys.argv[1]
+sys.argv = ["-c"] + sys.argv[2:]
+exec(compile(_prog, "<-c>", "exec"), {"__name__": "__main__"})' "${prog}" "$@"
+SH
+chmod +x "${TMP}/old-py/python3"
+
+code=0
+PATH="${TMP}/old-py:${PATH}" "${TEAM}" config lint >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 3 ] &&
+  grep -qF 'team.sh: needs python3 >= 3.11 (mise provides it); found 3.9' "${TMP}/err"; then
+  ok "163 a 3.9 python3 is refused by name, so the verb can say what to install"
+else
+  no "163 a 3.9 python3 is refused by name, so the verb can say what to install" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+code=0
+PATH="${TMP}/old-py:${PATH}" "${TEAM}" status >"${TMP}/out" 2>"${TMP}/err" || code=$?
+if [ "${code}" -eq 3 ] && grep -qF 'needs python3 >= 3.11' "${TMP}/err" &&
+  ! grep -qF 'the configuration does not resolve' "${TMP}/err"; then
+  ok "163b and a verb that reads the configuration says that rather than the other thing"
+else
+  no "163b and a verb that reads the configuration says that rather than the other thing" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+
+# 164. And the shell survives it. The launcher cache is a file the last good
+#      start left behind, so a python3 that cannot regenerate it must not cost
+#      the developer their provider launchers: the shell warns once, goes on
+#      reading the copy on disk, and says nothing on the next start because the
+#      stamp beside the cache says this edit has already been reported.
+cache_tree="${TMP}/cache-tree"
+cache_home="${TMP}/cache-home"
+mkdir -p "${cache_tree}/ai/claude" "${cache_tree}/ai/herdr" "${cache_home}"
+cp "${DOTFILES}/ai/claude/providers.zsh" "${cache_tree}/ai/claude/providers.zsh"
+cp "${DOTFILES}/ai/providers.toml" "${cache_tree}/ai/providers.toml"
+# `lib/` symlinked at the real package, so what generates the cache is the
+# module under test rather than a copy a later edit here would leave behind.
+ln -sfn "${DOTFILES}/ai/herdr/lib" "${cache_tree}/ai/herdr/lib"
+
+# cc_shell <dir-to-prepend> — one start against that tree: a PATH whose python3
+# is that directory's, a cache directory of its own so this case can neither see
+# nor clobber the developer's, and `ccd` as what the shell was left with. `-f`,
+# so no rc file of the machine running the suite is read. The `zsh` is a file
+# rather than a `-c` program, because a zsh program in `-c`'s argument is a
+# quoted string holding `${…}` that the shell reading this one has to leave
+# alone, which shellcheck reads as a mistake and is one typo away from being
+# true.
+cat >"${TMP}/cc-start.zsh" <<'ZSH'
+source "${DOTFILES}/ai/claude/providers.zsh"
+(( $+functions[ccd] )) && print -r -- ccd-defined
+ZSH
+cc_shell() {
+  code=0
+  PATH="${1:+$1:}${PATH}" HOME="${cache_home}" DOTFILES="${cache_tree}" \
+    XDG_CACHE_HOME="${cache_home}" "${REAL_ZSH}" -f "${TMP}/cc-start.zsh" \
+    >"${TMP}/out" 2>"${TMP}/err" || code=$?
+}
+
+cc_shell ""
+if [ "${code}" -eq 0 ] && [ -s "${cache_home}/dotfiles/providers.zsh" ] &&
+  grep -q '^ccd-defined$' "${TMP}/out"; then
+  ok "164 a 3.11 python3 builds the cache and the launchers with it"
+else
+  no "164 a 3.11 python3 builds the cache and the launchers with it" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err") $(tr '\n' '|' <"${TMP}/out")"
+fi
+cp "${cache_home}/dotfiles/providers.zsh" "${TMP}/cache-before"
+touch "${cache_tree}/ai/providers.toml"
+cc_shell "${TMP}/old-py"
+if [ "${code}" -eq 0 ] &&
+  cmp -s "${TMP}/cache-before" "${cache_home}/dotfiles/providers.zsh" &&
+  grep -qF 'no python3 >= 3.11' "${TMP}/err" &&
+  grep -qF 'mise provides one' "${TMP}/err" &&
+  grep -q '^ccd-defined$' "${TMP}/out"; then
+  ok "164b a 3.9 python3 warns, keeps the last good cache and leaves ccd defined"
+else
+  no "164b a 3.9 python3 warns, keeps the last good cache and leaves ccd defined" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
+fi
+cc_shell "${TMP}/old-py"
+if [ "${code}" -eq 0 ] && [ ! -s "${TMP}/err" ] && grep -q '^ccd-defined$' "${TMP}/out"; then
+  ok "164c and the start after it says nothing, that edit having been reported"
+else
+  no "164c and the start after it says nothing, that edit having been reported" \
+    "exit ${code}: $(tr '\n' '|' <"${TMP}/err")"
 fi
 
 echo
