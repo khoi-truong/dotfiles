@@ -53,6 +53,7 @@ How files are linked, where secrets come from, and troubleshooting:
 | --- | --- | :---: | --- |
 | `zsh/` | Shell: antidote plugins, aliases, functions, cached inits | always | [Shell](docs/shell.md) |
 | `git/` | gitconfig, gitleaks pre-commit hook, worktree helpers, delta, lazygit | ✓ | [Git](docs/git.md) |
+| `gh/` | GitHub CLI settings and aliases | ✓ | [Git](docs/git.md#github-cli) |
 | `brew/` | `Brewfile`: formulae, casks, fonts, App Store apps | ✓ | [Apps](docs/apps.md#homebrew) |
 | `mise/` | Global runtime pins: python, node, ruby, go, java | ✓ | [Shell](docs/shell.md#runtimes-mise) |
 | `macos/` | `defaults write` preferences | ✓ | [Apps](docs/apps.md#macos-preferences) |

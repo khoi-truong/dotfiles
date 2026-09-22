@@ -28,7 +28,7 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 
 |             | Modules                                                  |
 | ----------- | -------------------------------------------------------- |
-| **default** | `git` `brew` `mise` `macos` `gpg` `iterm` `ai` `misc`    |
+| **default** | `git` `gh` `brew` `mise` `macos` `gpg` `iterm` `ai` `misc` |
 | **opt-in**  | `vscode` `xcode` `terminal`                              |
 
 Every module script also runs on its own, e.g. `bash git/setup.sh`.
@@ -50,6 +50,7 @@ The repo file is linked into place, so edits in the repo are live immediately.
 | `git/ignore`                                            | `~/.config/git/ignore`                  |
 | `git/template/`                                         | `~/.config/git/template`                |
 | `git/lazygit.yml`                                       | lazygit's Application Support dir       |
+| `gh/config.yml`                                         | `~/.config/gh/config.yml`               |
 | `ssh/config`                                            | `~/.ssh/config`                         |
 | `curl/curlrc`, `tmux/tmux.conf`, `vim/vimrc`            | `~/.curlrc`, `~/.tmux.conf`, `~/.vimrc` |
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |

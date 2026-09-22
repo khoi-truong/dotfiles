@@ -1,0 +1,28 @@
+# GitHub CLI config, linked to ~/.config/gh/config.yml by gh/setup.sh.
+# `gh config set` and `gh alias set` write through the symlink and keep these
+# comments, so review `git diff` after using them. Credentials live in the
+# macOS keychain and hosts.yml, neither of which is versioned.
+version: "1"
+# ssh matches the remotes and git/gitconfig's pushInsteadOf rules.
+git_protocol: ssh
+# Empty: fall back to $EDITOR, $PAGER and the system browser.
+editor:
+pager:
+browser:
+prompt: enabled
+prefer_editor_prompt: disabled
+# Render label colours from the repo in `gh issue/pr list`.
+color_labels: enabled
+spinner: enabled
+telemetry: disabled
+aliases:
+  co: pr checkout
+  pv: pr view --web
+  pc: pr create --fill
+  pd: pr diff
+  mine: pr list --author @me
+  review: pr list --search "review-requested:@me"
+  land: pr merge --squash --delete-branch
+  rv: repo view --web
+  runs: run list --limit 10
+  watch: run watch --exit-status
