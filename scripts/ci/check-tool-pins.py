@@ -57,6 +57,10 @@ SOURCES = {
         ("scripts/ci/lint-local.sh", r"^EC_VERSION=v(\S+)"),
     ],
     "shellcheck": [(".github/workflows/lint.yml", r'SHELLCHECK_VERSION:\s*"([^"]+)"')],
+    "rumdl": [
+        (".github/workflows/lint.yml", r"\brumdl@([0-9][^\s]*)"),
+        ("scripts/ci/lint-local.sh", r"\brumdl@([0-9][^\s]*)"),
+    ],
     "gitleaks": [
         (".github/workflows/secrets.yml", r"GITLEAKS_VERSION:\s*\"?([0-9][^\s\"]*)")
     ],

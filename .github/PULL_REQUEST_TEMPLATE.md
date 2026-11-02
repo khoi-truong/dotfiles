@@ -23,4 +23,4 @@ subject, so anything longer is truncated to "...".
 - [ ] `zsh -n` on touched `zsh/*.zsh`
 - [ ] Startup time compared: `ZSH_PROFILE=1 zsh -i -c exit` (before / after)
 - [ ] Re-ran the affected module's `setup.sh` (idempotent)
-- [ ] `markdownlint-cli2` clean
+- [ ] `rumdl check` clean
