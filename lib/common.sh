@@ -13,6 +13,15 @@
 [ -n "${DOTFILES_COMMON_SH:-}" ] && return 0
 DOTFILES_COMMON_SH=1
 
+# Where this file lives, whether or not the caller set DOTFILES.
+DOTFILES="${DOTFILES:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
+# One attempt per top-level run: modules run as child processes and inherit it.
+if [ -z "${DOTFILES_ATTEMPT:-}" ]; then
+  DOTFILES_ATTEMPT="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  export DOTFILES_ATTEMPT
+fi
+
 # --- logging ---------------------------------------------------------------
 
 log() { printf '%s\n' "$*"; }
@@ -65,26 +74,24 @@ load_brew_shellenv() {
 # --- filesystem ------------------------------------------------------------
 
 # link <source> <target> — idempotent symlink, creating the parent directory.
-# Uses -n so re-linking a directory replaces the link instead of nesting a new
-# link inside it.
+# Journaled: anything already at the target (file, directory or other symlink)
+# is moved into the current attempt's backup directory, and `scripts/restore.sh`
+# puts it all back. A missing source warns and returns 0.
 link() {
-  local src="$1" dst="$2"
-  [ -e "$src" ] || {
-    warn "link: source missing, skipped: $src"
-    return 0
-  }
-  mkdir -p "$(dirname "$dst")"
-  # A real (non-symlink) file/dir at the target would be silently shadowed;
-  # back it up under a timestamped name so nothing is lost or overwritten.
-  if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    local backup
-    backup="${dst}.dotfiles-backup.$(date +%Y%m%d%H%M%S)"
-    while [ -e "$backup" ]; do backup="${backup}.1"; done
-    mv "$dst" "$backup"
-    warn "backed up existing $dst -> $backup"
+  _transaction link "$@"
+}
+
+# backup <path> — move a file or directory aside (journaled) instead of
+# deleting it. A missing path is a no-op.
+backup() {
+  _transaction backup "$@"
+}
+
+_transaction() {
+  if is_macos; then
+    xcode-select -p >/dev/null 2>&1 || die "python3 missing: run xcode-select --install"
   fi
-  ln -sfn "$src" "$dst"
-  ok "$dst -> $src"
+  "${DOTFILES_PYTHON:-python3}" -B "${DOTFILES}/lib/transaction.py" "$@"
 }
 
 # module_dir — absolute directory of the calling script.
