@@ -48,8 +48,26 @@ case "${1:-}" in
 esac
 
 # --- Homebrew --------------------------------------------------------------
-# Check first: every other module may depend on brew-installed binaries.
-load_brew_shellenv || die "Homebrew is missing; install it first: https://brew.sh"
+# First: every other module may depend on brew-installed binaries. A missing
+# brew is installed with the official script, downloaded to a file rather than
+# piped into a shell, and run interactively so Homebrew asks for sudo itself.
+# CI and other runs with no terminal stop instead: they cannot answer it.
+install_homebrew() {
+  local installer
+  [ -t 0 ] && [ -z "${CI:-}" ] ||
+    die "Homebrew is missing; install it first: https://brew.sh"
+  installer="$(mktemp)"
+  curl -fsSL -o "${installer}" \
+    https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh ||
+    die "could not download the Homebrew installer"
+  info "Installing Homebrew (it will ask for your password)..."
+  /bin/bash "${installer}" || die "Homebrew install failed"
+  rm -f "${installer}"
+}
+if ! load_brew_shellenv; then
+  install_homebrew
+  load_brew_shellenv || die "Homebrew install did not produce a usable brew."
+fi
 ok "Homebrew at $(brew_prefix)"
 
 # --- shell -----------------------------------------------------------------

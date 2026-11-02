@@ -23,7 +23,7 @@ for arg in "$@"; do
   esac
 done
 
-load_brew_shellenv || die "Homebrew not found. Install it first: https://brew.sh"
+load_brew_shellenv || die "Homebrew not found. Run ./setup.sh, which installs it, or see https://brew.sh"
 
 info "🍺 brew bundle install (${HOMEBREW_BUNDLE_FILE})"
 brew bundle install --no-upgrade --verbose
