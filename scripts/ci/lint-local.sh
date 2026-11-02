@@ -5,10 +5,10 @@
 # would report twenty minutes later.
 #
 #   scripts/ci/lint-local.sh            every check in those two workflows
-#   scripts/ci/lint-local.sh --quick    the three that need no download
+#   scripts/ci/lint-local.sh --quick    the four that need no download
 #
-# `--quick` is shellcheck over `scripts/ci/list-shell-scripts.sh`, `zsh -n`
-# over the workflow's own file set, and editorconfig-checker: the three that
+# `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
+# `zsh -n` over the workflow's own file set, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
 # rumdl, actionlint, zizmor, the two repo-rule scripts and the four
 # Python checks, and needs uv; a runner has them, a laptop may not.
@@ -237,6 +237,28 @@ check_shellcheck() {
   "$sc" -x "${files[@]}"
 }
 
+# Style comes from .editorconfig, so shfmt gets no style flags. Zsh files are
+# left alone: shfmt's zsh support is partial and a bad rewrite breaks every new
+# terminal.
+check_shfmt() {
+  local sf file
+  local -a files=()
+  while IFS= read -r file; do
+    files+=("$file")
+  done < <(scripts/ci/list-shell-scripts.sh | grep -v '\.zsh$')
+
+  if [ "${#files[@]}" -eq 0 ]; then
+    printf 'lint-local: no shell scripts found to check\n'
+    return 0
+  fi
+  if ! sf=$(find_tool shfmt); then
+    printf 'lint-local: shfmt is not installed, so %d script(s) went unchecked\n' \
+      "${#files[@]}" >&2
+    return 1
+  fi
+  "$sf" -d "${files[@]}"
+}
+
 check_zsh() {
   local -a files=() bad=()
   local file
@@ -321,7 +343,7 @@ main() {
 
   case "${1:-}" in
     --quick)
-      checks=(shellcheck zsh editorconfig)
+      checks=(shellcheck shfmt zsh editorconfig)
       ;;
     '')
       # Cheapest first, so a rule violation does not wait on three downloads;
@@ -331,7 +353,7 @@ main() {
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules brewfile pins shellcheck zsh editorconfig python markdown actionlint zizmor)
+      checks=(rules brewfile pins shellcheck shfmt zsh editorconfig python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2

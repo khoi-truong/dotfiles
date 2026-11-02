@@ -36,3 +36,10 @@ indent_size = 2
 
 [*.{sh,zsh}]
 trim_trailing_whitespace = true
+
+# shfmt reads these; binary_next_line stays off, `||` and `&&` end the line.
+[*.sh]
+switch_case_indent = true
+
+[git/template/hooks/*]
+switch_case_indent = true
