@@ -33,8 +33,8 @@
 - **Brewfile edits are consequential.** `brew bundle cleanup` uninstalls
   everything the file doesn't list.
 
-`scripts/ci/check-rules.sh` enforces the prefix, version-manager and
-credential rules with a grep.
+`scripts/ci/check-rules.sh` enforces the prefix, version-manager, credential
+and home-path (`/Users/<name>/`) rules with a grep.
 
 ## Writing a module
 

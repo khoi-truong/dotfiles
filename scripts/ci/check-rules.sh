@@ -2,10 +2,11 @@
 #
 # The CLAUDE.md rules that a grep can decide.
 #
-# Three invariants in CLAUDE.md have no other check behind them: a Homebrew
-# prefix is never hardcoded (the repo is dual-arch), mise is the only version
-# manager, and credentials never land in the repo. Each is one pattern away
-# from being enforced, so it is enforced here rather than left to review.
+# Four invariants have no other check behind them: a Homebrew prefix is never
+# hardcoded (the repo is dual-arch), mise is the only version manager,
+# credentials never land in the repo, and no file names a user's home
+# directory. Each is one pattern away from being enforced, so it is enforced
+# here rather than left to review.
 #
 # Scope is the shell files, not the whole tree. A mention of /opt/homebrew in
 # README.md or a skill reference is prose, not a hardcoded prefix. Full-line
@@ -22,6 +23,11 @@
 # Untracked files are included so a violation is caught while it is still one
 # edit from being fixed. CI runs on a clean checkout, where the working tree and
 # the index agree, so this is stricter than CI and never looser.
+#
+# The home-path rule reads every file, not just the shell ones. The harness
+# settings are symlinked into $HOME, so a tool that registers itself there
+# (a plugin marketplace, a hook) writes its absolute path straight into a
+# tracked file.
 #
 # The credential rule below is the one exception to "read the working tree": it
 # asks whether a secrets file is tracked, which an untracked one is not.
@@ -188,6 +194,30 @@ check_credentials() {
   fi
 }
 
+# /Users/<name>/ — the macOS home form. /Users/Shared is not a home.
+HOME_PATH_RE='/Users/[a-z][a-z0-9._-]*/'
+
+check_home_path() {
+  local -a files=() found=()
+  local path
+  while IFS= read -r -d '' path; do
+    [ -f "$path" ] && [ ! -L "$path" ] && files+=("$path")
+  done < <(all_files)
+
+  [ "${#files[@]}" -gt 0 ] || return 0
+
+  # -I skips binaries. Names only, never the matched line: it holds the path.
+  while IFS= read -r path; do
+    found+=("$path")
+  done < <(grep -lIE -e "$HOME_PATH_RE" -- "${files[@]}" || true)
+
+  if [ "${#found[@]}" -ne 0 ]; then
+    printf 'A home path (/Users/<name>/) is in these files; use the HOME variable or ~, or keep the entry machine-local:\n' >&2
+    printf '  %s\n' "${found[@]}" >&2
+    return 1
+  fi
+}
+
 main() {
   local -a failed=()
 
@@ -200,12 +230,15 @@ main() {
   printf '\n==> no tracked credentials\n'
   check_credentials || failed+=('tracked credentials')
 
+  printf '\n==> no hardcoded home path\n'
+  check_home_path || failed+=('home path')
+
   printf '\n'
   if [ "${#failed[@]}" -ne 0 ]; then
     printf 'check-rules: FAILED — %s\n' "${failed[*]}"
     return 1
   fi
-  printf 'check-rules: all three rules hold\n'
+  printf 'check-rules: all four rules hold\n'
 }
 
 main "$@"
