@@ -2,6 +2,7 @@
 description: Commit staged changes with a Conventional Commits message
 argument-hint: "[extra context]"
 ---
+
 Write a commit for the staged changes (`git diff --cached`). If nothing is staged, show `git status --short` and ask what to stage.
 
 - Subject: Conventional Commits (`type(scope): summary`), imperative, at most 50 characters.

@@ -3,3 +3,5 @@
 ruff = "0.16.8"
 editorconfig-checker = "4.0.1"
 uv = "0.12.10"
+rumdl = "0.3.2"
+shfmt = "3.14.1"

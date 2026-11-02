@@ -68,23 +68,31 @@ README's module table.
 
 `.editorconfig` governs formatting: 2-space indent, LF, final newline, trimmed
 trailing whitespace (except in `*.md` and `*.diff`). C-family and Python use 4
-spaces; Makefiles use tabs. Markdown is linted per `.markdownlint-cli2.jsonc`:
-dash list markers, and a language on every fenced code block (`text` when
-there isn't one).
+spaces; Makefiles use tabs. Markdown is linted by rumdl per
+`.markdownlint-cli2.jsonc`: dash list markers, and a language on every fenced
+code block (`text` when there isn't one).
+
+Shell scripts (everything `scripts/ci/list-shell-scripts.sh` prints except
+`*.zsh`) are formatted by shfmt, which takes its style from `.editorconfig`
+(2-space indent, indented `case` bodies, `||` and `&&` at the end of the line).
+Never run it on `zsh/*.zsh`. rumdl and shfmt are pinned in `mise.toml`; install
+them with `mise install`, then run `rumdl check .` and `shfmt -d <files>` (or
+`shfmt -w` to fix). `.git-blame-ignore-revs` lists the one-time reformat;
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` makes local blame skip
+it (GitHub reads the file by name).
 
 ## Checking changes
 
 There is no build and no repo-wide test suite.
 
 ```sh
-scripts/ci/lint-local.sh --quick   # shellcheck, zsh -n, editorconfig — no downloads
+scripts/ci/lint-local.sh --quick   # shellcheck, shfmt, zsh -n, editorconfig
 scripts/ci/lint-local.sh           # everything lint.yml and the Python job run
 ai/herdr/tests/run.sh              # after touching ai/herdr/ or lib/
 ```
 
 `lint-local.sh` fails, rather than skips, when a linter is missing, and is
-stricter than CI: it also checks untracked files. The full run needs node and
-`uv`.
+stricter than CI: it also checks untracked files. The full run needs `uv`.
 
 ## CI
 
@@ -92,7 +100,7 @@ Runs on every push to `main` and every pull request.
 
 | Workflow | Runs |
 | --- | --- |
-| `lint.yml` | `shellcheck -x`, `zsh -n`, markdownlint, editorconfig-checker, JSON and TOML validation, actionlint, zizmor, the repo-rule scripts |
+| `lint.yml` | `shellcheck -x`, `shfmt -d`, `zsh -n`, rumdl, editorconfig-checker, JSON and TOML validation, actionlint, zizmor, the repo-rule scripts |
 | `secrets.yml` | gitleaks over every pushed commit, no path filter |
 | `smoke.yml` | macOS, when shell config, `setup.sh`, `lib/` or a plist changed: lints plists, links the zsh config into a throwaway `HOME`, fails on any stderr or a warm start over 1.5 s |
 | `test.yml` | macOS, when `ai/herdr/` or `lib/` changed: the herdr suite with `HERDR_TESTS_STRICT=1`, plus the Python checks |

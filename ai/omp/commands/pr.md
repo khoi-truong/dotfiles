@@ -2,6 +2,7 @@
 description: Push the branch and open a pull request
 argument-hint: "[extra context]"
 ---
+
 Open a pull request for the current branch with `gh pr create`.
 
 1. Refuse if the current branch is the default branch.

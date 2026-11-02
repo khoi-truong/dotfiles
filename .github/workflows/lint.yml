@@ -32,11 +32,11 @@ defaults:
   run:
     shell: bash
 
-# Versions of shellcheck, editorconfig-checker, ruff and uv must equal mise.toml
+# Versions of shellcheck, shfmt, rumdl, editorconfig-checker, ruff and uv must equal mise.toml
 # and mise/global.toml, and pytest's must equal pyproject.toml; the python job's
 # pins check (scripts/ci/check-tool-pins.py, which also covers secrets.yml's
 # gitleaks and test.yml) fails when they drift.
-# Every tool version pinned in this file — markdownlint-cli2, actionlint,
+# Every tool version pinned in this file — rumdl, shfmt, actionlint,
 # zizmor, editorconfig-checker, ruff and mypy — is mirrored in scripts/ci/lint-local.sh,
 # along with the two scripts/ci/check-*.sh below. The two files are the only
 # places these are named, so bump them in the same change: a pin that
@@ -81,6 +81,27 @@ jobs:
           fi
           shellcheck -x "${files[@]}"
 
+      # shfmt reads its style from .editorconfig, so it is run with no style flags.
+      # zsh files are excluded: shfmt's zsh support is partial.
+      - name: Set up shfmt
+        env:
+          SHFMT_VERSION: "3.14.1"
+        run: |
+          curl -fsSL -o shfmt "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
+          echo "76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf  shfmt" | sha256sum -c -
+          sudo install -m 755 shfmt /usr/local/bin/shfmt
+          shfmt --version
+
+      - name: Verify shell scripts are formatted
+        run: |
+          files=()
+          while IFS= read -r file; do files+=("$file"); done < <(scripts/ci/list-shell-scripts.sh | grep -v '\.zsh$')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No shell scripts found."
+            exit 0
+          fi
+          shfmt -d "${files[@]}"
+
       - name: Set up zsh
         run: sudo apt-get update -qq && sudo apt-get install -y zsh
 
@@ -109,11 +130,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check for markdown lint findings
+      # uv comes from mise on a laptop; see the python job's step below.
+      - name: Set up uv
+        env:
+          UV_VERSION: "0.12.10"
         run: |
-          files=()
-          while IFS= read -r file; do files+=("$file"); done < <(git ls-files '*.md')
-          npx --yes markdownlint-cli2@0.23.2 "${files[@]}"
+          pipx install "uv==${UV_VERSION}"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+
+      - name: Check for markdown lint findings
+        run: uvx rumdl@0.3.2 check .
 
       - name: Set up editorconfig-checker
         run: |
