@@ -116,6 +116,15 @@ directory's latest session whichever provider ran it. Prefer `ccr`/`ccdr` and
 pick the session you meant. Only single-turn sessions have been tested; a long
 tool-heavy transcript is untried.
 
+### Permissions
+
+`ai/claude/settings.json` denies `sudo` (bare and with arguments), force-pushes
+including `git push * +*`, and reads of key files, `.env` files and the
+credential files `~/.claude.json`, `~/.claude/.credentials.json`,
+`~/.config/gh/hosts.yml` and `~/.config/github-copilot/apps.json`. The
+`autoMode` prose no longer names those locations; the deny list carries the
+protection. Hook commands use `$HOME`, which the shell expands at run time.
+
 ### Status line and quota routing
 
 `ai/claude/statusline.sh` (the `statusLine` command) renders the OMC HUD, and

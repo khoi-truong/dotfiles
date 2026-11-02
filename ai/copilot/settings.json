@@ -3,7 +3,7 @@
   "hooks": {
     "SessionStart": [
       {
-        "bash": "bash '/Users/khoi/.copilot/hooks/herdr-agent-state.sh'",
+        "bash": "bash \"$HOME/.copilot/hooks/herdr-agent-state.sh\"",
         "timeoutSec": 10,
         "type": "command"
       }
