@@ -54,8 +54,9 @@ esac
 # CI and other runs with no terminal stop instead: they cannot answer it.
 install_homebrew() {
   local installer
-  [ -t 0 ] && [ -z "${CI:-}" ] ||
+  if [ ! -t 0 ] || [ -n "${CI:-}" ]; then
     die "Homebrew is missing; install it first: https://brew.sh"
+  fi
   installer="$(mktemp)"
   curl -fsSL -o "${installer}" \
     https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh ||
