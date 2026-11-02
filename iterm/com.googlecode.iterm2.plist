@@ -710,13 +710,13 @@ The script should do this: \(ai.prompt)</string>
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.047058823529411764</real>
+				<real>0.0</real>
 				<key>Color Space</key>
 				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.047058823529411764</real>
+				<real>0.0</real>
 				<key>Red Component</key>
-				<real>0.043137254901960784</real>
+				<real>0.0</real>
 			</dict>
 			<key>Background Image Location</key>
 			<string></string>
@@ -764,6 +764,18 @@ The script should do this: \(ai.prompt)</string>
 			<integer>120</integer>
 			<key>Command</key>
 			<string></string>
+			<key>Cursor Blink Fade In Curve</key>
+			<integer>3</integer>
+			<key>Cursor Blink Fade In Duration</key>
+			<real>0.20000000000000001</real>
+			<key>Cursor Blink Fade Out Curve</key>
+			<integer>3</integer>
+			<key>Cursor Blink Fade Out Duration</key>
+			<real>0.20000000000000001</real>
+			<key>Cursor Blink Hidden Dwell</key>
+			<real>0.20000000000000001</real>
+			<key>Cursor Blink Visible Dwell</key>
+			<real>0.69999999999999996</real>
 			<key>Cursor Boost</key>
 			<real>0.0</real>
 			<key>Cursor Color</key>
@@ -792,6 +804,8 @@ The script should do this: \(ai.prompt)</string>
 				<key>Red Component</key>
 				<real>1</real>
 			</dict>
+			<key>Cursor Smooth Blink</key>
+			<true/>
 			<key>Cursor Text Color</key>
 			<dict>
 				<key>Alpha Component</key>
@@ -848,7 +862,7 @@ The script should do this: \(ai.prompt)</string>
 			<array/>
 			<key>Keyboard Map</key>
 			<dict>
-				<key>0x6b-0x100000-0x28</key>
+				<key>0x6b-0x100000-0x28-0x1</key>
 				<dict>
 					<key>Action</key>
 					<integer>11</integer>
@@ -1410,7 +1424,7 @@ The script should do this: \(ai.prompt)</string>
 			<key>Title Components</key>
 			<integer>3</integer>
 			<key>Transparency</key>
-			<real>0.14874616350446429</real>
+			<real>0.10012316900919023</real>
 			<key>Triggers</key>
 			<array>
 				<dict>
@@ -1584,34 +1598,34 @@ The script should do this: \(ai.prompt)</string>
 	<string>/-+\~_.</string>
 	<key>Workgroups</key>
 	<data>
-	W3sidW5pcXVlSWRlbnRpZmllciI6ImJ1aWx0aW4uY2xhdWRlQ29kZSIsIm5hbWUiOiJD
-	bGF1ZGUgQ29kZSIsInNlc3Npb25zIjpbeyJ1cmxTdHJpbmciOiIiLCJjb21tYW5kIjoi
-	IiwidG9vbGJhckl0ZW1zIjpbeyJraW5kIjoibW9kZVN3aXRjaGVyIn0seyJraW5kIjoi
-	Z2l0U3RhdHVzIn0seyJraW5kIjoiYXV0b1JlcXVlc3RSZXZpZXdXaGVuSWRsZSJ9XSwi
-	ZGlzcGxheU5hbWUiOiJDaGF0IiwidW5pcXVlSWRlbnRpZmllciI6ImJ1aWx0aW4uY2xh
-	dWRlQ29kZS5tYWluIiwia2luZCI6eyJraW5kIjoicm9vdCJ9LCJwZXJGaWxlQ29tbWFu
-	ZCI6IiIsIm1vZGUiOiJyZWd1bGFyIn0seyJkaXNwbGF5TmFtZSI6IkRpZmYiLCJ1bmlx
-	dWVJZGVudGlmaWVyIjoiYnVpbHRpbi5jbGF1ZGVDb2RlLmRpZmYiLCJ0b29sYmFySXRl
-	bXMiOlt7ImtpbmQiOiJtb2RlU3dpdGNoZXIifSx7ImtpbmQiOiJjaGFuZ2VkRmlsZVNl
-	bGVjdG9yIn0seyJraW5kIjoiZ2l0QmFzZVNlbGVjdG9yIn0seyJiYWNrU2hvcnRjdXQi
-	Onsic2VyaWFsaXplZCI6IjB4ZjcwMi0weDM0MDAwMC0weDdiIn0sImZvcndhcmRTaG9y
-	dGN1dCI6eyJzZXJpYWxpemVkIjoiMHhmNzAzLTB4MzQwMDAwLTB4N2MifSwia2luZCI6
-	Im5hdmlnYXRpb24iLCJyZWxvYWRTaG9ydGN1dCI6eyJzZXJpYWxpemVkIjoiMHg3Mi0w
-	eDEwMDAwMC0weGYifX1dLCJtb2RlIjoiZGlmZiIsInBlckZpbGVDb21tYW5kIjoiZ2l0
-	IGRpZmZ0b29sIC15IC14IHZpbWRpZmYgXFwoZ2l0QmFzZSkgLS0gXFwoZmlsZSkiLCJw
-	YXJlbnRJRCI6ImJ1aWx0aW4uY2xhdWRlQ29kZS5tYWluIiwiY29tbWFuZCI6ImdpdCBk
-	aWZmdG9vbCAteSAteCB2aW1kaWZmIFxcKGdpdEJhc2UpIiwia2luZCI6eyJraW5kIjoi
-	cGVlciJ9LCJ1cmxTdHJpbmciOiIifSx7ImRpc3BsYXlOYW1lIjoiQ29kZSBSZXZpZXci
-	LCJ1bmlxdWVJZGVudGlmaWVyIjoiYnVpbHRpbi5jbGF1ZGVDb2RlLnJldmlldyIsInRv
-	b2xiYXJJdGVtcyI6W3sia2luZCI6Im1vZGVTd2l0Y2hlciJ9LHsic2hvcnRjdXQiOnsi
-	c2VyaWFsaXplZCI6IjB4NzItMHgxMDAwMDAtMHhmIn0sImtpbmQiOiJyZWxvYWQifSx7
-	ImtpbmQiOiJhdXRvU2VuZENsaXBwaW5nc1doZW5JZGxlIn1dLCJtb2RlIjoiY29kZVJl
-	dmlldyIsInVybFN0cmluZyI6IiIsInBlckZpbGVDb21tYW5kIjoiIiwicGFyZW50SUQi
-	OiJidWlsdGluLmNsYXVkZUNvZGUubWFpbiIsImNvbW1hbmQiOiJjbGF1ZGUgXFwoY29k
-	ZVJldmlld1Byb21wdCkgLS1hcHBlbmQtc3lzdGVtLXByb21wdC1maWxlICdcXChjb2Rl
-	UmV2aWV3U3lzdGVtUHJvbXB0RmlsZSknIC0tc2V0dGluZ3MgJ1xcKGl0ZXJtMi5hcHBC
-	dW5kbGVQYXRoKVwvQ29udGVudHNcL1Jlc291cmNlc1wvY29kZS1yZXZpZXctc2V0dGlu
-	Z3MudHh0JyIsImtpbmQiOnsia2luZCI6InBlZXIifX1dfV0=
+	W3sidW5pcXVlSWRlbnRpZmllciI6ImJ1aWx0aW4uY2xhdWRlQ29kZSIsInNlc3Npb25z
+	IjpbeyJ1cmxTdHJpbmciOiIiLCJ1bmlxdWVJZGVudGlmaWVyIjoiYnVpbHRpbi5jbGF1
+	ZGVDb2RlLm1haW4iLCJtb2RlIjoicmVndWxhciIsInBlckZpbGVDb21tYW5kIjoiIiwi
+	dG9vbGJhckl0ZW1zIjpbeyJraW5kIjoibW9kZVN3aXRjaGVyIn0seyJraW5kIjoiZ2l0
+	U3RhdHVzIn0seyJraW5kIjoiYXV0b1JlcXVlc3RSZXZpZXdXaGVuSWRsZSJ9XSwiY29t
+	bWFuZCI6IiIsImtpbmQiOnsia2luZCI6InJvb3QifSwiZGlzcGxheU5hbWUiOiJDaGF0
+	In0seyJkaXNwbGF5TmFtZSI6IkRpZmYiLCJjb21tYW5kIjoiZ2l0IGRpZmZ0b29sIC15
+	IFxcKGdpdEJhc2UpIiwidG9vbGJhckl0ZW1zIjpbeyJraW5kIjoibW9kZVN3aXRjaGVy
+	In0seyJraW5kIjoiY2hhbmdlZEZpbGVTZWxlY3RvciJ9LHsia2luZCI6ImdpdEJhc2VT
+	ZWxlY3RvciJ9LHsia2luZCI6Im5hdmlnYXRpb24iLCJyZWxvYWRTaG9ydGN1dCI6eyJz
+	ZXJpYWxpemVkIjoiMHg3Mi0weDEwMDAwMC0weGYifSwiYmFja1Nob3J0Y3V0Ijp7InNl
+	cmlhbGl6ZWQiOiIweGY3MDItMHgzNDAwMDAtMHg3YiJ9LCJmb3J3YXJkU2hvcnRjdXQi
+	Onsic2VyaWFsaXplZCI6IjB4ZjcwMy0weDM0MDAwMC0weDdjIn19XSwidXJsU3RyaW5n
+	IjoiIiwia2luZCI6eyJraW5kIjoicGVlciJ9LCJwZXJGaWxlQ29tbWFuZCI6ImdpdCBk
+	aWZmdG9vbCAteSBcXChnaXRCYXNlKSAtLSBcXChmaWxlKSIsInVuaXF1ZUlkZW50aWZp
+	ZXIiOiJidWlsdGluLmNsYXVkZUNvZGUuZGlmZiIsIm1vZGUiOiJkaWZmIiwicGFyZW50
+	SUQiOiJidWlsdGluLmNsYXVkZUNvZGUubWFpbiJ9LHsiY29tbWFuZCI6ImNsYXVkZSBc
+	XChjb2RlUmV2aWV3UHJvbXB0KSAtLWFwcGVuZC1zeXN0ZW0tcHJvbXB0LWZpbGUgJ1xc
+	KGNvZGVSZXZpZXdTeXN0ZW1Qcm9tcHRGaWxlKScgLS1zZXR0aW5ncyAnXFwoaXRlcm0y
+	LmFwcEJ1bmRsZVBhdGgpXC9Db250ZW50c1wvUmVzb3VyY2VzXC9jb2RlLXJldmlldy1z
+	ZXR0aW5ncy50eHQnIiwidW5pcXVlSWRlbnRpZmllciI6ImJ1aWx0aW4uY2xhdWRlQ29k
+	ZS5yZXZpZXciLCJwZXJGaWxlQ29tbWFuZCI6IiIsInRvb2xiYXJJdGVtcyI6W3sia2lu
+	ZCI6Im1vZGVTd2l0Y2hlciJ9LHsia2luZCI6InJlbG9hZCIsInNob3J0Y3V0Ijp7InNl
+	cmlhbGl6ZWQiOiIweDcyLTB4MTAwMDAwLTB4ZiJ9fSx7ImtpbmQiOiJhdXRvU2VuZENs
+	aXBwaW5nc1doZW5JZGxlIn1dLCJkaXNwbGF5TmFtZSI6IkNvZGUgUmV2aWV3IiwibW9k
+	ZSI6ImNvZGVSZXZpZXciLCJwYXJlbnRJRCI6ImJ1aWx0aW4uY2xhdWRlQ29kZS5tYWlu
+	Iiwia2luZCI6eyJraW5kIjoicGVlciJ9LCJ1cmxTdHJpbmciOiIifV0sIm5hbWUiOiJD
+	bGF1ZGUgQ29kZSJ9XQ==
 	</data>
 	<key>findMode_iTerm</key>
 	<integer>0</integer>

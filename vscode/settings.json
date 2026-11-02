@@ -530,5 +530,6 @@
   "[swift]": {
     "editor.tabSize": 4,
     "editor.defaultFormatter": "sweetpad.sweetpad"
-  }
+  },
+  "mise.binPath": "/usr/local/bin/mise"
 }
