@@ -49,33 +49,25 @@ esac
 
 # --- Homebrew --------------------------------------------------------------
 # Install first: every other module may depend on brew-installed binaries.
-if ! load_brew_shellenv; then
-  info "Installing Homebrew..."
-  NONINTERACTIVE=1 /bin/bash -c \
-    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  load_brew_shellenv || die "Homebrew install did not produce a usable brew."
-fi
+load_brew_shellenv || die "Homebrew is missing; install it first: https://brew.sh"
 ok "Homebrew at $(brew_prefix)"
-
-# --- sudo keep-alive -------------------------------------------------------
-# macos/ needs it; asking once up front avoids prompts mid-run.
-sudo -v
-while true; do
-  sudo -n true
-  sleep 60
-  kill -0 "$$" || exit
-done 2>/dev/null &
 
 # --- shell -----------------------------------------------------------------
 info "Linking shell configuration..."
 link "${DOTFILES}/zsh/zshenv" "${HOME}/.zshenv"
 link "${DOTFILES}/zsh/zshrc" "${HOME}/.zshrc"
 link "${DOTFILES}/ssh/config" "${HOME}/.ssh/config"
+chmod 700 "${HOME}/.ssh"
 link "${DOTFILES}/curl/curlrc" "${HOME}/.curlrc"
 link "${DOTFILES}/tmux/tmux.conf" "${HOME}/.tmux.conf"
 link "${DOTFILES}/vim/vimrc" "${HOME}/.vimrc"
 
 # Redundant state: history and the completion dump both live in zsh/local/.
+# An existing history is appended to the real one, not lost.
+if [ -f "${HOME}/.zsh_history" ] && [ ! -L "${HOME}/.zsh_history" ]; then
+  mkdir -p "${DOTFILES}/zsh/local"
+  cat "${HOME}/.zsh_history" >>"${DOTFILES}/zsh/local/history"
+fi
 rm -f "${HOME}/.zsh_history" "${HOME}"/.zcompdump*
 rm -rf "${HOME}/.zsh_sessions"
 

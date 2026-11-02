@@ -19,12 +19,12 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 
 `setup.sh`, in order:
 
-1. Installs Homebrew if it is missing.
-2. Asks for `sudo` once and keeps it alive, so `macos/` doesn't prompt mid-run.
-3. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`,
-   `tmux/tmux.conf` and `vim/vimrc` into `$HOME`, and removes the redundant
-   `~/.zsh_history`, `~/.zcompdump*` and `~/.zsh_sessions`.
-4. Runs `<module>/setup.sh` for each module.
+1. Requires Homebrew and stops if it is missing.
+2. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`,
+   `tmux/tmux.conf` and `vim/vimrc` into `$HOME`, sets `~/.ssh` to 700, moves an
+   existing `~/.zsh_history` into `zsh/local/history`, and removes the redundant
+   `~/.zcompdump*` and `~/.zsh_sessions`.
+3. Runs `<module>/setup.sh` for each module. Only `macos/` asks for `sudo`, itself.
 
 |             | Modules                                                  |
 | ----------- | -------------------------------------------------------- |
