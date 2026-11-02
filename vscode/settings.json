@@ -396,8 +396,31 @@
     "git fetch": true,
     "diff": true,
     "lsof": true,
-    "git stash list": true,
-    "git stash show": true
+    "git stash": true,
+    "/^git stash (drop|clear)\\b/": false,
+    // Build and test tooling.
+    "pnpm": true,
+    "npx tsc": true,
+    "npx jest": true,
+    "npx turbo": true,
+    "nocorrect": true,
+    "cp": true,
+    "mv": true,
+    // git that writes, but stays recoverable from the reflog or the remote.
+    "git commit": true,
+    "git switch": true,
+    "/^git checkout -b /": true,
+    "git pull": true,
+    "git rebase": true,
+    "git rm": true,
+    "git push": true,
+    // A false rule wins over any true one: force-pushes always ask.
+    "/^git push\\b.*\\s(--force\\S*|-f|--mirror|--delete|-d|\\+\\S+|:\\S+)(\\s|$)/": false,
+    "/^git config (--get|--get-all|--list|-l|--show-origin)\\b/": true,
+    // gh, read-only subcommands; anything that creates, edits or deletes asks.
+    "/^gh (pr|issue|run|release|workflow|repo) (view|list|status|checks|diff)\\b/": true,
+    "/^gh (search|status)\\b/": true,
+    "gh auth status": true
   },
   "claudeCode.disableLoginPrompt": true,
   "claudeCode.hideOnboarding": true,
