@@ -119,11 +119,13 @@ tool-heavy transcript is untried.
 ### Permissions
 
 `ai/claude/settings.json` denies `sudo` (bare and with arguments), force-pushes
-including `git push * +*`, and reads of key files, `.env` files and the
+(`--force`/`-f` in any position, and `+refspec`), and Claude's file-tool and
+common shell-reader access to of key files, `.env` files and the
 credential files `~/.claude.json`, `~/.claude/.credentials.json`,
-`~/.config/gh/hosts.yml` and `~/.config/github-copilot/apps.json`. The
-`autoMode` prose no longer names those locations; the deny list carries the
-protection. Hook commands use `$HOME`, which the shell expands at run time.
+`~/.config/gh/hosts.yml` and `~/.config/github-copilot/apps.json`. Deny rules
+don't reach a script that opens a file itself. Hook commands use `$HOME`, which
+the shell expands at run time; `ai/setup.sh` drops the absolute-path duplicate
+`herdr integration install` appends.
 
 ### Status line and quota routing
 

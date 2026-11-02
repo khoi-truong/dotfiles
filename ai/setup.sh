@@ -91,6 +91,25 @@ if command -v herdr >/dev/null 2>&1; then
       warn "herdr integration install ${integration} failed: ${herdr_out}"
     fi
   done
+  # herdr only recognises its hook by the absolute-path string, so it appends a
+  # second SessionStart entry beside the tracked "$HOME" one. Drop that copy:
+  # the tracked file must not carry a home path, and the hook must run once.
+  herdr_strip() {
+    local file="$1" filter="$2" tmp
+    [ -f "${file}" ] || return 0
+    tmp="$(mktemp)"
+    if jq --arg abs "${HOME}" "${filter}" "${file}" >"${tmp}"; then
+      cmp -s "${tmp}" "${file}" || { cat "${tmp}" >"${file}"; ok "dropped herdr's absolute-path hook from ${file#"${CURRENT_DIR}/"}"; }
+    fi
+    rm -f "${tmp}"
+  }
+  # $abs is a jq variable, not a shell one.
+  # shellcheck disable=SC2016
+  herdr_strip "${CURRENT_DIR}/claude/settings.json" \
+    'if .hooks.SessionStart then .hooks.SessionStart |= map(select([.hooks[]?.command // ""] | any(startswith("bash \u0027" + $abs + "/")) | not)) else . end'
+  # shellcheck disable=SC2016
+  herdr_strip "${CURRENT_DIR}/copilot/settings.json" \
+    'if .hooks.SessionStart then .hooks.SessionStart |= map(select((.bash // "") | startswith("bash \u0027" + $abs + "/") | not)) else . end'
   # herdr rewrites the harness settings files and drops the trailing newline
   # .editorconfig requires, which CI then fails on. Put it back.
   for settings in "${CURRENT_DIR}/claude/settings.json" "${CURRENT_DIR}/copilot/settings.json"; do
