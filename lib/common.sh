@@ -75,10 +75,12 @@ link() {
   }
   mkdir -p "$(dirname "$dst")"
   # A real (non-symlink) file/dir at the target would be silently shadowed;
-  # back it up once so nothing is lost on a fresh machine.
+  # back it up under a timestamped name so nothing is lost or overwritten.
   if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    mv "$dst" "${dst}.dotfiles-backup"
-    warn "backed up existing $dst -> ${dst}.dotfiles-backup"
+    local backup
+    backup="${dst}.dotfiles-backup.$(date +%Y%m%d%H%M%S)"
+    mv "$dst" "$backup"
+    warn "backed up existing $dst -> $backup"
   fi
   ln -sfn "$src" "$dst"
   ok "$dst -> $src"

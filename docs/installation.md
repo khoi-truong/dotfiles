@@ -41,7 +41,7 @@ Two mechanisms, depending on whether the app reads a config file.
 
 The repo file is linked into place, so edits in the repo are live immediately.
 `link` (in `lib/common.sh`) backs up any real file it would replace as
-`<file>.dotfiles-backup`.
+`<file>.dotfiles-backup.<timestamp>`.
 
 | Repo                                                    | Linked to                               |
 | ------------------------------------------------------- | --------------------------------------- |
@@ -118,7 +118,7 @@ installed; otherwise the step is skipped with a warning and the old file kept.
 
 **A tool replaced my symlink with a real file.** Claude Code, iTerm's
 cc-status installer and others rewrite `settings.json` in place. Re-running the
-module backs the file up as `*.dotfiles-backup` and relinks; fold anything new
+module backs the file up as `*.dotfiles-backup.<timestamp>` and relinks; fold anything new
 from the backup into the repo copy first.
 
 **`ai/setup.sh` warns about a dangling symlink.** A file moved in the repo and
