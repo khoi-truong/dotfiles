@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# The CLAUDE.md rules that a grep can decide.
+# The AGENTS.md rules that a grep can decide.
 #
 # Four invariants have no other check behind them: a Homebrew prefix is never
 # hardcoded (the repo is dual-arch), mise is the only version manager,
@@ -59,7 +59,7 @@ HOMEBREW_RE='/opt/homebrew|/usr/local'
 # violation, whatever it is called.
 VERSION_MANAGER_RE='pyenv init|rbenv init|jenv init|nvm\.sh|asdf\.sh'
 
-# Tracked-file suffixes that hold credentials. CLAUDE.md names these three as
+# Tracked-file suffixes that hold credentials. AGENTS.md names these three as
 # the files that must never be versioned; only declarative config under ai/ is.
 CREDENTIAL_SUFFIXES=(
   '.claude.json'

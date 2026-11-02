@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
-      # The title becomes the squash-merge subject (see CLAUDE.md): Conventional
+      # The title becomes the squash-merge subject (see AGENTS.md): Conventional
       # Commits, and short enough that GitHub doesn't truncate it.
       - name: Verify PR title is a short Conventional Commit
         shell: bash

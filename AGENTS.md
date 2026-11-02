@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 `README.md` is the landing page: getting started, the module table and an
 index of `docs/`. The details live in `docs/` (installation, shell, git, apps,
