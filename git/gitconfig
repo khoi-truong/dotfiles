@@ -102,6 +102,7 @@
   mnemonicPrefix = true
   # Detect copies as well as renames.
   renames = copies
+  tool = nvimdiff
 
 [delta]
   # n / N jump between files in the diff.
