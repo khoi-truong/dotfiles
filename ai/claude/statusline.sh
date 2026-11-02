@@ -42,8 +42,8 @@ cache_quota() {
   # the -s test rejects, so a stale-but-real cache survives a payload that
   # cannot refresh it. mv is atomic: the hook never reads a half-written file.
   if jq -c --argjson now "$(date +%s)" \
-      'select(.rate_limits != null) | {cached_at: $now, rate_limits}' \
-      >"${tmp}" 2>/dev/null && [ -s "${tmp}" ]; then
+    'select(.rate_limits != null) | {cached_at: $now, rate_limits}' \
+    >"${tmp}" 2>/dev/null && [ -s "${tmp}" ]; then
     mv -f "${tmp}" "${QUOTA_CACHE}"
   else
     rm -f "${tmp}"

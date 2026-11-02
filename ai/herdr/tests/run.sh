@@ -121,8 +121,14 @@ pass=0 fail=0 skip=0 holes=0 hole_ids="" declared_ids=""
 # 132 says so rather than letting a case leave the run through a side door.
 declared_ok="10 45"
 
-ok() { printf '  ok   %s\n' "$1"; pass=$((pass + 1)); }
-no() { printf '  FAIL %s\n    %s\n' "$1" "$2"; fail=$((fail + 1)); }
+ok() {
+  printf '  ok   %s\n' "$1"
+  pass=$((pass + 1))
+}
+no() {
+  printf '  FAIL %s\n    %s\n' "$1" "$2"
+  fail=$((fail + 1))
+}
 # A case the environment cannot run is not a case that passed. Say so — and say
 # which of the two kinds of skip it is, because they are not the same finding:
 #
@@ -301,7 +307,8 @@ dispatch() {
 
 # expect_exit <want> <label> <args...>
 expect_exit() {
-  local want="$1" label="$2"; shift 2
+  local want="$1" label="$2"
+  shift 2
   local got
   dispatch "$@" >"${TMP}/out"
   got=$?
@@ -429,7 +436,8 @@ echo "collect --plan"
 # expect_collect <want-exit> <stdout-regex> <label> <args...> — an empty regex
 # checks the exit code only.
 expect_collect() {
-  local want="$1" re="$2" label="$3"; shift 3
+  local want="$1" re="$2" label="$3"
+  shift 3
   local got
   "${TEAM}" collect "$@" >"${TMP}/out" 2>"${TMP}/err"
   got=$?
@@ -3292,7 +3300,7 @@ if [ "$(pane_field exec-b1 provider)" = cc ] && [ "$(pane_field exec-b1 run)" = 
   ok "125c the pane was recorded with its provider and the Run that drew it"
 else
   no "125c the pane was recorded with its provider and the Run that drew it" \
-    "record: $(tr '\t' ':' < "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
 fi
 
 # 126. The record's other end. It is written where the pane is made, because the
@@ -3307,7 +3315,7 @@ if [ "$(pane_field exec-b1 worktree)" = "${TMP}/loop-wt/feat/cap-b" ] &&
   ok "126 the record carries the worktree the pane was opened on, and a stamp"
 else
   no "126 the record carries the worktree the pane was opened on, and a stamp" \
-    "record: $(tr '\t' ':' < "${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
+    "record: $(tr '\t' ':' <"${HERDR_TEAM_ROOT}/state/panes/exec-b1" 2>/dev/null)"
 fi
 loop_cmd 0 "126b settle retain keeps the record" settle exec-b1 retain
 if [ -f "${HERDR_TEAM_ROOT}/state/panes/exec-b1" ]; then
@@ -4060,7 +4068,8 @@ echo "config: the verb, and the gate in front of it"
 # checkout of its own: a case that wrote one into this checkout would be writing
 # ai/herdr/team.local.toml, which is a file a developer may be relying on.
 team_of() {
-  local sh="$1"; shift
+  local sh="$1"
+  shift
   code=0
   "${sh}" "$@" >"${TMP}/out" 2>"${TMP}/err" || code=$?
 }

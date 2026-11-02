@@ -28,12 +28,15 @@ while IFS= read -r path || [[ -n "${path}" ]]; do
   path="${path%/}"
   [[ -n "${path}" ]] || continue
   case "/${path}/" in
-    */../* | //*) echo "post-checkout: skipping unsafe path ${path}" >&2; continue ;;
+    */../* | //*)
+      echo "post-checkout: skipping unsafe path ${path}" >&2
+      continue
+      ;;
   esac
   [[ -e "${main}/${path}" && ! -e "${here}/${path}" ]] || continue
   mkdir -p "$(dirname "${here}/${path}")"
-  if cp -c -R "${main}/${path}" "${here}/${path}" 2>/dev/null \
-    || cp -R "${main}/${path}" "${here}/${path}"; then
+  if cp -c -R "${main}/${path}" "${here}/${path}" 2>/dev/null ||
+    cp -R "${main}/${path}" "${here}/${path}"; then
     echo "post-checkout: cloned ${path}" >&2
   fi
 done <"${list}"

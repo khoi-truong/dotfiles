@@ -6,7 +6,7 @@ XCODE_TEMPLATE_DIR=$HOME'/Library/Developer/Xcode/Templates/File Templates/Model
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Copy ModelMapping file templates into the local ModelMapping template directory
-xcodeTemplate () {
+xcodeTemplate() {
   echo "==> Copying up Model Mapping Xcode file templates..."
 
   if [ -d "$XCODE_TEMPLATE_DIR" ]; then

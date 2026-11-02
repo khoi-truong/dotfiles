@@ -178,8 +178,8 @@ case "${1:-}" in
   *)
     _cfg="$(herdr_cfg env)" || {
       _rc=$?
-      [ "${_rc}" -eq 3 ] \
-        || printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+      [ "${_rc}" -eq 3 ] ||
+        printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
       exit "${_rc}"
     }
     eval "${_cfg}"
@@ -420,8 +420,8 @@ second_gate() {
   [ "$_had_qc" -eq 0 ] || export HERDR_TEAM_PRO_QUOTA_CACHE="$_prev_qc"
   [ "$_had_qa" -eq 0 ] || export HERDR_TEAM_PRO_QUOTA_MAX_AGE="$_prev_qa"
   if [ "$fatal" -eq 1 ]; then
-    [ "${_rc}" -eq 3 ] \
-      || printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
+    [ "${_rc}" -eq 3 ] ||
+      printf 'team.sh: the configuration does not resolve — nothing was started\n' >&2
     exit "${_rc}"
   fi
   warn "team.sh: ${REPO}'s configuration does not resolve (exit ${_rc}) — continuing on ${DOTFILES}'s"
@@ -1105,10 +1105,22 @@ cmd_spawn() {
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
-      --branch) branch="${2:-}"; shift 2 ;;
-      --provider) provider="${2:-}"; shift 2 ;;
-      --tier-reason) tier_reason="${2:-}"; shift 2 ;;
-      --skip-provider-check) skip_provider_check=1; shift ;;
+      --branch)
+        branch="${2:-}"
+        shift 2
+        ;;
+      --provider)
+        provider="${2:-}"
+        shift 2
+        ;;
+      --tier-reason)
+        tier_reason="${2:-}"
+        shift 2
+        ;;
+      --skip-provider-check)
+        skip_provider_check=1
+        shift
+        ;;
       *) die "spawn: unknown option $1" ;;
     esac
   done
@@ -1504,10 +1516,19 @@ cmd_collect() {
   local run="" plan=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --plan) plan="${2:-}"; shift 2 ;;
-      --) shift; break ;;
+      --plan)
+        plan="${2:-}"
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
       -*) die "collect: unknown option $1" ;;
-      *) run="$1"; shift ;;
+      *)
+        run="$1"
+        shift
+        ;;
     esac
   done
 
@@ -1612,9 +1633,15 @@ cmd_report() {
         write=0
         shift
         ;;
-      --) shift; break ;;
+      --)
+        shift
+        break
+        ;;
       -*) die "report: unknown option $1" ;;
-      *) run="$1"; shift ;;
+      *)
+        run="$1"
+        shift
+        ;;
     esac
   done
 
@@ -1661,15 +1688,25 @@ cmd_wait() {
       # Used for one thing and one thing only: resolving the Run, exactly as
       # `collect --plan` does. It is still not used for deciding what is
       # outstanding — blocking is a question about the Run, not about the plan.
-      --plan) [ $# -ge 2 ] || die "wait: --plan needs a plan file"; plan="$2"; shift 2 ;;
+      --plan)
+        [ $# -ge 2 ] || die "wait: --plan needs a plan file"
+        plan="$2"
+        shift 2
+        ;;
       --timeout)
         [ $# -ge 2 ] || die "wait: --timeout needs milliseconds"
         timeout="$2"
         shift 2
         ;;
-      --) shift; break ;;
+      --)
+        shift
+        break
+        ;;
       -*) die "wait: unknown option $1" ;;
-      *) run="$1"; shift ;;
+      *)
+        run="$1"
+        shift
+        ;;
     esac
   done
 
@@ -2198,8 +2235,8 @@ loop_wave() {
       # `current_run` reads that pointer, not the Run `bind_run_repo` already
       # pointed REPO at above. Left unset anywhere else, `cmd_spawn` falls
       # back to `current_run` exactly as before.
-      ( _SPAWN_RUN="$run" cmd_spawn "$name" --branch "$branch" --provider "$provider" \
-        --tier-reason "$reason" ) || src=$?
+      (_SPAWN_RUN="$run" cmd_spawn "$name" --branch "$branch" --provider "$provider" \
+        --tier-reason "$reason") || src=$?
       if [ "$src" -ne 0 ]; then
         # A refusal is not a full pool, and it is not a row to leave for the
         # next wave either: `spawn` refuses for reasons a loop must not paper
@@ -2360,7 +2397,11 @@ cmd_loop() {
   local run="" plan="" max_waves=20 timeout="" spawn=0 prefix=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --plan) [ $# -ge 2 ] || die "loop: --plan needs a plan file"; plan="$2"; shift 2 ;;
+      --plan)
+        [ $# -ge 2 ] || die "loop: --plan needs a plan file"
+        plan="$2"
+        shift 2
+        ;;
       --max-waves)
         [ $# -ge 2 ] || die "loop: --max-waves needs a count"
         max_waves="$2"
@@ -2377,9 +2418,15 @@ cmd_loop() {
         prefix="$2"
         shift 2
         ;;
-      --) shift; break ;;
+      --)
+        shift
+        break
+        ;;
       -*) die "loop: unknown option $1" ;;
-      *) run="$1"; shift ;;
+      *)
+        run="$1"
+        shift
+        ;;
     esac
   done
 
@@ -2426,7 +2473,7 @@ cmd_loop() {
       break
     fi
     wrc=0
-    ( loop_wave "$run" "$plan" "$wave" "$timeout" "$spawn" "$prefix" ) || wrc=$?
+    (loop_wave "$run" "$plan" "$wave" "$timeout" "$spawn" "$prefix") || wrc=$?
     if [ "$wrc" -eq 0 ]; then
       continue
     fi
@@ -2753,13 +2800,34 @@ cmd_dispatch() {
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
-      --task) task="${2:-}"; shift 2 ;;
-      --dispatch) dispatch="${2:-}"; shift 2 ;;
-      --run) run="${2:-}"; shift 2 ;;
-      --from-plan) plan="${2:-}"; shift 2 ;;
-      --force) force=1; shift ;;
-      --dry-run) dry=1; shift ;;
-      --) shift; break ;;
+      --task)
+        task="${2:-}"
+        shift 2
+        ;;
+      --dispatch)
+        dispatch="${2:-}"
+        shift 2
+        ;;
+      --run)
+        run="${2:-}"
+        shift 2
+        ;;
+      --from-plan)
+        plan="${2:-}"
+        shift 2
+        ;;
+      --force)
+        force=1
+        shift
+        ;;
+      --dry-run)
+        dry=1
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
       -*) die "dispatch: unknown option $1" ;;
       *) break ;;
     esac
@@ -3110,8 +3178,14 @@ cmd_teardown() {
   shift || true
   while [ $# -gt 0 ]; do
     case "$1" in
-      --force) force=1; shift ;;
-      --abandon-only) abandon_only=1; shift ;;
+      --force)
+        force=1
+        shift
+        ;;
+      --abandon-only)
+        abandon_only=1
+        shift
+        ;;
       *) die "teardown: unknown option $1" ;;
     esac
   done
@@ -3201,19 +3275,58 @@ cmd_teardown() {
 # --- dispatch --------------------------------------------------------------
 
 case "${1:-}" in
-  spawn) shift; cmd_spawn "$@" ;;
-  dispatch) shift; cmd_dispatch "$@" ;;
-  run) shift; cmd_run "$@" ;;
-  status) shift; cmd_status "$@" ;;
-  collect) shift; cmd_collect "$@" ;;
-  report) shift; cmd_report "$@" ;;
-  wait) shift; cmd_wait "$@" ;;
-  loop) shift; cmd_loop "$@" ;;
-  surface) shift; cmd_surface "$@" ;;
-  plan) shift; cmd_plan "$@" ;;
-  config) shift; cmd_config "$@" ;;
-  settle) shift; cmd_settle "$@" ;;
-  teardown) shift; cmd_teardown "$@" ;;
+  spawn)
+    shift
+    cmd_spawn "$@"
+    ;;
+  dispatch)
+    shift
+    cmd_dispatch "$@"
+    ;;
+  run)
+    shift
+    cmd_run "$@"
+    ;;
+  status)
+    shift
+    cmd_status "$@"
+    ;;
+  collect)
+    shift
+    cmd_collect "$@"
+    ;;
+  report)
+    shift
+    cmd_report "$@"
+    ;;
+  wait)
+    shift
+    cmd_wait "$@"
+    ;;
+  loop)
+    shift
+    cmd_loop "$@"
+    ;;
+  surface)
+    shift
+    cmd_surface "$@"
+    ;;
+  plan)
+    shift
+    cmd_plan "$@"
+    ;;
+  config)
+    shift
+    cmd_config "$@"
+    ;;
+  settle)
+    shift
+    cmd_settle "$@"
+    ;;
+  teardown)
+    shift
+    cmd_teardown "$@"
+    ;;
   -h | --help | help) usage 0 ;;
   *) usage ;;
 esac

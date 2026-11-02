@@ -99,7 +99,10 @@ if command -v herdr >/dev/null 2>&1; then
     [ -f "${file}" ] || return 0
     tmp="$(mktemp)"
     if jq --arg abs "${HOME}" "${filter}" "${file}" >"${tmp}"; then
-      cmp -s "${tmp}" "${file}" || { cat "${tmp}" >"${file}"; ok "dropped herdr's absolute-path hook from ${file#"${CURRENT_DIR}/"}"; }
+      cmp -s "${tmp}" "${file}" || {
+        cat "${tmp}" >"${file}"
+        ok "dropped herdr's absolute-path hook from ${file#"${CURRENT_DIR}/"}"
+      }
     fi
     rm -f "${tmp}"
   }
