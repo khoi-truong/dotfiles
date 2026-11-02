@@ -28,6 +28,7 @@ keeps its own model, provider and MCP config, since the formats differ.
 | `ai/providers.toml` | Every credential and endpoint, one entry each | — |
 | `ai/aliases.zsh` | Launchers and aliases, sourced by `zshrc` | — |
 | `ai/env.local.zsh` | API keys, generated from 1Password (gitignored) | — |
+| `ai/op.local.env` | `OP_ACCOUNT`, `OP_VAULT`, `OP_ITEM` for that item (gitignored) | — |
 
 Skills are linked one directory at a time into `~/.claude/skills`, so skills
 installed by plugins stay untouched. Keys are covered in
@@ -62,7 +63,9 @@ launcher = { short = "ccd", label = "DS" }
 ```
 
 - `key` is `env:VAR`, resolved from `ai/env.local.zsh`. Add the key to the
-  1Password item and re-run `sh ai/setup.sh`.
+  1Password item and re-run `sh ai/setup.sh`. The script reads the item named
+  by `OP_ACCOUNT`, `OP_VAULT` and `OP_ITEM` in `ai/op.local.env`; without
+  that file it warns and skips.
 - `launcher.short` adds the `X`/`Xc`/`Xr` commands; `label` is the status-line
   prefix.
 - `ceiling` caps how many panes may spend the key at once.
