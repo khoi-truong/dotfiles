@@ -3,12 +3,12 @@
 #
 # Copied into every new repo from init.templateDir. Existing repos pick it up
 # with `git init` (which never overwrites an existing hook). Skips with a
-# warning when gitleaks is not installed; bypass once with --no-verify.
+# warning when gitleaks is neither on PATH nor installed by mise; bypass once with --no-verify.
 set -euo pipefail
 
-if ! command -v gitleaks >/dev/null 2>&1; then
+gl=$(command -v gitleaks || mise which gitleaks 2>/dev/null) || {
   echo "pre-commit: gitleaks not installed; skipping secret scan" >&2
   exit 0
-fi
+}
 
-exec gitleaks git --pre-commit --staged --redact --no-banner --verbose
+exec "$gl" git --pre-commit --staged --redact --no-banner --verbose

@@ -54,6 +54,8 @@ EC_BASE_URL="https://github.com/editorconfig-checker/editorconfig-checker/releas
 EC_EXCLUDE='\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
 
 cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=lib/find-tool.sh
+. lib/find-tool.sh
 
 # Echoes "<asset-suffix> <sha256>" for this machine, or returns 1 when v4.0.1
 # published no build for it. The digests are the ones that release's own
@@ -203,14 +205,15 @@ check_actionlint() {
   # always has one, so the skip would make this run looser than CI — the one
   # thing this script promises not to be. Refusing is the only safe answer: the
   # findings it would have produced are invisible either way.
-  if ! command -v shellcheck >/dev/null 2>&1; then
+  local sc
+  if ! sc=$(find_tool shellcheck); then
     printf 'lint-local: actionlint needs shellcheck on PATH, or it silently\n' >&2
     printf 'lint-local: skips its shellcheck pass and reports less than CI does\n' >&2
     return 1
   fi
   # No path argument, so actionlint finds .github/workflows from the repository
   # root — the same thing the `docker://rhysd/actionlint` step does in CI.
-  uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color
+  PATH="$(dirname "$sc"):$PATH" uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color
 }
 
 check_zizmor() {
@@ -219,6 +222,7 @@ check_zizmor() {
 }
 
 check_shellcheck() {
+  local sc
   local -a files=()
   while IFS= read -r file; do
     files+=("$file")
@@ -228,12 +232,12 @@ check_shellcheck() {
     printf 'lint-local: no shell scripts found to check\n'
     return 0
   fi
-  if ! command -v shellcheck >/dev/null 2>&1; then
+  if ! sc=$(find_tool shellcheck); then
     printf 'lint-local: shellcheck is not installed, so %d script(s) went unchecked\n' \
       "${#files[@]}" >&2
     return 1
   fi
-  shellcheck -x "${files[@]}"
+  "$sc" -x "${files[@]}"
 }
 
 check_zsh() {
