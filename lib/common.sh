@@ -79,6 +79,7 @@ link() {
   if [ -e "$dst" ] && [ ! -L "$dst" ]; then
     local backup
     backup="${dst}.dotfiles-backup.$(date +%Y%m%d%H%M%S)"
+    while [ -e "$backup" ]; do backup="${backup}.1"; done
     mv "$dst" "$backup"
     warn "backed up existing $dst -> $backup"
   fi
