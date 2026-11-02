@@ -182,6 +182,13 @@ check_brewfile() {
   bash scripts/ci/check-brewfile.sh
 }
 
+# Workflow tool pins against mise.toml and mise/global.toml, the same script
+# lint.yml's `python` job runs.
+check_pins() {
+  require_tool python3 pins || return 1
+  python3 -I scripts/ci/check-tool-pins.py
+}
+
 check_markdown() {
   local -a files=()
   local file
@@ -334,7 +341,7 @@ main() {
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the four checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules brewfile shellcheck zsh editorconfig python markdown actionlint zizmor)
+      checks=(rules brewfile pins shellcheck zsh editorconfig python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2

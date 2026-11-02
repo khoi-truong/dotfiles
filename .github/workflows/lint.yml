@@ -32,6 +32,8 @@ defaults:
   run:
     shell: bash
 
+# Versions of shellcheck, editorconfig-checker, ruff and uv must equal mise.toml
+# and mise/global.toml; the python job's pins check fails when they drift.
 # Every tool version pinned in this file — markdownlint-cli2, actionlint,
 # zizmor, editorconfig-checker, ruff and mypy — is mirrored in scripts/ci/lint-local.sh,
 # along with the two scripts/ci/check-*.sh below. The two files are the only
@@ -54,6 +56,18 @@ jobs:
       # rule violation is reported before shellcheck has read a script.
       - name: Check for CLAUDE.md rule violations
         run: bash scripts/ci/check-rules.sh
+
+      # The runner's preinstalled shellcheck floats with the image; this is the
+      # version mise/global.toml pins, checked by scripts/ci/check-tool-pins.py.
+      - name: Set up shellcheck
+        env:
+          SHELLCHECK_VERSION: "0.11.0"
+        run: |
+          curl -fsSL -o shellcheck.tar.xz "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf shellcheck.tar.xz --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          sudo install -m 755 shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
 
       - name: Verify shell scripts pass shellcheck
         run: |
@@ -229,6 +243,9 @@ jobs:
         run: |
           pipx install "uv==${UV_VERSION}"
           echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+
+      - name: Verify tool pins match mise.toml
+        run: python3 -I scripts/ci/check-tool-pins.py
 
       # Keyed on this file's hash because this file holds the ruff and mypy pins:
       # bumping one is exactly the change that has to miss, and the restore-keys
