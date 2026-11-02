@@ -48,7 +48,7 @@ case "${1:-}" in
 esac
 
 # --- Homebrew --------------------------------------------------------------
-# Install first: every other module may depend on brew-installed binaries.
+# Check first: every other module may depend on brew-installed binaries.
 load_brew_shellenv || die "Homebrew is missing; install it first: https://brew.sh"
 ok "Homebrew at $(brew_prefix)"
 

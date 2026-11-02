@@ -93,9 +93,9 @@ jobs:
       # shell out to a tool it checks for first. misc/ was dropped because it
       # reaches misc/stats/setup.sh, which runs `defaults import`; brew/,
       # mise/, macos/, iterm/ and terminal/ drive brew, mise, sudo or
-      # `defaults write`. setup.sh's own prelude still runs — brew detection,
-      # the sudo keep-alive and the six shell links are all no-ops on a runner
-      # that has brew, passwordless sudo and a $HOME this step owns.
+      # `defaults write`. setup.sh's own prelude still runs — brew detection
+      # and the six shell links are no-ops on a runner that has brew and a
+      # $HOME this step owns.
       #
       # The snapshot is paths, link targets and file bytes, deliberately not
       # mtimes: `git config` rewrites gitconfig.local on every run, so an

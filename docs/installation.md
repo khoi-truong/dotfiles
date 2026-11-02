@@ -19,7 +19,8 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 
 `setup.sh`, in order:
 
-1. Requires Homebrew and stops if it is missing.
+1. Requires Homebrew ([install it](https://brew.sh) first) and stops if it is
+   missing.
 2. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`,
    `tmux/tmux.conf` and `vim/vimrc` into `$HOME`, sets `~/.ssh` to 700, moves an
    existing `~/.zsh_history` into `zsh/local/history`, and removes the redundant
