@@ -33,6 +33,10 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 
 Every module script also runs on its own, e.g. `bash git/setup.sh`.
 
+`brew/setup.sh` installs from the Brewfile with `--no-upgrade`: setup never
+upgrades existing packages; use `brew upgrade` for that. `CI=1`, `CI=true` or
+`CI=yes` makes it non-interactive.
+
 ## How files get installed
 
 Two mechanisms, depending on whether the app reads a config file.

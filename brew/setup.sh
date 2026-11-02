@@ -14,7 +14,7 @@ CURRENT_DIR="$(module_dir)"
 export HOMEBREW_BUNDLE_FILE="${CURRENT_DIR}/Brewfile"
 
 do_cleanup=0
-assume_yes="${CI:-0}"
+case "${CI:-}" in 1 | true | yes) assume_yes=1 ;; *) assume_yes=0 ;; esac
 for arg in "$@"; do
   case "$arg" in
     --cleanup) do_cleanup=1 ;;
@@ -26,7 +26,7 @@ done
 load_brew_shellenv || die "Homebrew not found. Install it first (see setup.sh)."
 
 info "🍺 brew bundle install (${HOMEBREW_BUNDLE_FILE})"
-brew bundle install --verbose
+brew bundle install --no-upgrade --verbose
 
 if [ "$do_cleanup" -eq 1 ]; then
   # `brew bundle cleanup -f` uninstalls every formula/cask not listed in the
