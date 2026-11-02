@@ -2,7 +2,7 @@
 """Fail when a tool version pinned in CI differs from mise.
 
 mise.toml and mise/global.toml are the source of truth. This reads the
-versions the workflows install and compares them. Run by lint.yml's `python`
+versions the workflows and lint-local.sh install and compares them. Run by lint.yml's `python`
 job and by scripts/ci/lint-local.sh.
 """
 
@@ -32,12 +32,16 @@ SOURCES = {
         (".github/workflows/lint.yml", r'UV_VERSION:\s*"([^"]+)"'),
         (".github/workflows/test.yml", r'UV_VERSION:\s*"([^"]+)"'),
     ],
-    "ruff": [(".github/workflows/lint.yml", r"\bruff@([0-9][^\s]*)")],
+    "ruff": [
+        (".github/workflows/lint.yml", r"\bruff@([0-9][^\s]*)"),
+        ("scripts/ci/lint-local.sh", r"\bruff@([0-9][^\s]*)"),
+    ],
     "editorconfig-checker": [
         (
             ".github/workflows/lint.yml",
             r"editorconfig-checker/releases/download/v([^/]+)/",
-        )
+        ),
+        ("scripts/ci/lint-local.sh", r"^EC_VERSION=v(\S+)"),
     ],
     "shellcheck": [(".github/workflows/lint.yml", r'SHELLCHECK_VERSION:\s*"([^"]+)"')],
 }
@@ -53,7 +57,7 @@ def main() -> int:
             bad += 1
             continue
         for path, pattern in sources:
-            found = re.findall(pattern, (ROOT / path).read_text())
+            found = re.findall(pattern, (ROOT / path).read_text(), re.M)
             if not found:
                 print(f"check-tool-pins: no {tool} pin found in {path}", file=sys.stderr)
                 bad += 1
