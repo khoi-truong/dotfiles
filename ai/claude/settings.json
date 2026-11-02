@@ -193,12 +193,6 @@
     "superpowers@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
-    "gitkraken": {
-      "source": {
-        "source": "directory",
-        "path": "/Users/khoi/.claude/plugins/marketplaces/gitkraken"
-      }
-    },
     "omc": {
       "source": {
         "source": "git",
