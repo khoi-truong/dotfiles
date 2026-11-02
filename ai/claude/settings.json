@@ -210,15 +210,15 @@
   "autoMode": {
     "soft_deny": [
       "$defaults",
-      "Bash(brew bundle cleanup:*) in ~/.dotfiles — uninstalls everything absent from the Brewfile per repo CLAUDE.md",
-      "Bash(git push --force*) and Bash(git reset --hard*) in ~/.dotfiles — repo CLAUDE.md blocks these; hand to user"
+      "Bash(brew bundle cleanup:*) in ~/.dotfiles — uninstalls everything absent from the Brewfile per repo AGENTS.md",
+      "Bash(git push --force*) and Bash(git reset --hard*) in ~/.dotfiles — repo AGENTS.md blocks these; hand to user"
     ],
     "environment": [
       "### Org-wide",
       "**Organization**: None configured",
       "**Cloud provider(s)**: None configured",
       "**Internal sharing / snippet hosting**: None configured — treat paste/gist services as outside the trust boundary",
-      "**Default / protected branches**: `main` is the default branch and is protected via the active `protect-main` ruleset (gh-verified); direct commits to `main` are disallowed per CLAUDE.md",
+      "**Default / protected branches**: `main` is the default branch and is protected via the active `protect-main` ruleset (gh-verified); direct commits to `main` are disallowed per AGENTS.md",
       "**CI/CD deploy targets**: None configured",
       "**Network posture**: None configured",
       "**Host containment**: None configured — assume Claude Code runs on an ordinary developer machine (this is a personal macOS dotfiles repo) with open internet",
@@ -236,7 +236,7 @@
       "**Secrets management**: repo convention only — secrets are never versioned; only declarative config under `ai/` is tracked; credential files under `~/.claude*` and `~/.config` are never read or copied",
       "**Primary use of Claude Code**: personal macOS dotfiles maintenance (software development, hobby/personal posture)",
       "**Org-specific CLiIs**: None configured — routine tools observed are generic (brew, mise, shellcheck, npx, git)",
-      "System-mutating commands (`./setup.sh`, module `setup.sh`, `brew bundle`, `brew bundle cleanup`, `mise use -g`, `mise install`, `defaults write`, `sudo`) require explicit user request per repo CLAUDE.md — treat as routine-but-gated, not auto-run",
+      "System-mutating commands (`./setup.sh`, module `setup.sh`, `brew bundle`, `brew bundle cleanup`, `mise use -g`, `mise install`, `defaults write`, `sudo`) require explicit user request per repo AGENTS.md — treat as routine-but-gated, not auto-run",
       "Force-push and `git reset --hard` are explicitly blocked by repo convention and must be handed to the user"
     ]
   },

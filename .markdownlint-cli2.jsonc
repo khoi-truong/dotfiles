@@ -24,7 +24,7 @@
     // Require a language on fenced code blocks; use `text` when there isn't one.
     "MD040": true,
 
-    // The first line need not be a top-level heading (CLAUDE.md starts with
+    // The first line need not be a top-level heading (AGENTS.md starts with
     // front matter-ish prose).
     "MD041": false,
 

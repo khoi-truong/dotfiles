@@ -54,9 +54,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Cheapest step first: this is a grep over the checkout, so a CLAUDE.md
+      # Cheapest step first: this is a grep over the checkout, so an AGENTS.md
       # rule violation is reported before shellcheck has read a script.
-      - name: Check for CLAUDE.md rule violations
+      - name: Check for AGENTS.md rule violations
         run: bash scripts/ci/check-rules.sh
 
       # The runner's preinstalled shellcheck floats with the image; this is the
