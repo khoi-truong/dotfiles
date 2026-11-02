@@ -3,12 +3,19 @@
 #
 # Copied into every new repo from init.templateDir. Existing repos pick it up
 # with `git init` (which never overwrites an existing hook). Skips with a
-# warning when gitleaks is neither on PATH nor installed by mise; bypass once with --no-verify.
+# warning when gitleaks is neither on PATH nor installed by mise; bypass once
+# with --no-verify. GUI git clients run hooks with PATH=/usr/bin:/bin, where
+# neither gitleaks nor mise is found, so the mise shim is tried last.
 set -euo pipefail
 
-gl=$(command -v gitleaks || mise which gitleaks 2>/dev/null) || {
-  echo "pre-commit: gitleaks not installed; skipping secret scan" >&2
-  exit 0
-}
+shim="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims/gitleaks"
+if ! gl=$(command -v gitleaks || mise which gitleaks 2>/dev/null); then
+  if [ -x "$shim" ]; then
+    gl=$shim
+  else
+    echo "pre-commit: gitleaks not installed; skipping secret scan" >&2
+    exit 0
+  fi
+fi
 
 exec "$gl" git --pre-commit --staged --redact --no-banner --verbose
