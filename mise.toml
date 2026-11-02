@@ -1,0 +1,5 @@
+# Dev tools CI runs, pinned to the same versions as .github/workflows.
+[tools]
+ruff = "0.16.8"
+editorconfig-checker = "4.0.1"
+uv = "0.12.10"

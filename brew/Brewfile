@@ -17,7 +17,6 @@ brew "fzf"
 brew "fd"          # fzf's file walker; also nicer `find`
 brew "ripgrep"     # fzf's grepper; also nicer `grep -r`
 brew "tmux"
-brew "shellcheck"  # shell linter
 
 # version manager — the only one; see mise/global.toml
 brew "mise"
@@ -29,7 +28,6 @@ brew "can1357/tap/omp"   # oh-my-pi; config in ai/omp
 # vcs & shell tooling
 brew "git"
 brew "gh"
-brew "gitleaks"       # secret scan in the git pre-commit hook
 brew "lazygit"        # terminal UI for git
 brew "git-delta"      # git pager: side-by-side, syntax-highlighted diffs
 brew "difftastic"     # structural (AST) diff; `git dft`

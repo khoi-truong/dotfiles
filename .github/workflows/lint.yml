@@ -32,6 +32,10 @@ defaults:
   run:
     shell: bash
 
+# Versions of shellcheck, editorconfig-checker, ruff and uv must equal mise.toml
+# and mise/global.toml, and pytest's must equal pyproject.toml; the python job's
+# pins check (scripts/ci/check-tool-pins.py, which also covers secrets.yml's
+# gitleaks and test.yml) fails when they drift.
 # Every tool version pinned in this file — markdownlint-cli2, actionlint,
 # zizmor, editorconfig-checker, ruff and mypy — is mirrored in scripts/ci/lint-local.sh,
 # along with the two scripts/ci/check-*.sh below. The two files are the only
@@ -54,6 +58,18 @@ jobs:
       # rule violation is reported before shellcheck has read a script.
       - name: Check for CLAUDE.md rule violations
         run: bash scripts/ci/check-rules.sh
+
+      # The runner's preinstalled shellcheck floats with the image; this is the
+      # version mise/global.toml pins, checked by scripts/ci/check-tool-pins.py.
+      - name: Set up shellcheck
+        env:
+          SHELLCHECK_VERSION: "0.11.0"
+        run: |
+          curl -fsSL -o shellcheck.tar.xz "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf shellcheck.tar.xz --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          sudo install -m 755 shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
 
       - name: Verify shell scripts pass shellcheck
         run: |
@@ -217,6 +233,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify tool pins match mise and pyproject
+        run: python3 -I scripts/ci/check-tool-pins.py
+
       # uv comes from mise on a laptop; a runner has no mise, so it is installed
       # here. `pipx` because this file already runs a pinned Python tool that way
       # (zizmor, above), and `astral-sh/setup-uv` would be one more third-party
@@ -244,14 +263,15 @@ jobs:
             uv-lint-${{ runner.os }}-
 
       # From `ai/herdr`: ruff and mypy read `pyproject.toml` from the directory
-      # they are run in, and that is where it is.
+      # they are run in, and that is where it is. scripts/ci has no ruff config of
+      # its own, so its Python gets ruff's defaults.
       - name: Check for Python lint findings
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 check .
+        run: uvx ruff@0.16.8 check . ../../scripts/ci
 
       - name: Verify Python files are formatted
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 format --check .
+        run: uvx ruff@0.16.8 format --check . ../../scripts/ci
 
       # `--with pytest` because the tests import it, and an import mypy cannot
       # resolve makes the test function under each decorator untyped — which

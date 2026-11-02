@@ -1,0 +1,19 @@
+[project]
+name = "dotfiles"
+version = "0"
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+# mise owns Python: use the interpreter it put on PATH, never fetch another.
+[tool.uv]
+python-preference = "only-system"
+python-downloads = "never"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+executionEnvironments = [
+  { root = "ai/herdr", extraPaths = ["ai/herdr/lib"] },
+]

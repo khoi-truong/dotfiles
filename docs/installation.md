@@ -38,6 +38,11 @@ Every module script also runs on its own, e.g. `bash git/setup.sh`.
 upgrades existing packages; use `brew upgrade` for that. `CI=1`, `CI=true` or
 `CI=yes` makes it non-interactive.
 
+The linters (`shellcheck`, `gitleaks`) come from mise, not Homebrew: run
+`mise install` after `brew bundle` to get the versions pinned in
+`mise/global.toml`. The repo's own `mise.toml` pins the dev tools CI runs
+(`ruff`, `editorconfig-checker`, `uv`).
+
 ## How files get installed
 
 Two mechanisms, depending on whether the app reads a config file.

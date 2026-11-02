@@ -62,7 +62,7 @@ encoding.
 Opt-in (`./setup.sh vscode`). Links `settings.json`, `keybindings.json` and
 `snippets/` into the VS Code user directory, puts the bundled `code` CLI on
 `$PATH`, installs the extensions in `vscode/extensions.vscode`, and creates the
-editor `.venv` (with `uv`) that `pyrightconfig.json` points Pylance at. Skips
+editor `.venv` (with `uv`) that `pyproject.toml` points Pylance at. Skips
 itself when VS Code isn't installed.
 
 After installing or removing extensions, record them with

@@ -54,6 +54,10 @@ EC_BASE_URL="https://github.com/editorconfig-checker/editorconfig-checker/releas
 EC_EXCLUDE='\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
 
 cd "$(git rev-parse --show-toplevel)"
+# PATH first, then mise: a non-interactive shell may not have mise activated.
+find_tool() {
+  command -v "$1" 2>/dev/null || mise which "$1" 2>/dev/null
+}
 
 # Echoes "<asset-suffix> <sha256>" for this machine, or returns 1 when v4.0.1
 # published no build for it. The digests are the ones that release's own
@@ -180,6 +184,13 @@ check_brewfile() {
   bash scripts/ci/check-brewfile.sh
 }
 
+# Workflow tool pins against mise.toml and mise/global.toml, the same script
+# lint.yml's `python` job runs.
+check_pins() {
+  require_tool python3 pins || return 1
+  python3 -I scripts/ci/check-tool-pins.py
+}
+
 check_markdown() {
   local -a files=()
   local file
@@ -203,14 +214,15 @@ check_actionlint() {
   # always has one, so the skip would make this run looser than CI — the one
   # thing this script promises not to be. Refusing is the only safe answer: the
   # findings it would have produced are invisible either way.
-  if ! command -v shellcheck >/dev/null 2>&1; then
+  local sc
+  if ! sc=$(find_tool shellcheck); then
     printf 'lint-local: actionlint needs shellcheck on PATH, or it silently\n' >&2
     printf 'lint-local: skips its shellcheck pass and reports less than CI does\n' >&2
     return 1
   fi
   # No path argument, so actionlint finds .github/workflows from the repository
   # root — the same thing the `docker://rhysd/actionlint` step does in CI.
-  uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color
+  PATH="$(dirname "$sc"):$PATH" uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color
 }
 
 check_zizmor() {
@@ -219,6 +231,7 @@ check_zizmor() {
 }
 
 check_shellcheck() {
+  local sc
   local -a files=()
   while IFS= read -r file; do
     files+=("$file")
@@ -228,12 +241,12 @@ check_shellcheck() {
     printf 'lint-local: no shell scripts found to check\n'
     return 0
   fi
-  if ! command -v shellcheck >/dev/null 2>&1; then
+  if ! sc=$(find_tool shellcheck); then
     printf 'lint-local: shellcheck is not installed, so %d script(s) went unchecked\n' \
       "${#files[@]}" >&2
     return 1
   fi
-  shellcheck -x "${files[@]}"
+  "$sc" -x "${files[@]}"
 }
 
 check_zsh() {
@@ -307,8 +320,8 @@ check_python() {
     # every `pytest.mark.parametrize` untyped, and the test function under it
     # with it. `ai/herdr/pyproject.toml` deliberately carries no
     # `ignore_missing_imports` for pytest — the fix is here, not there.
-    uvx ruff@0.16.8 check . &&
-      uvx ruff@0.16.8 format --check . &&
+    uvx ruff@0.16.8 check . ../../scripts/ci &&
+      uvx ruff@0.16.8 format --check . ../../scripts/ci &&
       uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
       uvx pytest@9.1.1
   )
@@ -328,9 +341,9 @@ main() {
       # runs test.yml's pytest, so it is placed by that rule rather than by step
       # order: it is not free either — uvx fetches three tools the first
       # time — but uv caches what it fetches, and this run already needs uv for
-      # actionlint and zizmor, so it goes after the four checks that fetch
+      # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules brewfile shellcheck zsh editorconfig python markdown actionlint zizmor)
+      checks=(rules brewfile pins shellcheck zsh editorconfig python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2
