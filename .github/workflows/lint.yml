@@ -33,7 +33,9 @@ defaults:
     shell: bash
 
 # Versions of shellcheck, editorconfig-checker, ruff and uv must equal mise.toml
-# and mise/global.toml; the python job's pins check fails when they drift.
+# and mise/global.toml, and pytest's must equal pyproject.toml; the python job's
+# pins check (scripts/ci/check-tool-pins.py, which also covers secrets.yml's
+# gitleaks and test.yml) fails when they drift.
 # Every tool version pinned in this file — markdownlint-cli2, actionlint,
 # zizmor, editorconfig-checker, ruff and mypy — is mirrored in scripts/ci/lint-local.sh,
 # along with the two scripts/ci/check-*.sh below. The two files are the only
@@ -231,6 +233,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify tool pins match mise and pyproject
+        run: python3 -I scripts/ci/check-tool-pins.py
+
       # uv comes from mise on a laptop; a runner has no mise, so it is installed
       # here. `pipx` because this file already runs a pinned Python tool that way
       # (zizmor, above), and `astral-sh/setup-uv` would be one more third-party
@@ -243,9 +248,6 @@ jobs:
         run: |
           pipx install "uv==${UV_VERSION}"
           echo "$HOME/.local/bin" >>"$GITHUB_PATH"
-
-      - name: Verify tool pins match mise.toml
-        run: python3 -I scripts/ci/check-tool-pins.py
 
       # Keyed on this file's hash because this file holds the ruff and mypy pins:
       # bumping one is exactly the change that has to miss, and the restore-keys
@@ -261,14 +263,15 @@ jobs:
             uv-lint-${{ runner.os }}-
 
       # From `ai/herdr`: ruff and mypy read `pyproject.toml` from the directory
-      # they are run in, and that is where it is.
+      # they are run in, and that is where it is. scripts/ci has no ruff config of
+      # its own, so its Python gets ruff's defaults.
       - name: Check for Python lint findings
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 check .
+        run: uvx ruff@0.16.8 check . ../../scripts/ci
 
       - name: Verify Python files are formatted
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 format --check .
+        run: uvx ruff@0.16.8 format --check . ../../scripts/ci
 
       # `--with pytest` because the tests import it, and an import mypy cannot
       # resolve makes the test function under each decorator untyped — which
