@@ -20,9 +20,9 @@ On a new machine:
 
 1. Install the Xcode command line tools: `xcode-select --install`.
 2. `git clone https://github.com/khoi-truong/dotfiles.git ~/.dotfiles && cd ~/.dotfiles`
-3. `./setup.sh` — installs Homebrew, links dotfiles, runs the default modules
-   (including `mise install` for the pinned runtimes). `macos/` asks for a
-   computer name; leave it blank to keep the current one.
+3. `./setup.sh` — installs Homebrew if missing, links dotfiles, runs the
+   default modules (including `mise install` for the pinned runtimes). `macos/`
+   asks for a computer name; leave it blank to keep the current one.
 4. Sign in to the App Store, then re-run `sh brew/setup.sh` so the `mas`
    entries install.
 5. Import the GPG key and trust it. Commits are signed (`commit.gpgSign =
@@ -34,8 +34,9 @@ On a new machine:
 7. Log in to Claude Code, omp and Copilot (their tokens are never versioned).
 8. `./setup.sh --all` if this machine needs VS Code, Xcode or Terminal.app.
 
-`setup.sh` installs Homebrew if missing, asks for `sudo` once, links the shell
-dotfiles into `$HOME`, then runs each module's `setup.sh`:
+`setup.sh` requires Homebrew, links the shell dotfiles into `$HOME` (an existing
+`~/.zsh_history` moves into `zsh/local/history`), then runs each module's
+`setup.sh`; only `macos/` asks for `sudo`:
 
 ```sh
 ./setup.sh              # default modules

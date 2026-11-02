@@ -33,8 +33,8 @@
 - **Brewfile edits are consequential.** `brew bundle cleanup` uninstalls
   everything the file doesn't list.
 
-`scripts/ci/check-rules.sh` enforces the prefix, version-manager and
-credential rules with a grep.
+`scripts/ci/check-rules.sh` enforces the prefix, version-manager, credential
+and home-path (`/Users/<name>/`) rules with a grep.
 
 ## Writing a module
 
@@ -58,7 +58,7 @@ require_macos
 | `log`, `info`, `ok`, `warn`, `die` | Output |
 | `require_macos`, `is_arm` | Platform checks |
 | `brew_prefix`, `load_brew_shellenv` | Homebrew location, dual-arch |
-| `link <src> <dst>` | Idempotent symlink; backs up a real file as `*.dotfiles-backup` |
+| `link <src> <dst>` | Idempotent symlink; backs up a real file as `*.dotfiles-backup.<timestamp>` |
 | `module_dir` | The calling module's directory |
 
 Document the module in the matching guide under `docs/` and add a row to the

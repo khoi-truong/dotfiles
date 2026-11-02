@@ -19,12 +19,13 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 
 `setup.sh`, in order:
 
-1. Installs Homebrew if it is missing.
-2. Asks for `sudo` once and keeps it alive, so `macos/` doesn't prompt mid-run.
-3. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`,
-   `tmux/tmux.conf` and `vim/vimrc` into `$HOME`, and removes the redundant
-   `~/.zsh_history`, `~/.zcompdump*` and `~/.zsh_sessions`.
-4. Runs `<module>/setup.sh` for each module.
+1. Installs Homebrew if it is missing: the official installer, downloaded to a
+   file and run interactively. With no terminal, or under `CI`, it stops instead.
+2. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`,
+   `tmux/tmux.conf` and `vim/vimrc` into `$HOME`, sets `~/.ssh` to 700, moves an
+   existing `~/.zsh_history` into `zsh/local/history`, and removes the redundant
+   `~/.zcompdump*` and `~/.zsh_sessions`.
+3. Runs `<module>/setup.sh` for each module. Only `macos/` asks for `sudo`, itself.
 
 |             | Modules                                                  |
 | ----------- | -------------------------------------------------------- |
@@ -32,6 +33,10 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 | **opt-in**  | `vscode` `xcode` `terminal`                              |
 
 Every module script also runs on its own, e.g. `bash git/setup.sh`.
+
+`brew/setup.sh` installs from the Brewfile with `--no-upgrade`: setup never
+upgrades existing packages; use `brew upgrade` for that. `CI=1`, `CI=true` or
+`CI=yes` makes it non-interactive.
 
 ## How files get installed
 
@@ -41,7 +46,7 @@ Two mechanisms, depending on whether the app reads a config file.
 
 The repo file is linked into place, so edits in the repo are live immediately.
 `link` (in `lib/common.sh`) backs up any real file it would replace as
-`<file>.dotfiles-backup`.
+`<file>.dotfiles-backup.<timestamp>`.
 
 | Repo                                                    | Linked to                               |
 | ------------------------------------------------------- | --------------------------------------- |
@@ -118,7 +123,7 @@ installed; otherwise the step is skipped with a warning and the old file kept.
 
 **A tool replaced my symlink with a real file.** Claude Code, iTerm's
 cc-status installer and others rewrite `settings.json` in place. Re-running the
-module backs the file up as `*.dotfiles-backup` and relinks; fold anything new
+module backs the file up as `*.dotfiles-backup.<timestamp>` and relinks; fold anything new
 from the backup into the repo copy first.
 
 **`ai/setup.sh` warns about a dangling symlink.** A file moved in the repo and
