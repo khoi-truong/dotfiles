@@ -54,8 +54,10 @@ EC_BASE_URL="https://github.com/editorconfig-checker/editorconfig-checker/releas
 EC_EXCLUDE='\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
 
 cd "$(git rev-parse --show-toplevel)"
-# shellcheck source=lib/find-tool.sh
-. lib/find-tool.sh
+# PATH first, then mise: a non-interactive shell may not have mise activated.
+find_tool() {
+  command -v "$1" 2>/dev/null || mise which "$1" 2>/dev/null
+}
 
 # Echoes "<asset-suffix> <sha256>" for this machine, or returns 1 when v4.0.1
 # published no build for it. The digests are the ones that release's own
@@ -318,8 +320,8 @@ check_python() {
     # every `pytest.mark.parametrize` untyped, and the test function under it
     # with it. `ai/herdr/pyproject.toml` deliberately carries no
     # `ignore_missing_imports` for pytest — the fix is here, not there.
-    uvx ruff@0.16.8 check . &&
-      uvx ruff@0.16.8 format --check . &&
+    uvx ruff@0.16.8 check . ../../scripts/ci &&
+      uvx ruff@0.16.8 format --check . ../../scripts/ci &&
       uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
       uvx pytest@9.1.1
   )
@@ -339,7 +341,7 @@ main() {
       # runs test.yml's pytest, so it is placed by that rule rather than by step
       # order: it is not free either — uvx fetches three tools the first
       # time — but uv caches what it fetches, and this run already needs uv for
-      # actionlint and zizmor, so it goes after the four checks that fetch
+      # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
       checks=(rules brewfile pins shellcheck zsh editorconfig python markdown actionlint zizmor)
       ;;
