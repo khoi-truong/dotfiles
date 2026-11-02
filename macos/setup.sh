@@ -16,8 +16,8 @@ CURRENT_DIR="$(module_dir)"
 info "Setting up macOS and system application preferences..."
 
 # Close any open System Settings panes so they can't overwrite what we change.
-osascript -e 'tell application "System Settings" to quit' 2>/dev/null \
-  || osascript -e 'tell application "System Preferences" to quit' 2>/dev/null
+osascript -e 'tell application "System Settings" to quit' 2>/dev/null ||
+  osascript -e 'tell application "System Preferences" to quit' 2>/dev/null
 
 # Ask for the administrator password upfront.
 sudo -v
@@ -69,12 +69,12 @@ echo "  › Set accent color to Blue"
 #   Pink           1                   6           "1.000000 0.749020 0.823529 Pink"
 #   Blue           1                   deleted     deleted
 #   Graphite       6                   -1          "0.847059 0.847059 0.862745 Graphite"
-defaults delete NSGlobalDomain AccentColor 2> /dev/null
+defaults delete NSGlobalDomain AccentColor 2>/dev/null
 defaults write NSGlobalDomain AppleAquaColorVariant -int 1
 
 echo "  › Set macos highlight color to Blue"
 # As done via		: System Preferences > General > Highlight color
-defaults delete NSGlobalDomain AppleHighlightColor 2> /dev/null
+defaults delete NSGlobalDomain AppleHighlightColor 2>/dev/null
 
 echo "  › Set sidebar icon size to medium"
 # As done via		: System Preferences > General > Sidebar icon size
@@ -347,7 +347,7 @@ echo "  › Keyboard: disable full keyboard access for all controls (e.g. enable
 # Possible values	: 3
 # Default value		: null
 # defaults write NSGlobalDomain AppleKeyboardUIMode -int 3
-defaults delete NSGlobalDomain AppleKeyboardUIMode 2> /dev/null
+defaults delete NSGlobalDomain AppleKeyboardUIMode 2>/dev/null
 
 # echo "  › Use scroll gesture with the Ctrl (^) modifier key to zoom"
 # defaults write com.apple.universalaccess closeViewScrollWheelToggle -bool true
@@ -359,21 +359,21 @@ defaults delete NSGlobalDomain AppleKeyboardUIMode 2> /dev/null
 echo "  › Keyboard: enable press-and-hold instead of key repeat"
 # Default value		: null
 # defaults write NSGlobalDomain ApplePressAndHoldEnabled -bool true
-defaults delete NSGlobalDomain ApplePressAndHoldEnabled 2> /dev/null
+defaults delete NSGlobalDomain ApplePressAndHoldEnabled 2>/dev/null
 
 # echo "  › Keyboard: set a blazingly fast keyboard repeat rate"
 echo "  › Keyboard: set a normal keyboard repeat rate"
 # As done via		: System Preferences > Keyboard > Key Repeat
 # Possible values	: 120, 90, 60, 30, 12, 6, 2 (lower values are faster)
 # defaults write NSGlobalDomain KeyRepeat -int 2
-defaults delete NSGlobalDomain KeyRepeat 2> /dev/null
+defaults delete NSGlobalDomain KeyRepeat 2>/dev/null
 
 # echo "  › Set short delay until repeat"
 echo "  › Keyboard: set short delay until repeat"
 # As done via		: System Preferences > Keyboard > Delay Until Repeat
 # Possible values	: 120, 94, 68, 35, 25, 15 (lower values are shorter)
 # defaults write NSGlobalDomain InitialKeyRepeat -int 35
-defaults delete NSGlobalDomain InitialKeyRepeat 2> /dev/null
+defaults delete NSGlobalDomain InitialKeyRepeat 2>/dev/null
 
 echo "  › Set preferred languages to English"
 # As done via		: System Preferences > Language & Region > Preferred languages
@@ -409,7 +409,7 @@ TIME_ZONE="Asia/Ho_Chi_Minh"
 echo "  › Set the timezone to ${TIME_ZONE}"
 # As done via		: System Preferences > Date & Time > Time Zone
 # Possible value	: See `sudo systemsetup -listtimezones` for other values
-sudo systemsetup -settimezone "${TIME_ZONE}" > /dev/null
+sudo systemsetup -settimezone "${TIME_ZONE}" >/dev/null
 
 # echo "  › Stop iTunes from responding to the keyboard media keys"
 # launchctl unload -w /System/Library/LaunchAgents/com.apple.rcd.plist 2> /dev/null
@@ -484,12 +484,12 @@ defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
 
 echo "  › Enable the warning before emptying the Trash"
 # As done via		: Finder Preferences > Advanced > Show warning before emptying the Trash
-defaults delete com.apple.finder WarnOnEmptyTrash 2> /dev/null
+defaults delete com.apple.finder WarnOnEmptyTrash 2>/dev/null
 
 echo "  › Don't keep folders on top when sorting by name"
 # As done via		: Finder Preferences > Advanced > Keep folders on top
 # defaults write com.apple.finder _FXSortFoldersFirst -bool false
-defaults delete com.apple.finder _FXSortFoldersFirst 2> /dev/null
+defaults delete com.apple.finder _FXSortFoldersFirst 2>/dev/null
 
 echo "  › When performing a search, search the current folder by default"
 # As done via		: Finder Preferences > Advanced > When performing a search
@@ -530,9 +530,9 @@ defaults write com.apple.desktopservices DSDontWriteUSBStores -bool true
 # defaults write com.apple.frameworks.diskimages skip-verify-remote -bool true
 
 echo "  › Enable disk image verification"
-defaults delete com.apple.frameworks.diskimages skip-verify 2> /dev/null
-defaults delete com.apple.frameworks.diskimages skip-verify-locked 2> /dev/null
-defaults delete com.apple.frameworks.diskimages skip-verify-remote 2> /dev/null
+defaults delete com.apple.frameworks.diskimages skip-verify 2>/dev/null
+defaults delete com.apple.frameworks.diskimages skip-verify-locked 2>/dev/null
+defaults delete com.apple.frameworks.diskimages skip-verify-remote 2>/dev/null
 
 # echo "  › Automatically open a new Finder window when a volume is mounted"
 # defaults write com.apple.frameworks.diskimages auto-open-ro-root -bool true
@@ -589,8 +589,8 @@ echo ""
 echo "› Safari & WebKit:"
 
 echo "  › Send search queries to Apple"
-defaults delete com.apple.Safari UniversalSearchEnabled 2> /dev/null
-defaults delete com.apple.Safari SuppressSearchSuggestions 2> /dev/null
+defaults delete com.apple.Safari UniversalSearchEnabled 2>/dev/null
+defaults delete com.apple.Safari SuppressSearchSuggestions 2>/dev/null
 
 # echo "  › Don’t send search queries to Apple"
 # defaults write com.apple.Safari UniversalSearchEnabled -bool false
@@ -721,7 +721,7 @@ echo "  › Prevent Time Machine from prompting to use new hard drives as backup
 defaults write com.apple.TimeMachine DoNotOfferNewDisksForBackup -bool true
 
 echo "  › Disable local Time Machine backups"
-hash tmutil &> /dev/null && sudo tmutil disable
+hash tmutil &>/dev/null && sudo tmutil disable
 
 ###############################################################################
 # Activity Monitor                                                            #
@@ -846,7 +846,7 @@ for app in "Activity Monitor" \
   "Photos" \
   "Safari" \
   "SystemUIServer"; do
-  killall "${app}" &> /dev/null
+  killall "${app}" &>/dev/null
 done
 
 echo ""

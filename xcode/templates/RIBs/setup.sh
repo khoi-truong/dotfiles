@@ -6,7 +6,7 @@ XCODE_TEMPLATE_DIR=$HOME'/Library/Developer/Xcode/Templates/File Templates/RIBs'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Copy RIBs file templates into the local RIBs template directory
-xcodeTemplate () {
+xcodeTemplate() {
   echo "==> Copying up RIBs Xcode file templates..."
 
   if [ -d "$XCODE_TEMPLATE_DIR" ]; then
