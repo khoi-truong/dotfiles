@@ -128,6 +128,12 @@ don't reach a script that opens a file itself. Hook commands use `$HOME`, which
 the shell expands at run time; `ai/setup.sh` drops the absolute-path duplicate
 `herdr integration install` appends.
 
+Tools that edit `settings.json` (Claude Code, iTerm's cc-status installer)
+can replace the symlink with a real file. Re-running `ai/setup.sh` backs that
+file up and relinks, and `link` warns with the target and the backup directory
+(never the content). Diff the backup against `ai/claude/settings.json` and
+fold in anything wanted; `scripts/restore.sh` undoes the run.
+
 ### Deny guards
 
 `ai/claude/settings.json` also denies the commands AGENTS.md forbids without

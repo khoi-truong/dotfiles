@@ -24,7 +24,8 @@ info "Setting up AI tooling..."
 # shared/rules/common.md.
 # Tools that edit settings.json (Claude Code, iTerm's cc-status installer)
 # replace the symlink with a real file. Re-running this backs that file up and
-# relinks; fold anything new from the backup into claude/settings.json first.
+# relinks, and the warning names the backup: diff it against
+# claude/settings.json and fold in anything wanted.
 link "${CURRENT_DIR}/claude/settings.json" "${HOME}/.claude/settings.json"
 link "${CURRENT_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
 

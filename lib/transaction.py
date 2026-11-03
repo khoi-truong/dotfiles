@@ -41,6 +41,13 @@ def warn(message: str) -> None:
     print("  \033[0;33m!\033[0m " + message, file=sys.stderr)
 
 
+def tilde(path: str) -> str:
+    home = os.path.expanduser("~").rstrip("/")
+    if home and (path == home or path.startswith(home + "/")):
+        return "~" + path[len(home) :]
+    return path
+
+
 def backups_root() -> str:
     state = os.environ.get("XDG_STATE_HOME") or os.path.join(
         os.path.expanduser("~"), ".local", "state"
@@ -142,7 +149,12 @@ def cmd_link(src: str, dst: str) -> int:
     )
     if backup:
         move(dst, backup)
-        warn("backed up existing %s -> %s" % (dst, backup))
+        was = {"symlink": "symlink -> " + tilde(prev_target or ""), "dir": "directory"}
+        warn(
+            "transaction: replaced %s (was a %s); backup in %s; "
+            "undo with scripts/restore.sh"
+            % (tilde(dst), was.get(kind, "file"), tilde(directory))
+        )
 
     tmp = "%s.dotfiles-tmp.%d" % (dst, os.getpid())
     if os.path.lexists(tmp):

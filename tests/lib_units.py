@@ -132,6 +132,37 @@ class TransactionTests(Case):
         self.ok("restore")
         self.assertEqual(os.readlink(dst), self.dst("nowhere"))
 
+    def test_replace_warns_for_real_file(self) -> None:
+        src, dst = self.src("a"), self.dst("a")
+        self.write(dst, "SECRET-CONTENT")
+        proc = self.run_tx("link", src, dst)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("transaction: replaced ~/a (was a file)", proc.stderr)
+        self.assertIn("backup in ~/state/dotfiles/backups/", proc.stderr)
+        self.assertIn("undo with scripts/restore.sh", proc.stderr)
+        self.assertNotIn("SECRET-CONTENT", proc.stderr + proc.stdout)
+
+    def test_replace_warns_for_directory(self) -> None:
+        src = os.path.join(self.repo, "tmpl")
+        os.makedirs(src)
+        dst = self.dst("d")
+        self.write(os.path.join(dst, "x"), "hello")
+        proc = self.run_tx("link", src, dst)
+        self.assertIn("(was a directory)", proc.stderr)
+
+    def test_replace_warns_for_foreign_symlink(self) -> None:
+        src, dst = self.src("a"), self.dst("a")
+        os.symlink("/elsewhere/target", dst)
+        proc = self.run_tx("link", src, dst)
+        self.assertIn("(was a symlink -> /elsewhere/target)", proc.stderr)
+
+    def test_no_warning_for_correct_link_or_missing_dst(self) -> None:
+        src, dst = self.src("a"), self.dst("a")
+        first = self.run_tx("link", src, dst)
+        self.assertNotIn("replaced", first.stderr)
+        second = self.run_tx("link", src, dst)
+        self.assertEqual(second.stderr, "")
+
     def test_missing_source_warns_and_writes_nothing(self) -> None:
         dst = self.dst("a")
         proc = self.run_tx("link", os.path.join(self.repo, "nope"), dst)
