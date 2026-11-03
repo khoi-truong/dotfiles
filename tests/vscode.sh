@@ -16,7 +16,7 @@ set -euo pipefail
 fixture() {
   REPO="${WORK}/repo"
   CODE_LOG="${WORK}/code.log"
-  rm -rf "$REPO" "${WORK}/fakebin" "${WORK}/apps"
+  rm -rf "$REPO" "${WORK}/fakebin" "${WORK}/apps" "${WORK}/list-fails"
   mkdir -p "$REPO" "${WORK}/fakebin" "${WORK}/apps"
   cp -R "${DOTFILES}/lib" "${DOTFILES}/vscode" "$REPO/"
   : >"$CODE_LOG"
@@ -25,6 +25,7 @@ fixture() {
 #!/bin/sh
 echo "$*" >>"$CODE_LOG"
 if [ "$1" = "--list-extensions" ]; then
+  [ ! -e "$WORK/list-fails" ] || exit 1
   cat "$WORK/installed"
 fi
 STUB
@@ -33,6 +34,20 @@ STUB
   PATH="${WORK}/fakebin:${PATH}"
   DOTFILES_APPLICATIONS_DIR="${WORK}/apps"
   export WORK CODE_LOG PATH DOTFILES_APPLICATIONS_DIR
+}
+
+# snapshot PATH...: names, file hashes and link targets under the given paths.
+snapshot() {
+  find "$@" | LC_ALL=C sort
+  find "$@" -type f -exec shasum {} + | LC_ALL=C sort
+  find "$@" -type l -exec readlink {} \; | LC_ALL=C sort
+}
+
+# fake_app_cli: an executable fake CLI inside the empty applications dir.
+fake_app_cli() {
+  local dir="${WORK}/apps/Visual Studio Code.app/Contents/Resources/app/bin"
+  mkdir -p "$dir"
+  cp "${WORK}/fakebin/code" "$dir/code"
 }
 
 profile() { printf '%s/Library/Application Support/Code/User' "$1"; }
@@ -128,10 +143,10 @@ case_check_clean_exits_0() {
   fixture
   run_vscode setup "$h"
   cp "$REPO/vscode/extensions.vscode" "${WORK}/installed"
-  before="$(cd "$REPO/vscode" && shasum settings.json keybindings.json extensions.vscode snippets/*)"
+  before="$(snapshot "$h" "$REPO")"
   run_vscode update "$h" --check
   grep -q 'vscode: no drift' "${WORK}/last.out"
-  after="$(cd "$REPO/vscode" && shasum settings.json keybindings.json extensions.vscode snippets/*)"
+  after="$(snapshot "$h" "$REPO")"
   [ "$before" = "$after" ]
 }
 
@@ -181,6 +196,118 @@ case_check_reports_extension_drift() {
   [ "$status" -eq 1 ]
   grep -q 'installed but not listed: extra.installed-only' "${WORK}/last.out"
   grep -q 'listed but not installed: golang.go' "${WORK}/last.out"
+}
+
+case_check_reports_snippets_dir() {
+  local h p status=0
+  h="$(new_home)"
+  fixture
+  run_vscode setup "$h"
+  cp "$REPO/vscode/extensions.vscode" "${WORK}/installed"
+  p="$(profile "$h")"
+  rm "$p/snippets"
+  mkdir "$p/snippets"
+  cp -R "$REPO/vscode/snippets/." "$p/snippets/"
+  echo '{}' >"$p/snippets/mine.json"
+  run_vscode update "$h" --check || status=$?
+  [ "$status" -eq 1 ]
+  grep -q 'Only in .*snippets: mine.json' "${WORK}/last.out"
+  [ -d "$p/snippets" ] && [ ! -L "$p/snippets" ]
+  [ -f "$p/snippets/mine.json" ]
+}
+
+case_check_does_not_link_cli() {
+  local h status=0
+  h="$(new_home)/my home"
+  mkdir -p "$h"
+  fixture
+  stub_brew
+  fake_app_cli
+  run_vscode setup "$h"
+  rm -f "$STUB_PREFIX/bin/code"
+  cp "$REPO/vscode/extensions.vscode" "${WORK}/installed"
+  run_vscode update "$h" --check || status=$?
+  [ "$status" -eq 0 ]
+  [ ! -e "$STUB_PREFIX/bin/code" ] && [ ! -L "$STUB_PREFIX/bin/code" ]
+}
+
+case_setup_links_cli() {
+  local h
+  h="$(new_home)/my home"
+  mkdir -p "$h"
+  fixture
+  stub_brew
+  fake_app_cli
+  run_vscode setup "$h"
+  [ -L "$STUB_PREFIX/bin/code" ]
+  [ "$(readlink "$STUB_PREFIX/bin/code")" = "${WORK}/apps/Visual Studio Code.app/Contents/Resources/app/bin/code" ]
+}
+
+case_check_uses_app_cli_when_not_on_path() {
+  local h status=0
+  h="$(new_home)"
+  fixture
+  run_vscode setup "$h"
+  cp "$REPO/vscode/extensions.vscode" "${WORK}/installed"
+  fake_app_cli
+  rm "${WORK}/fakebin/code"
+  PATH="${WORK}/fakebin:/usr/bin:/bin"
+  run_vscode update "$h" --check || status=$?
+  [ "$status" -eq 0 ]
+  grep -q 'vscode: no drift' "${WORK}/last.out"
+}
+
+case_check_without_cli_exits_2() {
+  local h status=0
+  h="$(new_home)"
+  fixture
+  rm "${WORK}/fakebin/code"
+  PATH="${WORK}/fakebin:/usr/bin:/bin"
+  run_vscode update "$h" --check || status=$?
+  [ "$status" -eq 2 ]
+  grep -q 'cannot check' "${WORK}/last.out"
+}
+
+case_check_list_extensions_failure_exits_2() {
+  local h status=0
+  h="$(new_home)"
+  fixture
+  run_vscode setup "$h"
+  touch "${WORK}/list-fails"
+  run_vscode update "$h" --check || status=$?
+  [ "$status" -eq 2 ]
+  grep -q 'cannot check' "${WORK}/last.out"
+}
+
+case_update_list_extensions_failure_keeps_list() {
+  local h before
+  h="$(new_home)"
+  fixture
+  touch "${WORK}/list-fails"
+  before="$(shasum "$REPO/vscode/extensions.vscode")"
+  if run_vscode update "$h"; then return 1; fi
+  [ "$(shasum "$REPO/vscode/extensions.vscode")" = "$before" ]
+}
+
+case_check_extension_ids_fold_case() {
+  local h
+  h="$(new_home)"
+  fixture
+  run_vscode setup "$h"
+  printf 'github.copilot\n' >"$REPO/vscode/extensions.vscode"
+  printf 'GitHub.Copilot\n' >"${WORK}/installed"
+  run_vscode update "$h" --check
+  grep -q 'vscode: no drift' "${WORK}/last.out"
+}
+
+case_setup_installs_last_id_without_trailing_newline() {
+  local h
+  h="$(new_home)"
+  fixture
+  printf 'a.one\nb.two' >"$REPO/vscode/extensions.vscode"
+  run_vscode setup "$h" --extensions
+  grep -qx -- '--install-extension a.one' "$CODE_LOG"
+  grep -qx -- '--install-extension b.two' "$CODE_LOG"
 }
 
 case_rubylsp_uses_mise() {

@@ -37,9 +37,9 @@ link "${CURRENT_DIR}/snippets" "${VSCODE_HOME}/snippets"
 
 if [ "${install_extensions}" -eq 1 ]; then
   info "Installing extensions..."
-  while read -r extension; do
+  while IFS= read -r extension || [ -n "${extension}" ]; do
     [ -n "${extension}" ] || continue
-    code --install-extension "${extension}" || warn "failed: ${extension}"
+    code --install-extension "${extension}" </dev/null || warn "failed: ${extension}"
   done <"${CURRENT_DIR}/extensions.vscode"
 else
   log "Extensions not installed; run bash vscode/setup.sh --extensions to install them."

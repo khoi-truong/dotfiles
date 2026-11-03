@@ -23,12 +23,29 @@ if [ "${check}" -eq 0 ] && [ -x "${VSCODE_CLI}" ]; then
   link "${VSCODE_CLI}" "$(brew_prefix)/bin/code"
 fi
 
-command -v code >/dev/null 2>&1 || die "code CLI not found."
+# Under --check, exit 2 ("cannot check") instead of 1 ("drift").
+cannot() {
+  if [ "${check}" -eq 1 ]; then
+    printf 'vscode: cannot check: %s\n' "$*" >&2
+    exit 2
+  fi
+  die "$*"
+}
+
+if command -v code >/dev/null 2>&1; then
+  CODE=code
+elif [ -x "${VSCODE_CLI}" ]; then
+  CODE="${VSCODE_CLI}"
+else
+  cannot "code CLI not found."
+fi
+
+installed="$("${CODE}" --list-extensions)" || cannot "code --list-extensions failed."
 
 if [ "${check}" -eq 0 ]; then
   tmp="$(mktemp "${CURRENT_DIR}/extensions.vscode.XXXXXX")"
   trap 'rm -f "${tmp}"' EXIT
-  code --list-extensions | LC_ALL=C sort -fu >"${tmp}"
+  printf '%s\n' "${installed}" | sed '/^$/d' | LC_ALL=C sort -fu >"${tmp}"
   mv "${tmp}" "${CURRENT_DIR}/extensions.vscode"
   ok "Wrote ${CURRENT_DIR}/extensions.vscode"
   exit 0
@@ -59,7 +76,7 @@ for name in settings.json keybindings.json snippets; do
 done
 
 normalise() { tr '[:upper:]' '[:lower:]' | LC_ALL=C sort -u; }
-installed="$(code --list-extensions | normalise)"
+installed="$(printf '%s\n' "${installed}" | normalise)"
 listed="$(normalise <"${CURRENT_DIR}/extensions.vscode")"
 while IFS= read -r id; do
   if [ -n "${id}" ]; then report "extension installed but not listed: ${id}"; fi

@@ -73,7 +73,9 @@ After installing or removing extensions, record them with
 repo without writing anything, run `bash vscode/update.sh --check`: it names
 any of `settings.json`, `keybindings.json` and `snippets` that is missing or no
 longer a symlink to the repo (with a diff), and any extension installed but not
-listed or listed but not installed. It exits 1 on drift and 0 otherwise.
+listed or listed but not installed. Exit codes: 0 no drift, 1 drift, 2 usage
+error or cannot check (no `code` CLI, or `--list-extensions` failed). It never
+links the CLI or writes anything.
 
 ## Xcode
 
