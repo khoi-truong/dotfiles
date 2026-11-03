@@ -28,17 +28,20 @@ update() {
 
 # urlencode <string> — percent-encode a string.
 urlencode() {
-  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote_plus(sys.argv[1]))' "$1"
+  (( $# == 1 )) || { print -u2 "usage: urlencode <string>"; return 2; }
+  command python3 -c 'import sys, urllib.parse; print(urllib.parse.quote_plus(sys.argv[1]))' "$1"
 }
 
 # urldecode <string>
 urldecode() {
-  python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote_plus(sys.argv[1]))' "$1"
+  (( $# == 1 )) || { print -u2 "usage: urldecode <string>"; return 2; }
+  command python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote_plus(sys.argv[1]))' "$1"
 }
 
 # mkd <dir> — create a directory and cd into it.
 mkd() {
-  mkdir -p "$1" && cd "$1" || return
+  (( $# == 1 )) || { print -u2 "usage: mkd <dir>"; return 2; }
+  command mkdir -p "$1" && builtin cd "$1" || return
 }
 
 # mitm [args] — mitmproxy web UI on :8081, proxy on :8080. On first run it
@@ -68,19 +71,10 @@ mitm-trust() {
 # logo. Turning echo off for the launch window closes that gap — Claude still
 # reads and consumes the replies in raw mode.
 claude() {
-  local _stty _ret
-  _stty=$(stty -g 2>/dev/null)
-  if [[ -n $_stty ]]; then
-    stty -echo 2>/dev/null
-    trap 'stty "$_stty" 2>/dev/null' EXIT INT TERM
-  fi
-  command claude "$@"
-  _ret=$?
-  if [[ -n $_stty ]]; then
-    stty "$_stty" 2>/dev/null
-    trap - EXIT INT TERM
-  fi
-  return $_ret
+  local state='' result
+  [[ -t 0 ]] && state=$(command stty -g 2>/dev/null) && command stty -echo 2>/dev/null
+  { command claude "$@"; result=$? } always { [[ -n $state ]] && command stty "$state" 2>/dev/null }
+  return $result
 }
 
 # wt — cd into one of the current repo's worktrees, picked with fzf.

@@ -14,7 +14,7 @@
 
 | # | File | Why here |
 | --- | --- | --- |
-| 1 | `zsh/env.zsh` | `$PATH` and toolchain env, built once, deduplicated with `typeset -U path` |
+| 1 | `zsh/env.zsh` | `$PATH` and toolchain env, built once, deduplicated with `typeset -U path`; inherited `~/.nvm`, `.asdf`, `.pyenv`, `.rbenv`, `.volta`, `.fnm` and `~/.yarn/bin` entries are stripped (mise owns runtimes) |
 | 2 | `zsh/config.zsh` | Options, history, editor |
 | 3 | `zsh/omz.zsh` | oh-my-zsh settings; must precede the plugin bundle |
 | 4 | `zsh/local/plugins.zsh` | The generated antidote bundle |
