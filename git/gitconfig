@@ -49,7 +49,13 @@
   # Show the diff being committed in the editor.
   verbose = true
 
+[gpg]
+  # Sign with OpenPGP (gpg.program is set per machine in gitconfig.local).
+  format = openpgp
+
 [tag]
+  # Sign annotated tags like commits.
+  gpgSign = true
   sort = version:refname
 
 [rerere]
@@ -183,7 +189,8 @@
 
   # Committing
   amend = commit --amend --reuse-message=HEAD
-  amendp = !git add --all && git commit --amend --reuse-message=HEAD && git push --force-with-lease
+  # Amend and force-push with lease; refuses on the default branch or a detached HEAD.
+  amendp = "!f() { b=$(git rev-parse --abbrev-ref HEAD) || return 1; d=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null) || d=; d=${d#origin/}; if [ \"$b\" = HEAD ] || { [ -n \"$d\" ] && [ \"$b\" = \"$d\" ]; } || { [ -z \"$d\" ] && { [ \"$b\" = main ] || [ \"$b\" = master ]; }; }; then echo \"amendp: refusing to force-push $b\" >&2; return 1; fi; git add --all && git commit --amend --reuse-message=HEAD && git push --force-with-lease; }; f"
   # Undo the last commit, keeping its changes staged.
   undo = reset --soft HEAD~1
   # Fold staged changes into <commit>: `git fixup <sha>`.
