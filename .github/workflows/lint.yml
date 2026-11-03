@@ -156,22 +156,11 @@ jobs:
           ec -exclude
           '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
 
-      - name: Verify JSON files are valid
-        run: |
-          files=()
-          while IFS= read -r file; do files+=("$file"); done < <(git ls-files '*.json' | grep -v -E '^vscode/(settings|keybindings)\.json$')
-          for file in "${files[@]}"; do
-            jq empty "$file"
-          done
+      - name: Verify files parse and carry no conflict markers
+        run: git ls-files -z | xargs -0 python3 scripts/ci/hygiene.py
 
-      - name: Verify TOML files are valid
-        run: |
-          git ls-files -z '*.toml' | xargs -0 python3 -c '
-          import sys, tomllib
-          for path in sys.argv[1:]:
-              with open(path, "rb") as f:
-                  tomllib.load(f)
-          '
+      - name: Verify the hygiene check with unit tests
+        run: python3 -B -I tests/hygiene_units.py
 
       - name: Check for malformed or duplicate brew/Brewfile entries
         run: bash scripts/ci/check-brewfile.sh

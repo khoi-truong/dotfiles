@@ -30,4 +30,4 @@ select = ["E4", "E7", "E9", "F", "I"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["lib", "tests"]
+files = ["lib", "tests", "scripts/ci/hygiene.py"]

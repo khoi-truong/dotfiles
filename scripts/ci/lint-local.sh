@@ -10,7 +10,7 @@
 # `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
 # `zsh -n` over `list-shell-scripts.sh --zsh`, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
-# rumdl, actionlint, zizmor, the two repo-rule scripts and the four
+# rumdl, actionlint, zizmor, the repo-rule scripts, the hygiene check and the four
 # Python checks, and needs uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
@@ -185,6 +185,15 @@ check_brewfile() {
 
 # Workflow tool pins against mise.toml and mise/global.toml, the same script
 # lint.yml's `python` job runs.
+# Conflict markers, oversize files, JSON(C) and TOML parse, then the unit tests
+# for that script. Tracked plus untracked-not-ignored, like check_rules.
+check_hygiene() {
+  require_tool python3 hygiene || return 1
+  git ls-files -z --cached --others --exclude-standard |
+    xargs -0 python3 -B -I scripts/ci/hygiene.py &&
+    python3 -B -I tests/hygiene_units.py
+}
+
 check_pins() {
   require_tool python3 pins || return 1
   python3 -I scripts/ci/check-tool-pins.py
@@ -356,7 +365,7 @@ main() {
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules brewfile pins shellcheck shfmt zsh editorconfig python markdown actionlint zizmor)
+      checks=(rules hygiene brewfile pins shellcheck shfmt zsh editorconfig python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2
