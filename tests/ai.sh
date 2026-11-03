@@ -19,6 +19,19 @@ case_settings_is_valid_json() {
   jq -e . "$SETTINGS" >/dev/null
 }
 
+case_claude_hud_config_is_valid() {
+  jq -e '.lineLayout == "expanded" and (.display.mergeGroups | length) == 1' \
+    "${DOTFILES}/ai/claude/claude-hud.json" >/dev/null
+}
+
+case_claude_hud_config_passes_hygiene() {
+  python3 -B -I "${DOTFILES}/scripts/ci/hygiene.py" "${DOTFILES}/ai/claude/claude-hud.json" >"${WORK}/last.out" 2>&1
+}
+
+case_claude_hud_config_is_linked() {
+  grep -q 'claude/claude-hud.json.*plugins/claude-hud/config.json' "${DOTFILES}/ai/setup.sh"
+}
+
 case_deny_has_guards() {
   local entry
   for entry in \

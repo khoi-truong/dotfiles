@@ -183,13 +183,32 @@ or without them.
 enables `claude-hud@claude-hud`. Install it with
 `claude plugin marketplace add jarrodwatts/claude-hud` and
 `claude plugin install claude-hud@claude-hud` (or let the settings pull it in).
-The wrapper runs the launcher at `~/.claude/plugins/claude-hud/statusline.mjs`
-if present, else the newest `scripts/statusline.mjs` under
-`~/.claude/plugins/cache/*/claude-hud/<version>/`. Don't run `/hud install`: it
-rewrites the symlinked `settings.json`. Its config,
-`~/.claude/plugins/claude-hud/config.json`, is not versioned. It needs Node
-22.18 or newer (mise's global node). Without node or a launcher, or if the HUD
-crashes or prints nothing, the wrapper prints `<model> · <directory>` instead.
+The wrapper runs the newest `dist/index.js` under
+`~/.claude/plugins/cache/*/claude-hud/<version>/`, so an update needs no setup
+step. Don't run `/hud install`: it rewrites the symlinked `settings.json`. It
+needs Node 22.18 or newer (mise's global node). Without node or the plugin, or
+if the HUD crashes or prints nothing, the wrapper prints `<model> <directory>`
+instead (the provider label stands in for the model).
+
+The layout is `ai/claude/claude-hud.json`, linked by `ai/setup.sh` to
+`~/.claude/plugins/claude-hud/config.json`. It shows the model with its effort,
+the project and git branch, a context bar, usage, the prompt-cache time, session
+duration, output speed, tools, compactions, agents and todos. Context, usage,
+cache and tools share one row, and the wrapper then tidies the HUD's rows:
+
+```text
+before  [Opus ◔ medium] │ proj git:(main) │ ⏱️  1h 23m │ out: 88.3 tok/s
+        Context ▓▓▓░░ 36% │ Cache ⏱ until 03:00 PM │ ◐ Bash: ls | ✓ Read ×3
+        Compactions: 2
+after   [Opus ◔ medium] │ proj git:(main)
+        Context ▓▓▓░░ 36% │ Cache until 03:00 PM │ ⏱ 1h23m │ Compactions: 2 │ 88.3 tok/s │ ◐ Bash │ ⚒ 3
+```
+
+Duration, compactions and speed move onto the context row ahead of the tools,
+tools collapse to the running names plus one total of finished calls, and
+rows the HUD wrapped (a lone usage, cache or tools row) rejoin the context row.
+Agent rows are left alone. The wrapper matches the HUD's v0.15.0 wording, so an
+upgrade that rewords it only loses the tidying, never the line.
 
 `ai/claude/hud-ctx-fix.mjs` sits in front of the HUD: it measures context use
 against the 200k auto-compact window rather than the advertised 1M, and adds
