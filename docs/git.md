@@ -30,7 +30,10 @@ until a key is imported and trusted.
 `gpg/setup.sh` copies `gpg.conf` and a rendered `gpg-agent.conf` (with the
 arch-correct `pinentry-mac` path) into `~/.gnupg`. They are copied, not linked,
 because gpg insists on a real `700` directory. Keys and `trustdb` are never
-versioned.
+versioned. The script is idempotent: it prints a unified diff of what would
+change, asks `Write these GPG changes? [y/N]` on a terminal (anything but `y`
+or `yes` writes nothing), and writes without asking when there is no terminal.
+Files that already match are reported as `unchanged` and not touched.
 
 ## Hooks
 
