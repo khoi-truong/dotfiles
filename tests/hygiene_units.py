@@ -74,7 +74,8 @@ class Case(unittest.TestCase):
         path = self.write("vscode/s.json", '{\n  "a": 1,\n}\n')
         found = hygiene.check_file(path)
         self.assertEqual(len(found), 1)
-        self.assertEqual(found[0][1], 2)
+        # 3.13+ reports the comma (line 2); 3.11-3.12 the closing brace (line 3).
+        self.assertIn(found[0][1], (2, 3))
 
     def test_unclosed_brace_fails(self) -> None:
         path = self.write("vscode/s.json", '{"a": 1\n')
