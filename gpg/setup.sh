@@ -18,16 +18,50 @@ info "Setting up gpg..."
 PINENTRY="$(brew_prefix)/bin/pinentry-mac"
 [ -x "${PINENTRY}" ] || warn "pinentry-mac not found at ${PINENTRY}; run \`brew install pinentry-mac\`."
 
-mkdir -p "${GNUPGHOME}"
+[ -d "${GNUPGHOME}" ] || mkdir -m 700 "${GNUPGHOME}"
 chmod 700 "${GNUPGHOME}"
 
-install -m 600 "${CURRENT_DIR}/gpg.conf" "${GNUPGHOME}/gpg.conf"
-ok "${GNUPGHOME}/gpg.conf"
+CAND="$(mktemp -d)"
+trap 'rm -rf "${CAND}"' EXIT
+cp "${CURRENT_DIR}/gpg.conf" "${CAND}/gpg.conf"
+sed "s|__PINENTRY__|${PINENTRY}|" "${CURRENT_DIR}/gpg-agent.conf.template" >"${CAND}/gpg-agent.conf"
 
-sed "s|__PINENTRY__|${PINENTRY}|" "${CURRENT_DIR}/gpg-agent.conf.template" \
-  >"${GNUPGHOME}/gpg-agent.conf"
-chmod 600 "${GNUPGHOME}/gpg-agent.conf"
-ok "${GNUPGHOME}/gpg-agent.conf (pinentry-program = ${PINENTRY})"
+changed=()
+for name in gpg.conf gpg-agent.conf; do
+  dest="${GNUPGHOME}/${name}"
+  if [ -f "${dest}" ] && cmp -s "${CAND}/${name}" "${dest}"; then
+    chmod 600 "${dest}"
+    ok "${dest} (unchanged)"
+    continue
+  fi
+  if [ -f "${dest}" ]; then
+    diff -u --label "${dest}" --label "new ${name}" "${dest}" "${CAND}/${name}" || true
+  else
+    diff -u --label /dev/null --label "new ${name}" /dev/null "${CAND}/${name}" || true
+  fi
+  changed+=("${name}")
+done
+
+if [ "${#changed[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+if [ -t 0 ]; then
+  printf 'Write these GPG changes? [y/N] '
+  read -r answer || answer=''
+  case "${answer}" in
+    y | Y | yes | YES | Yes) ;;
+    *)
+      log "GPG configuration unchanged"
+      exit 0
+      ;;
+  esac
+fi
+
+for name in "${changed[@]}"; do
+  install -m 600 "${CAND}/${name}" "${GNUPGHOME}/${name}"
+  ok "${GNUPGHOME}/${name}"
+done
 
 if command -v gpgconf >/dev/null 2>&1; then
   gpgconf --reload gpg-agent 2>/dev/null || true

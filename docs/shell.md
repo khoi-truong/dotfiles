@@ -14,7 +14,7 @@
 
 | # | File | Why here |
 | --- | --- | --- |
-| 1 | `zsh/env.zsh` | `$PATH` and toolchain env, built once, deduplicated with `typeset -U path` |
+| 1 | `zsh/env.zsh` | `$PATH` and toolchain env, built once, deduplicated with `typeset -U path`; inherited `~/.nvm`, `.asdf`, `.pyenv`, `.rbenv`, `.volta`, `.fnm` and `~/.yarn/bin` entries are stripped (mise owns runtimes) |
 | 2 | `zsh/config.zsh` | Options, history, editor |
 | 3 | `zsh/omz.zsh` | oh-my-zsh settings; must precede the plugin bundle |
 | 4 | `zsh/local/plugins.zsh` | The generated antidote bundle |
@@ -127,6 +127,7 @@ uses `ctrl+b`), and herdr's `allow_nested` is off, so don't nest the two.
 | `prefix S` | Toggle `synchronize-panes` — type into every pane at once |
 | `prefix b` | Break a pane out to its own window |
 | `prefix g` | Scratch shell in a popup |
+| `prefix G` | lazygit in a popup, in the pane's directory |
 | `prefix s` | Session switcher (one session per project) |
 
 Plugins are managed by [tpm](https://github.com/tmux-plugins/tpm), which

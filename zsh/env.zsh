@@ -7,6 +7,9 @@
 
 typeset -U path fpath
 
+# mise owns runtimes: drop version-manager dirs inherited from a parent shell.
+path=(${path:#$HOME/(.(nvm|asdf|pyenv|rbenv|volta|fnm)(|/*)|.yarn/bin)})
+
 # --- Homebrew --------------------------------------------------------------
 # Equivalent to `eval "$(brew shellenv)"` but without the subprocess, which is
 # ~50ms of every shell start. Prefixes differ by architecture:

@@ -24,13 +24,16 @@ run and asks for the name and email only when they are missing.
 
 ## Signing
 
-Every commit is signed (`commit.gpgSign = true`), so git refuses to commit
+Every commit and annotated tag is signed (`commit.gpgSign` and `tag.gpgSign`), so git refuses to commit
 until a key is imported and trusted.
 
 `gpg/setup.sh` copies `gpg.conf` and a rendered `gpg-agent.conf` (with the
 arch-correct `pinentry-mac` path) into `~/.gnupg`. They are copied, not linked,
 because gpg insists on a real `700` directory. Keys and `trustdb` are never
-versioned.
+versioned. The script is idempotent: it prints a unified diff of what would
+change, asks `Write these GPG changes? [y/N]` on a terminal (anything but `y`
+or `yes` writes nothing), and writes without asking when there is no terminal.
+Files that already match are reported as `unchanged` and not touched.
 
 ## Hooks
 
@@ -80,7 +83,7 @@ Run `git aliases` for the full list.
 | --- | --- |
 | `s` | Short status with branch |
 | `l` | Graph log, last 20 |
-| `amend` | Amend keeping the message; `amendp` also force-pushes with lease |
+| `amend` | Amend keeping the message; `amendp` also stages everything and force-pushes with lease, and refuses on `main`, `master`, the `origin/HEAD` branch or a detached HEAD |
 | `undo` | Undo the last commit, keep its changes staged |
 | `fixup <sha>` | Fold staged changes into `<sha>` and autosquash |
 | `reb <n>` | Interactive rebase of the last `n` commits |
