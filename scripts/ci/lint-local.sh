@@ -8,9 +8,9 @@
 #   scripts/ci/lint-local.sh --quick    the four that need no download
 #
 # `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
-# `zsh -n` over the workflow's own file set, and editorconfig-checker: the four that
+# `zsh -n` over `list-shell-scripts.sh --zsh`, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
-# rumdl, actionlint, zizmor, the two repo-rule scripts and the four
+# rumdl, actionlint, zizmor, the repo-rule scripts, the hygiene check and the four
 # Python checks, and needs uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
@@ -183,6 +183,15 @@ check_brewfile() {
   bash scripts/ci/check-brewfile.sh
 }
 
+# Conflict markers, oversize files, JSON(C) and TOML parse, then the unit tests
+# for that script. Tracked plus untracked-not-ignored, like check_rules.
+check_hygiene() {
+  require_tool python3 hygiene || return 1
+  git ls-files -z --cached --others --exclude-standard |
+    xargs -0 python3 -B -I scripts/ci/hygiene.py &&
+    python3 -B -I tests/hygiene_units.py
+}
+
 # Workflow tool pins against mise.toml and mise/global.toml, the same script
 # lint.yml's `python` job runs.
 check_pins() {
@@ -218,17 +227,26 @@ check_zizmor() {
   uvx "zizmor@${ZIZMOR_VERSION}" --persona=regular .github/workflows
 }
 
+# The shell-file list, or a failure: a list script that cannot run, or finds
+# nothing in a repo that always has shell files, must not read as "nothing to
+# check". Messages go to stderr; stdout is the list.
+shell_list() {
+  local out
+  if ! out="$(scripts/ci/list-shell-scripts.sh "$@")" || [ -z "$out" ]; then
+    printf 'lint-local: scripts/ci/list-shell-scripts.sh %s failed or listed nothing\n' "$*" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+
 check_shellcheck() {
-  local sc
+  local sc list file
   local -a files=()
+  list="$(shell_list)" || return 1
   while IFS= read -r file; do
     files+=("$file")
-  done < <(scripts/ci/list-shell-scripts.sh)
+  done <<<"$list"
 
-  if [ "${#files[@]}" -eq 0 ]; then
-    printf 'lint-local: no shell scripts found to check\n'
-    return 0
-  fi
   if ! sc=$(find_tool shellcheck); then
     printf 'lint-local: shellcheck is not installed, so %d script(s) went unchecked\n' \
       "${#files[@]}" >&2
@@ -241,16 +259,13 @@ check_shellcheck() {
 # left alone: shfmt's zsh support is partial and a bad rewrite breaks every new
 # terminal.
 check_shfmt() {
-  local sf file
+  local sf file list
   local -a files=()
+  list="$(shell_list)" || return 1
   while IFS= read -r file; do
     files+=("$file")
-  done < <(scripts/ci/list-shell-scripts.sh | grep -v '\.zsh$')
+  done <<<"$list"
 
-  if [ "${#files[@]}" -eq 0 ]; then
-    printf 'lint-local: no shell scripts found to check\n'
-    return 0
-  fi
   if ! sf=$(find_tool shfmt); then
     printf 'lint-local: shfmt is not installed, so %d script(s) went unchecked\n' \
       "${#files[@]}" >&2
@@ -261,15 +276,12 @@ check_shfmt() {
 
 check_zsh() {
   local -a files=() bad=()
-  local file
+  local file list
+  list="$(shell_list --zsh)" || return 1
   while IFS= read -r file; do
     files+=("$file")
-  done < <(git ls-files '*.zsh' 'zsh/zshrc' 'zsh/zshenv')
+  done <<<"$list"
 
-  if [ "${#files[@]}" -eq 0 ]; then
-    printf 'lint-local: no zsh files found to check\n'
-    return 0
-  fi
   if ! command -v zsh >/dev/null 2>&1; then
     printf 'lint-local: zsh is not installed, so %d file(s) went unchecked\n' \
       "${#files[@]}" >&2
@@ -356,7 +368,7 @@ main() {
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules brewfile pins shellcheck shfmt zsh editorconfig python markdown actionlint zizmor)
+      checks=(rules hygiene brewfile pins shellcheck shfmt zsh editorconfig python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2

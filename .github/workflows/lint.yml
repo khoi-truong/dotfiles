@@ -73,12 +73,10 @@ jobs:
 
       - name: Verify shell scripts pass shellcheck
         run: |
+          list=$(scripts/ci/list-shell-scripts.sh)
+          [ -n "$list" ] || { echo "::error::list-shell-scripts.sh listed nothing"; exit 1; }
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(scripts/ci/list-shell-scripts.sh)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No shell scripts found."
-            exit 0
-          fi
+          while IFS= read -r file; do files+=("$file"); done <<<"$list"
           shellcheck -x "${files[@]}"
 
       # shfmt reads its style from .editorconfig, so it is run with no style flags.
@@ -94,12 +92,10 @@ jobs:
 
       - name: Verify shell scripts are formatted
         run: |
+          list=$(scripts/ci/list-shell-scripts.sh)
+          [ -n "$list" ] || { echo "::error::list-shell-scripts.sh listed nothing"; exit 1; }
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(scripts/ci/list-shell-scripts.sh | grep -v '\.zsh$')
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No shell scripts found."
-            exit 0
-          fi
+          while IFS= read -r file; do files+=("$file"); done <<<"$list"
           shfmt -d "${files[@]}"
 
       - name: Set up zsh
@@ -107,8 +103,10 @@ jobs:
 
       - name: Verify zsh files parse
         run: |
+          list=$(scripts/ci/list-shell-scripts.sh --zsh)
+          [ -n "$list" ] || { echo "::error::list-shell-scripts.sh listed nothing"; exit 1; }
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(git ls-files '*.zsh' zsh/zshrc zsh/zshenv)
+          while IFS= read -r file; do files+=("$file"); done <<<"$list"
           # `zsh -n a b` parses only `a` and treats `b` as a positional
           # parameter, so each file needs its own invocation. Run them all and
           # keep going so one failed run names every unparseable file.
@@ -156,22 +154,11 @@ jobs:
           ec -exclude
           '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
 
-      - name: Verify JSON files are valid
-        run: |
-          files=()
-          while IFS= read -r file; do files+=("$file"); done < <(git ls-files '*.json' | grep -v -E '^vscode/(settings|keybindings)\.json$')
-          for file in "${files[@]}"; do
-            jq empty "$file"
-          done
+      - name: Verify files parse and carry no conflict markers
+        run: git ls-files -z | xargs -0 python3 -B -I scripts/ci/hygiene.py
 
-      - name: Verify TOML files are valid
-        run: |
-          git ls-files -z '*.toml' | xargs -0 python3 -c '
-          import sys, tomllib
-          for path in sys.argv[1:]:
-              with open(path, "rb") as f:
-                  tomllib.load(f)
-          '
+      - name: Verify the hygiene check with unit tests
+        run: python3 -B -I tests/hygiene_units.py
 
       - name: Check for malformed or duplicate brew/Brewfile entries
         run: bash scripts/ci/check-brewfile.sh
