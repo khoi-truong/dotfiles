@@ -61,12 +61,21 @@ encoding.
 
 Opt-in (`./setup.sh vscode`). Links `settings.json`, `keybindings.json` and
 `snippets/` into the VS Code user directory, puts the bundled `code` CLI on
-`$PATH`, installs the extensions in `vscode/extensions.vscode`, and creates the
-editor `.venv` (with `uv`) that `pyproject.toml` points Pylance at. Skips
-itself when VS Code isn't installed.
+`$PATH`, and creates the editor `.venv` (with `uv`) that `pyproject.toml`
+points Pylance at. Skips itself when VS Code isn't installed.
+
+Extensions are not installed by default. Run
+`bash vscode/setup.sh --extensions` to install everything in
+`vscode/extensions.vscode` (`./setup.sh vscode` does not forward flags).
 
 After installing or removing extensions, record them with
-`bash vscode/update.sh`.
+`bash vscode/update.sh`. To see whether the live profile has drifted from the
+repo without writing anything, run `bash vscode/update.sh --check`: it names
+any of `settings.json`, `keybindings.json` and `snippets` that is missing or no
+longer a symlink to the repo (with a diff), and any extension installed but not
+listed or listed but not installed. Exit codes: 0 no drift, 1 drift, 2 usage
+error or cannot check (no `code` CLI, or `--list-extensions` failed). It never
+links the CLI or writes anything.
 
 ## Xcode
 
