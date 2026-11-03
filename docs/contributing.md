@@ -58,7 +58,8 @@ require_macos
 | `log`, `info`, `ok`, `warn`, `die` | Output |
 | `require_macos`, `is_arm` | Platform checks |
 | `brew_prefix`, `load_brew_shellenv` | Homebrew location, dual-arch |
-| `link <src> <dst>` | Idempotent symlink; backs up a real file as `*.dotfiles-backup.<timestamp>` |
+| `link <src> <dst>` | Idempotent, journaled symlink; a real file or directory at `<dst>` is backed up under `~/.local/state/dotfiles/backups/<attempt>/` |
+| `backup <path>` | Journaled move-aside; use it instead of `rm -R` |
 | `module_dir` | The calling module's directory |
 
 Document the module in the matching guide under `docs/` and add a row to the
@@ -89,7 +90,15 @@ There is no build and no repo-wide test suite.
 scripts/ci/lint-local.sh --quick   # shellcheck, shfmt, zsh -n, editorconfig
 scripts/ci/lint-local.sh           # everything lint.yml and the Python job run
 ai/herdr/tests/run.sh              # after touching ai/herdr/ or lib/
+/usr/bin/python3 -B -I tests/lib_units.py   # after touching lib/transaction.py
+bash tests/git.sh                  # setup journaling under a throwaway HOME
+bash tests/restore.sh              # scripts/restore.sh round trips
 ```
+
+Backups live under `~/.local/state/dotfiles/backups/<attempt>/`.
+`scripts/restore.sh` undoes the newest run, `scripts/restore.sh <attempt>` a
+specific one, and `scripts/restore.sh --list` lists them. The journal is never
+pruned.
 
 `lint-local.sh` fails, rather than skips, when a linter is missing, and is
 stricter than CI: it also checks untracked files. The full run needs `uv`.
@@ -102,7 +111,7 @@ Runs on every push to `main` and every pull request.
 | --- | --- |
 | `lint.yml` | `shellcheck -x`, `shfmt -d`, `zsh -n`, rumdl, editorconfig-checker, JSON and TOML validation, actionlint, zizmor, the repo-rule scripts |
 | `secrets.yml` | gitleaks over every pushed commit, no path filter |
-| `smoke.yml` | macOS, when shell config, `setup.sh`, `lib/` or a plist changed: lints plists, links the zsh config into a throwaway `HOME`, fails on any stderr or a warm start over 1.5 s |
+| `smoke.yml` | macOS, when shell config, `setup.sh`, `lib/` or a plist changed: lints plists, runs the journal tests, links the zsh config into a throwaway `HOME`, fails on any stderr or a warm start over 1.5 s |
 | `test.yml` | macOS, when `ai/herdr/` or `lib/` changed: the herdr suite with `HERDR_TESTS_STRICT=1`, plus the Python checks |
 | `pr-title.yml` | Conventional Commits title; warns past 50 characters, fails past 72 |
 

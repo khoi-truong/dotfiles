@@ -50,8 +50,12 @@ Two mechanisms, depending on whether the app reads a config file.
 ### Symlinks
 
 The repo file is linked into place, so edits in the repo are live immediately.
-`link` (in `lib/common.sh`) backs up any real file it would replace as
-`<file>.dotfiles-backup.<timestamp>`.
+`link` (in `lib/common.sh`) journals every change. A real file, directory or
+other symlink it would replace is moved to
+`~/.local/state/dotfiles/backups/<attempt>/` first, one `<attempt>` per
+top-level setup run. `scripts/restore.sh` undoes the newest run
+(`scripts/restore.sh <attempt>` for a specific one, `--list` to list them). The
+journal is never pruned.
 
 | Repo                                                    | Linked to                               |
 | ------------------------------------------------------- | --------------------------------------- |
@@ -128,8 +132,8 @@ installed; otherwise the step is skipped with a warning and the old file kept.
 
 **A tool replaced my symlink with a real file.** Claude Code, iTerm's
 cc-status installer and others rewrite `settings.json` in place. Re-running the
-module backs the file up as `*.dotfiles-backup.<timestamp>` and relinks; fold anything new
-from the backup into the repo copy first.
+module moves the file to `~/.local/state/dotfiles/backups/<attempt>/files/` and
+relinks; fold anything new from the backup into the repo copy first.
 
 **`ai/setup.sh` warns about a dangling symlink.** A file moved in the repo and
 left a stale link in `~/.claude`, `~/.omp/agent`, `~/.copilot` or

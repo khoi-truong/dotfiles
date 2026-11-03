@@ -43,6 +43,8 @@ jobs:
               - 'git/**'
               - 'setup.sh'
               - 'lib/**'
+              - 'tests/**'
+              - 'scripts/restore.sh'
               - '**.plist'
               - '.github/workflows/smoke.yml'
               - '.github/workflows/_detect-changes.yml'

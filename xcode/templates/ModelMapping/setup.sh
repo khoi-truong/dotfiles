@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+DOTFILES="${DOTFILES:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+. "${DOTFILES}/lib/common.sh"
+
 # Configuration
 XCODE_TEMPLATE_DIR=$HOME'/Library/Developer/Xcode/Templates/File Templates/Model Mapping'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,7 +13,7 @@ xcodeTemplate() {
   echo "==> Copying up Model Mapping Xcode file templates..."
 
   if [ -d "$XCODE_TEMPLATE_DIR" ]; then
-    rm -R "$XCODE_TEMPLATE_DIR"
+    backup "$XCODE_TEMPLATE_DIR"
   fi
   mkdir -p "$XCODE_TEMPLATE_DIR"
 

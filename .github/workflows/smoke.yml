@@ -49,6 +49,15 @@ jobs:
       - name: Verify setup.sh runs on macOS
         run: ./setup.sh --list
 
+      - name: Verify the journal library with unit tests
+        run: /usr/bin/python3 -B -I tests/lib_units.py
+
+      - name: Verify the git module journals its changes
+        run: bash tests/git.sh
+
+      - name: Verify restore.sh undoes a setup run
+        run: bash tests/restore.sh
+
       # zshenv hardcodes ~/.dotfiles, so point a throwaway HOME at the checkout.
       - name: Set up a throwaway home
         run: |

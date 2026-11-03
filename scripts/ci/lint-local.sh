@@ -330,11 +330,14 @@ check_python() {
     # every `pytest.mark.parametrize` untyped, and the test function under it
     # with it. `ai/herdr/pyproject.toml` deliberately carries no
     # `ignore_missing_imports` for pytest — the fix is here, not there.
-    uvx ruff@0.16.8 check . ../../scripts/ci &&
-      uvx ruff@0.16.8 format --check . ../../scripts/ci &&
+    uvx ruff@0.16.8 check . ../../scripts/ci ../../lib ../../tests &&
+      uvx ruff@0.16.8 format --check . ../../scripts/ci ../../lib ../../tests &&
       uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
       uvx pytest@9.1.1
-  )
+  ) &&
+    # The repo-root lib/ and tests/ have their own mypy config in the root
+    # pyproject.toml, so this one runs from the root.
+    uvx --with pytest==9.1.1 mypy@2.3.1 --strict
 }
 
 main() {

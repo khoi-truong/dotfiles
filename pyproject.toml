@@ -17,3 +17,17 @@ venv = ".venv"
 executionEnvironments = [
   { root = "ai/herdr", extraPaths = ["ai/herdr/lib"] },
 ]
+
+# lib/ and tests/ at the repo root run under the system python3 that macOS
+# ships (3.9), unlike ai/herdr, which has its own config and a 3.11 floor.
+[tool.ruff]
+target-version = "py39"
+extend-exclude = ["ai"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["lib", "tests"]
