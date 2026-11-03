@@ -13,6 +13,7 @@ esbenp.prettier-vscode
 github.codespaces
 golang.go
 google.arb-editor
+hverlin.mise-vscode
 jasonnutter.vscode-codeowners
 jdinhlife.gruvbox
 llvm-vs-code-extensions.lldb-dap
@@ -33,7 +34,6 @@ ms-vscode.cmake-tools
 ms-vscode.cpp-devtools
 ms-vscode.cpptools
 ms-vscode.cpptools-extension-pack
-ms-vscode.cpptools-themes
 msjsdiag.vscode-react-native
 nomicfoundation.hardhat-solidity
 pepri.subtitles-editor
