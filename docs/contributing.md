@@ -90,10 +90,16 @@ There is no build and no repo-wide test suite.
 scripts/ci/lint-local.sh --quick   # shellcheck, shfmt, zsh -n, editorconfig
 scripts/ci/lint-local.sh           # everything lint.yml and the Python job run
 ai/herdr/tests/run.sh              # after touching ai/herdr/ or lib/
-/usr/bin/python3 -B -I tests/lib_units.py   # after touching lib/transaction.py
-bash tests/git.sh                  # setup journaling under a throwaway HOME
-bash tests/restore.sh              # scripts/restore.sh round trips
+bash tests/run.sh                  # every suite below, with per-suite wall time
 ```
+
+`tests/run.sh` runs `tests/lib_units.py` (journal library, under
+`/usr/bin/python3`), `tests/hygiene_units.py` (the parse checks, needs Python
+3.11+) and every `tests/*.sh` suite: `git.sh` and `restore.sh` (setup
+journaling and rollback), `common.sh` (`lib/common.sh` helpers), `brew.sh` and
+`mise.sh` (their `setup.sh` against a stub `brew` or `mise` on `PATH`). Each
+shell suite takes `bash tests/<suite>.sh [case_name]`. All of them run in a
+`mktemp -d` `HOME`, never the real one, and never call a real `brew` or `mise`.
 
 Backups live under `~/.local/state/dotfiles/backups/<attempt>/`.
 `scripts/restore.sh` undoes the newest run, `scripts/restore.sh <attempt>` a
@@ -109,9 +115,9 @@ Runs on every push to `main` and every pull request.
 
 | Workflow | Runs |
 | --- | --- |
-| `lint.yml` | `shellcheck -x`, `shfmt -d`, `zsh -n`, rumdl, editorconfig-checker, JSON and TOML validation, actionlint, zizmor, the repo-rule scripts |
+| `lint.yml` | `shellcheck -x`, `shfmt -d`, `zsh -n`, rumdl, editorconfig-checker, the hygiene check (conflict markers, size, JSON(C) and TOML parse), actionlint, zizmor, the repo-rule scripts |
 | `secrets.yml` | gitleaks over every pushed commit, no path filter |
-| `smoke.yml` | macOS, when shell config, `setup.sh`, `lib/` or a plist changed: lints plists, runs the journal tests, links the zsh config into a throwaway `HOME`, fails on any stderr or a warm start over 1.5 s |
+| `smoke.yml` | macOS, when shell config, `setup.sh`, `lib/` or a plist changed: lints plists, runs `tests/run.sh`, links the zsh config into a throwaway `HOME`, fails on any stderr or a warm start over 1.5 s |
 | `test.yml` | macOS, when `ai/herdr/` or `lib/` changed: the herdr suite with `HERDR_TESTS_STRICT=1`, plus the Python checks |
 | `pr-title.yml` | Conventional Commits title; warns past 50 characters, fails past 72 |
 
