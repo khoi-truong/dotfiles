@@ -16,7 +16,7 @@ set -euo pipefail
 fixture() {
   REPO="${WORK}/repo"
   CODE_LOG="${WORK}/code.log"
-  rm -rf "$REPO" "${WORK}/fakebin" "${WORK}/apps" "${WORK}/list-fails"
+  rm -rf "$REPO" "${WORK}/fakebin" "${WORK}/apps" "${WORK}/list-fails" "${WORK}/prefix"
   mkdir -p "$REPO" "${WORK}/fakebin" "${WORK}/apps"
   cp -R "${DOTFILES}/lib" "${DOTFILES}/vscode" "$REPO/"
   : >"$CODE_LOG"
@@ -34,6 +34,8 @@ STUB
   PATH="${WORK}/fakebin:${PATH}"
   DOTFILES_APPLICATIONS_DIR="${WORK}/apps"
   export WORK CODE_LOG PATH DOTFILES_APPLICATIONS_DIR
+  # Every case gets a stub brew, so brew_prefix never names the real prefix.
+  stub_brew
 }
 
 # snapshot PATH...: names, file hashes and link targets under the given paths.
@@ -221,7 +223,6 @@ case_check_does_not_link_cli() {
   h="$(new_home)/my home"
   mkdir -p "$h"
   fixture
-  stub_brew
   fake_app_cli
   run_vscode setup "$h"
   rm -f "$STUB_PREFIX/bin/code"
@@ -236,7 +237,6 @@ case_setup_links_cli() {
   h="$(new_home)/my home"
   mkdir -p "$h"
   fixture
-  stub_brew
   fake_app_cli
   run_vscode setup "$h"
   [ -L "$STUB_PREFIX/bin/code" ]
@@ -251,10 +251,11 @@ case_check_uses_app_cli_when_not_on_path() {
   cp "$REPO/vscode/extensions.vscode" "${WORK}/installed"
   fake_app_cli
   rm "${WORK}/fakebin/code"
-  PATH="${WORK}/fakebin:/usr/bin:/bin"
+  PATH="${WORK}/fakebin:${STUB_PREFIX}/bin:/usr/bin:/bin"
   run_vscode update "$h" --check || status=$?
   [ "$status" -eq 0 ]
   grep -q 'vscode: no drift' "${WORK}/last.out"
+  [ ! -e "$STUB_PREFIX/bin/code" ] && [ ! -L "$STUB_PREFIX/bin/code" ]
 }
 
 case_check_without_cli_exits_2() {
@@ -262,7 +263,7 @@ case_check_without_cli_exits_2() {
   h="$(new_home)"
   fixture
   rm "${WORK}/fakebin/code"
-  PATH="${WORK}/fakebin:/usr/bin:/bin"
+  PATH="${WORK}/fakebin:${STUB_PREFIX}/bin:/usr/bin:/bin"
   run_vscode update "$h" --check || status=$?
   [ "$status" -eq 2 ]
   grep -q 'cannot check' "${WORK}/last.out"
