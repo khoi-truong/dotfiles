@@ -63,13 +63,11 @@ run_cases() {
   local failed=0 name status
   for name in "$@"; do
     # set -e is ignored inside an `if` or `||`, so run the case bare.
-    set +e
     (
       set -e
       "$name"
     )
     status=$?
-    set -e
     if [ "$status" -eq 0 ]; then
       printf 'PASS %s\n' "$name"
     else
@@ -87,7 +85,12 @@ run_cases() {
 # the last command of a suite: its status is the suite's.
 run_suite() {
   local status
-  select_cases "$@" && status=0 || status=$?
+  # A plain statement, not `&&`/`||`/`if`: those would switch errexit off for
+  # every case below.
+  set +e
+  select_cases "$@"
+  status=$?
+  set -e
   SUITE_DONE=1
   return "$status"
 }
