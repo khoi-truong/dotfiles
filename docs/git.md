@@ -83,7 +83,7 @@ Run `git aliases` for the full list.
 | --- | --- |
 | `s` | Short status with branch |
 | `l` | Graph log, last 20 |
-| `amend` | Amend keeping the message; `amendp` also stages everything and force-pushes with lease, and refuses on the default branch (`origin/HEAD`, else `main`/`master`) or a detached HEAD |
+| `amend` | Amend keeping the message; `amendp` also stages everything and force-pushes with lease, and refuses on `main`, `master`, the `origin/HEAD` branch or a detached HEAD |
 | `undo` | Undo the last commit, keep its changes staged |
 | `fixup <sha>` | Fold staged changes into `<sha>` and autosquash |
 | `reb <n>` | Interactive rebase of the last `n` commits |

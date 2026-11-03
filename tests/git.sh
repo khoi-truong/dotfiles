@@ -38,8 +38,9 @@ case_rerun_writes_no_journal() {
 
 # new_repo HOME: a fixture repo on main with a bare origin, in HOME. Signing
 # stays off locally; the repo's own git/gitconfig is the global config.
-new_repo() {
-  local h="$1"
+new_repo() (
+  h="$1"
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null HOME="$h"
   git init -q --template= --bare -b main "$h/origin.git"
   git init -q --template= -b main "$h/repo"
   git -C "$h/repo" config user.name t
@@ -51,7 +52,7 @@ new_repo() {
   git -C "$h/repo" add f
   git -C "$h/repo" commit -q -m one
   git -C "$h/repo" push -q -u origin main
-}
+)
 
 # rgit HOME ARGS...: git against HOME's fixture repo with the repo's gitconfig.
 rgit() {
@@ -89,6 +90,22 @@ case_amendp_refuses_without_origin_head() {
   grep -q 'amendp: refusing to force-push main' "${WORK}/last.out"
   [ "$(git -C "$h/repo" rev-parse HEAD)" = "$before_head" ]
   [ "$(remote_head "$h" main)" = "$before_remote" ]
+}
+
+case_amendp_refuses_master_when_head_is_main() {
+  local h before_head before_remote
+  h="$(new_home)"
+  new_repo "$h"
+  git -C "$h/repo" remote set-head origin main
+  git -C "$h/repo" switch -q -c master
+  git -C "$h/repo" push -q -u origin master
+  echo 2 >>"$h/repo/f"
+  before_head="$(git -C "$h/repo" rev-parse HEAD)"
+  before_remote="$(remote_head "$h" master)"
+  if rgit "$h" amendp; then return 1; fi
+  grep -q 'amendp: refusing to force-push master' "${WORK}/last.out"
+  [ "$(git -C "$h/repo" rev-parse HEAD)" = "$before_head" ]
+  [ "$(remote_head "$h" master)" = "$before_remote" ]
 }
 
 case_amendp_pushes_feature_branch() {
