@@ -49,7 +49,18 @@
       "Read(~/.claude.json)",
       "Read(~/.claude/.credentials.json)",
       "Read(~/.config/gh/hosts.yml)",
-      "Read(~/.config/github-copilot/apps.json)"
+      "Read(~/.config/github-copilot/apps.json)",
+      "Bash(./setup.sh)",
+      "Bash(./setup.sh *)",
+      "Bash(bash *setup.sh)",
+      "Bash(bash *setup.sh *)",
+      "Bash(brew bundle*)",
+      "Bash(mise install*)",
+      "Bash(mise use -g*)",
+      "Bash(mise use --global*)",
+      "Bash(defaults write*)",
+      "Bash(git push -f)",
+      "Bash(git push --force)"
     ],
     "defaultMode": "auto"
   },

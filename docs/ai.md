@@ -5,6 +5,7 @@
   - [Providers](#providers)
   - [Which to use](#which-to-use)
   - [Switching mid-task](#switching-mid-task)
+  - [Deny guards](#deny-guards)
   - [Status line and quota routing](#status-line-and-quota-routing)
 - [oh-my-pi](#oh-my-pi)
 - [GitHub Copilot CLI](#github-copilot-cli)
@@ -126,6 +127,15 @@ credential files `~/.claude.json`, `~/.claude/.credentials.json`,
 don't reach a script that opens a file itself. Hook commands use `$HOME`, which
 the shell expands at run time; `ai/setup.sh` drops the absolute-path duplicate
 `herdr integration install` appends.
+
+### Deny guards
+
+`ai/claude/settings.json` also denies the commands AGENTS.md forbids without
+being asked: `./setup.sh` and `bash *setup.sh`, `brew bundle*`,
+`mise install*`, `mise use -g*`/`--global*`, `defaults write*`, and bare
+`git push -f`/`--force`. Run them yourself with `!`. `bash -n <module>/setup.sh`
+matches `bash *setup.sh` and is denied too, so syntax-check those with
+`shellcheck`.
 
 ### Status line and quota routing
 
