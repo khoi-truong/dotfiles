@@ -30,13 +30,14 @@ changed=()
 for name in gpg.conf gpg-agent.conf; do
   dest="${GNUPGHOME}/${name}"
   if [ -f "${dest}" ] && cmp -s "${CAND}/${name}" "${dest}"; then
+    chmod 600 "${dest}"
     ok "${dest} (unchanged)"
     continue
   fi
   if [ -f "${dest}" ]; then
-    diff -u "${dest}" "${CAND}/${name}" || true
+    diff -u --label "${dest}" --label "new ${name}" "${dest}" "${CAND}/${name}" || true
   else
-    diff -u /dev/null "${CAND}/${name}" || true
+    diff -u --label /dev/null --label "new ${name}" /dev/null "${CAND}/${name}" || true
   fi
   changed+=("${name}")
 done

@@ -44,6 +44,62 @@ case_drift_is_rewritten() {
   [ "$(mode "$h/.gnupg/gpg.conf")" = 600 ]
 }
 
+case_unchanged_content_gets_mode_600() {
+  local h
+  h="$(new_home)"
+  run_module gpg "$h"
+  chmod 644 "$h/.gnupg/gpg-agent.conf"
+  run_module gpg "$h"
+  [ "$(mode "$h/.gnupg/gpg-agent.conf")" = 600 ]
+}
+
+# Answering n on a tty writes nothing: a pty via python3 pty.fork.
+case_tty_n_writes_nothing() {
+  local h before after
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "SKIP case_tty_n_writes_nothing: python3 not available" >&2
+    return 0
+  fi
+  h="$(new_home)"
+  mkdir -m 700 "$h/.gnupg"
+  echo "# stale" >"$h/.gnupg/gpg.conf"
+  chmod 640 "$h/.gnupg/gpg.conf"
+  touch -t 202001010000 "$h/.gnupg/gpg.conf"
+  before="$(shasum "$h/.gnupg/gpg.conf") $(mode "$h/.gnupg/gpg.conf") $(mtime "$h/.gnupg/gpg.conf")"
+  python3 -I - "$h" "$DOTFILES/gpg/setup.sh" >"${WORK}/last.out" 2>&1 <<'PY'
+import os, pty, sys, time
+home, script = sys.argv[1], sys.argv[2]
+pid, fd = pty.fork()
+if pid == 0:
+    for k in ("XDG_STATE_HOME", "XDG_CONFIG_HOME", "DOTFILES_ATTEMPT", "DOTFILES"):
+        os.environ.pop(k, None)
+    os.environ["HOME"] = home
+    os.execvp("bash", ["bash", script])
+buf = b""
+sent = False
+while True:
+    try:
+        data = os.read(fd, 4096)
+    except OSError:
+        break
+    if not data:
+        break
+    buf += data
+    if not sent and b"[y/N]" in buf:
+        os.write(fd, b"n\n")
+        sent = True
+sys.stdout.write(buf.decode(errors="replace"))
+_, status = os.waitpid(pid, 0)
+if not sent:
+    sys.exit("no prompt seen")
+sys.exit(os.waitstatus_to_exitcode(status))
+PY
+  after="$(shasum "$h/.gnupg/gpg.conf") $(mode "$h/.gnupg/gpg.conf") $(mtime "$h/.gnupg/gpg.conf")"
+  [ "$before" = "$after" ]
+  [ ! -e "$h/.gnupg/gpg-agent.conf" ]
+  grep -q 'GPG configuration unchanged' "${WORK}/last.out"
+}
+
 case_conf_parses() {
   local home
   if ! command -v gpg >/dev/null 2>&1; then
@@ -52,7 +108,7 @@ case_conf_parses() {
   fi
   home="$(mktemp -d "${WORK}/gnupg.XXXXXX")"
   chmod 700 "$home"
-  GNUPGHOME="$home" gpg --options "$DOTFILES/gpg/gpg.conf" --version >"${WORK}/last.out" 2>&1
+  GNUPGHOME="$home" gpg --options "$DOTFILES/gpg/gpg.conf" --gpgconf-test >"${WORK}/last.out" 2>&1
 }
 
 run_suite "$@"
