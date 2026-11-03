@@ -71,8 +71,10 @@ mitm-trust() {
 # logo. Turning echo off for the launch window closes that gap — Claude still
 # reads and consumes the replies in raw mode.
 claude() {
+  setopt localoptions localtraps
   local state='' result
   [[ -t 0 ]] && state=$(command stty -g 2>/dev/null) && command stty -echo 2>/dev/null
+  trap '[[ -n $state ]] && command stty "$state" 2>/dev/null; return 130' INT TERM
   { command claude "$@"; result=$? } always { [[ -n $state ]] && command stty "$state" 2>/dev/null }
   return $result
 }
