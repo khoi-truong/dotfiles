@@ -137,11 +137,20 @@ fold in anything wanted; `scripts/restore.sh` undoes the run.
 ### Deny guards
 
 `ai/claude/settings.json` also denies the commands AGENTS.md forbids without
-being asked: `./setup.sh` and `bash *setup.sh`, `brew bundle*`,
-`mise install*`, `mise use -g*`/`--global*`, `defaults write*`, and bare
-`git push -f`/`--force`. Run them yourself with `!`. `bash -n <module>/setup.sh`
-matches `bash *setup.sh` and is denied too, so syntax-check those with
-`shellcheck`.
+being asked. Run them yourself with `!`:
+
+- every form of a module's `setup.sh`: `./setup.sh`, `./*/setup.sh`,
+  `<module>/setup.sh`, and `bash`, `sh`, `zsh`, `/bin/bash` or `/bin/sh`
+  running one;
+- `brew bundle*`, which includes `check`, `list` and `dump`;
+- `mise install`/`i`, `mise use -g`/`--global` (flag in any position),
+  `mise upgrade`/`up`, and the `u -g`/`u --global` shorthands;
+- `defaults write` (also with a domain flag before it) and `defaults import`;
+- force-pushes, including a bare `git push -f` (a trailing space-star pattern also
+  matches the bare command).
+
+`bash -n` or `sh -n` on a module's `setup.sh` is denied too, so syntax-check
+those with `shellcheck`, which is not denied.
 
 ### Status line and quota routing
 

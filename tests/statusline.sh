@@ -68,6 +68,35 @@ case_hud_empty_output_falls_back() {
   [ "$(cat "${WORK}/last.out")" = "Opus · proj" ]
 }
 
+case_hud_whitespace_falls_back() {
+  fixture
+  stub_node 'cat >/dev/null; printf "  \n\n"'
+  statusline "$PAYLOAD"
+  [ "$STATUS" -eq 0 ]
+  [ "$(cat "${WORK}/last.out")" = "Opus · proj" ]
+}
+
+case_bare_name_invocation_finds_hud() {
+  fixture
+  stub_node 'cat >/dev/null; echo HUD'
+  mkdir "$WORK/copy"
+  cp "${DOTFILES}/ai/claude/statusline.sh" "${DOTFILES}/ai/claude/hud-ctx-fix.mjs" "$WORK/copy/"
+  STATUS=0
+  (cd "$WORK/copy" && printf '%s' "$PAYLOAD" | env HOME="$H" PATH="$BIN:/usr/bin:/bin" \
+    bash statusline.sh >"${WORK}/last.out" 2>&1) || STATUS=$?
+  [ "$STATUS" -eq 0 ]
+  grep -q HUD "${WORK}/last.out"
+}
+
+case_unset_home_still_prints() {
+  fixture
+  STATUS=0
+  printf '%s' "$PAYLOAD" | env -u HOME PATH="$BIN:/usr/bin:/bin" \
+    bash "${DOTFILES}/ai/claude/statusline.sh" >"${WORK}/last.out" 2>&1 || STATUS=$?
+  [ "$STATUS" -eq 0 ]
+  [ "$(cat "${WORK}/last.out")" = "Opus · proj" ]
+}
+
 case_garbage_payload() {
   fixture
   statusline 'not json'
@@ -81,7 +110,7 @@ case_no_jq() {
   # /usr/bin may carry jq, so PATH is the fixture bin alone, with only the
   # tools the script needs besides jq.
   local tool
-  for tool in cat basename perl date mkdir; do ln -s "$(command -v "$tool")" "$BIN/$tool"; done
+  for tool in cat dirname basename perl date mkdir; do ln -s "$(command -v "$tool")" "$BIN/$tool"; done
   STATUS=0
   printf '%s' "$PAYLOAD" | env HOME="$H" PATH="$BIN" /bin/bash "${DOTFILES}/ai/claude/statusline.sh" \
     >"${WORK}/last.out" 2>&1 || STATUS=$?

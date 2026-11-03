@@ -9,11 +9,11 @@
 # missing, crashes or prints nothing, it falls back to "<model> · <dir>".
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
-NODE="${HOME}/.local/share/mise/shims/node"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+NODE="${HOME:-}/.local/share/mise/shims/node"
 [ -x "${NODE}" ] || NODE="$(command -v node 2>/dev/null || true)"
 CTX_FIX="${SCRIPT_DIR}/hud-ctx-fix.mjs"
-HUD="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/hud/omc-hud.mjs"
+HUD="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/hud/omc-hud.mjs"
 
 # usagebar (herdr/plugins.list) caches Claude's 5h/7d rate-limit windows and
 # the prompt-cache expiry from this stdin payload; nothing else reports them,
@@ -27,14 +27,14 @@ HUD="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/hud/omc-hud.mjs"
 # which carries no version or commit, so this path survives reinstalls and tag
 # bumps. If it ever looks wrong:
 #   herdr plugin list --plugin usagebar --json
-USAGEBAR="${HOME}/.config/herdr/plugins/github/usagebar-33803b79d616/bin/usagebar"
+USAGEBAR="${HOME:-}/.config/herdr/plugins/github/usagebar-33803b79d616/bin/usagebar"
 
 # Only this payload reports Claude's 5h/7d windows, and the status line it
 # renders is for the user: the model that routes work between Pro, ccd and omp
 # never sees it. Cache the windows so ai/claude/quota-advice.sh can hand them
 # to Claude on the next prompt. Account-wide on purpose — the limits are, so
 # whichever pane rendered last refreshes them for all of them.
-QUOTA_CACHE="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/cache/pro-quota.json"
+QUOTA_CACHE="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/cache/pro-quota.json"
 
 # A provider pane reports its own endpoint's limits, not the Pro window, so it
 # must never overwrite the cache. CC_PROVIDER is what ai/claude/providers.zsh
@@ -89,7 +89,7 @@ out=""
 if [ -n "${NODE}" ] && [ -x "${NODE}" ] && [ -f "${CTX_FIX}" ] && [ -f "${HUD}" ]; then
   out="$(printf '%s\n' "${payload}" | render 2>/dev/null)" || out=""
 fi
-if [ -n "${out}" ]; then
+if [ -n "${out//[[:space:]]/}" ]; then
   printf '%s\n' "${out}"
 else
   fallback "${payload}"

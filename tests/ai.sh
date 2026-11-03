@@ -22,12 +22,22 @@ case_settings_is_valid_json() {
 case_deny_has_guards() {
   local entry
   for entry in \
-    'Bash(./setup.sh)' 'Bash(./setup.sh *)' \
+    'Bash(./setup.sh *)' 'Bash(./*/setup.sh*)' \
     'Bash(bash *setup.sh)' 'Bash(bash *setup.sh *)' \
+    'Bash(sh *setup.sh*)' 'Bash(zsh *setup.sh*)' \
+    'Bash(/bin/bash *setup.sh*)' 'Bash(/bin/sh *setup.sh*)' \
+    'Bash(ai/setup.sh*)' 'Bash(brew/setup.sh*)' 'Bash(gh/setup.sh*)' \
+    'Bash(git/setup.sh*)' 'Bash(gpg/setup.sh*)' 'Bash(iterm/setup.sh*)' \
+    'Bash(macos/setup.sh*)' 'Bash(misc/setup.sh*)' 'Bash(mise/setup.sh*)' \
+    'Bash(terminal/setup.sh*)' 'Bash(vscode/setup.sh*)' 'Bash(xcode/setup.sh*)' \
     'Bash(brew bundle*)' \
-    'Bash(mise install*)' 'Bash(mise use -g*)' 'Bash(mise use --global*)' \
-    'Bash(defaults write*)' \
-    'Bash(git push -f)' 'Bash(git push --force)'; do
+    'Bash(mise install*)' 'Bash(mise i)' 'Bash(mise i *)' \
+    'Bash(mise use -g*)' 'Bash(mise use --global*)' \
+    'Bash(mise use * -g*)' 'Bash(mise use * --global*)' \
+    'Bash(mise u -g*)' 'Bash(mise u --global*)' 'Bash(mise u * -g*)' \
+    'Bash(mise upgrade*)' 'Bash(mise up)' 'Bash(mise up *)' \
+    'Bash(defaults write*)' 'Bash(defaults * write*)' 'Bash(defaults import*)' \
+    'Bash(git push --force*)' 'Bash(git push -f *)'; do
     denied "$entry" || {
       printf 'missing deny: %s\n' "$entry" >"${WORK}/last.out"
       return 1
@@ -40,9 +50,9 @@ case_deny_has_no_duplicates() {
 }
 
 case_credential_reads_denied() {
-  denied 'Read(~/.claude.json)'
-  denied 'Read(~/.claude/.credentials.json)'
-  denied 'Read(~/.config/github-copilot/apps.json)'
+  denied 'Read(~/.claude.json)' || return 1
+  denied 'Read(~/.claude/.credentials.json)' || return 1
+  denied 'Read(~/.config/github-copilot/apps.json)' || return 1
 }
 
 run_suite "$@"
