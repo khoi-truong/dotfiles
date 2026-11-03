@@ -5,6 +5,7 @@
   - [Providers](#providers)
   - [Which to use](#which-to-use)
   - [Switching mid-task](#switching-mid-task)
+  - [Deny guards](#deny-guards)
   - [Status line and quota routing](#status-line-and-quota-routing)
 - [oh-my-pi](#oh-my-pi)
 - [GitHub Copilot CLI](#github-copilot-cli)
@@ -127,10 +128,35 @@ don't reach a script that opens a file itself. Hook commands use `$HOME`, which
 the shell expands at run time; `ai/setup.sh` drops the absolute-path duplicate
 `herdr integration install` appends.
 
+Tools that edit `settings.json` (Claude Code, iTerm's cc-status installer)
+can replace the symlink with a real file. Re-running `ai/setup.sh` backs that
+file up and relinks, and `link` warns with the target and the backup directory
+(never the content). Diff the backup against `ai/claude/settings.json` and
+fold in anything wanted; `scripts/restore.sh` undoes the run.
+
+### Deny guards
+
+`ai/claude/settings.json` also denies the commands AGENTS.md forbids without
+being asked. Run them yourself with `!`:
+
+- every form of a module's `setup.sh`: `./setup.sh`, `./*/setup.sh`,
+  `<module>/setup.sh`, and `bash`, `sh`, `zsh`, `/bin/bash` or `/bin/sh`
+  running one;
+- `brew bundle*`, which includes `check`, `list` and `dump`;
+- `mise install`/`i`, `mise use -g`/`--global` (flag in any position),
+  `mise upgrade`/`up`, and the `u -g`/`u --global` shorthands;
+- `defaults write` (also with a domain flag before it) and `defaults import`;
+- force-pushes, including a bare `git push -f` (a trailing space-star pattern also
+  matches the bare command).
+
+`bash -n` or `sh -n` on a module's `setup.sh` is denied too, so syntax-check
+those with `shellcheck`, which is not denied.
+
 ### Status line and quota routing
 
-`ai/claude/statusline.sh` (the `statusLine` command) renders the OMC HUD, and
-tees the payload to two side branches. The status line is byte-identical with
+`ai/claude/statusline.sh` (the `statusLine` command) renders
+[claude-hud](https://github.com/jarrodwatts/claude-hud), and feeds the payload
+to two side branches. The status line is byte-identical with
 or without them.
 
 1. **usagebar** — Claude's 5h/7d rate-limit windows and prompt-cache expiry are
@@ -152,6 +178,37 @@ or without them.
    and `omp` panes to route to. A `ccd` pane never writes the cache
    (`CC_PROVIDER` gates it), and a window past its `resets_at` counts as
    unknown, not as headroom.
+
+**claude-hud** is a plugin; `settings.json` registers its marketplace and
+enables `claude-hud@claude-hud`. Install it with
+`claude plugin marketplace add jarrodwatts/claude-hud` and
+`claude plugin install claude-hud@claude-hud` (or let the settings pull it in).
+The wrapper runs the newest `dist/index.js` under
+`~/.claude/plugins/cache/*/claude-hud/<version>/`, so an update needs no setup
+step. Don't run `/hud install`: it rewrites the symlinked `settings.json`. It
+needs Node 22.18 or newer (mise's global node). Without node or the plugin, or
+if the HUD crashes or prints nothing, the wrapper prints `<model> <directory>`
+instead (the provider label stands in for the model).
+
+The layout is `ai/claude/claude-hud.json`, linked by `ai/setup.sh` to
+`~/.claude/plugins/claude-hud/config.json`. It shows the model with its effort,
+the project and git branch, a context bar, usage, the prompt-cache time, session
+duration, output speed, tools, compactions, agents and todos. Context, usage,
+cache and tools share one row, and the wrapper then tidies the HUD's rows:
+
+```text
+before  [Opus ◔ medium] │ proj git:(main) │ ⏱️  1h 23m │ out: 88.3 tok/s
+        Context ▓▓▓░░ 36% │ Cache ⏱ until 03:00 PM │ ◐ Bash: ls | ✓ Read ×3
+        Compactions: 2
+after   [Opus ◔ medium] │ proj git:(main)
+        Context ▓▓▓░░ 36% │ Cache until 03:00 PM │ ⏱ 1h23m │ Compactions: 2 │ 88.3 tok/s │ ◐ Bash │ ⚒ 3
+```
+
+Duration, compactions and speed move onto the context row ahead of the tools,
+tools collapse to the running names plus one total of finished calls, and
+rows the HUD wrapped (a lone usage, cache or tools row) rejoin the context row.
+Agent rows are left alone. The wrapper matches the HUD's v0.15.0 wording, so an
+upgrade that rewords it only loses the tidying, never the line.
 
 `ai/claude/hud-ctx-fix.mjs` sits in front of the HUD: it measures context use
 against the 200k auto-compact window rather than the advertised 1M, and adds

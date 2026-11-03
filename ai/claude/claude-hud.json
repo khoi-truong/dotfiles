@@ -1,0 +1,34 @@
+{
+  "lineLayout": "expanded",
+  "elementOrder": [
+    "project",
+    "context",
+    "usage",
+    "promptCache",
+    "tools",
+    "agents",
+    "todos"
+  ],
+  "gitStatus": {
+    "enabled": true
+  },
+  "display": {
+    "showModel": true,
+    "showEffortLevel": true,
+    "effortFormat": "full",
+    "showProject": true,
+    "showContextBar": true,
+    "showUsage": true,
+    "sevenDayThreshold": 0,
+    "showPromptCache": true,
+    "showDuration": true,
+    "showSpeed": true,
+    "showTools": true,
+    "showAgents": true,
+    "showTodos": true,
+    "showCompactions": true,
+    "mergeGroups": [
+      ["context", "usage", "promptCache", "tools"]
+    ]
+  }
+}

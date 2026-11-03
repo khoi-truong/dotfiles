@@ -54,6 +54,19 @@ case_link_creates_link_and_rerun_leaves_journal() {
   [ "$before" = "$after" ]
 }
 
+case_link_over_real_file_warns_and_backs_up() {
+  local h
+  h="$(new_home)"
+  echo x >"${WORK}/src"
+  echo precious >"$h/target"
+  in_common "$h" link "${WORK}/src" "$h/target"
+  grep -q 'transaction: replaced ~/target' "${WORK}/last.out"
+  grep -q 'backup in ~/.local/state/dotfiles/backups/' "${WORK}/last.out"
+  if grep -q precious "${WORK}/last.out"; then return 1; fi
+  [ -L "$h/target" ]
+  [ "$(cat "$h"/.local/state/dotfiles/backups/*/files/*-target)" = precious ]
+}
+
 case_backup_moves_aside_and_records() {
   local h manifest
   h="$(new_home)"

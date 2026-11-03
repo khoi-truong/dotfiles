@@ -49,7 +49,44 @@
       "Read(~/.claude.json)",
       "Read(~/.claude/.credentials.json)",
       "Read(~/.config/gh/hosts.yml)",
-      "Read(~/.config/github-copilot/apps.json)"
+      "Read(~/.config/github-copilot/apps.json)",
+      "Bash(./setup.sh *)",
+      "Bash(bash *setup.sh)",
+      "Bash(bash *setup.sh *)",
+      "Bash(brew bundle*)",
+      "Bash(mise install*)",
+      "Bash(mise use -g*)",
+      "Bash(mise use --global*)",
+      "Bash(defaults write*)",
+      "Bash(./*/setup.sh*)",
+      "Bash(sh *setup.sh*)",
+      "Bash(zsh *setup.sh*)",
+      "Bash(/bin/bash *setup.sh*)",
+      "Bash(/bin/sh *setup.sh*)",
+      "Bash(ai/setup.sh*)",
+      "Bash(brew/setup.sh*)",
+      "Bash(gh/setup.sh*)",
+      "Bash(git/setup.sh*)",
+      "Bash(gpg/setup.sh*)",
+      "Bash(iterm/setup.sh*)",
+      "Bash(macos/setup.sh*)",
+      "Bash(misc/setup.sh*)",
+      "Bash(mise/setup.sh*)",
+      "Bash(terminal/setup.sh*)",
+      "Bash(vscode/setup.sh*)",
+      "Bash(xcode/setup.sh*)",
+      "Bash(mise i)",
+      "Bash(mise i *)",
+      "Bash(mise u -g*)",
+      "Bash(mise u --global*)",
+      "Bash(mise use * -g*)",
+      "Bash(mise use * --global*)",
+      "Bash(mise u * -g*)",
+      "Bash(mise upgrade*)",
+      "Bash(mise up)",
+      "Bash(mise up *)",
+      "Bash(defaults * write*)",
+      "Bash(defaults import*)"
     ],
     "defaultMode": "auto"
   },
@@ -190,13 +227,20 @@
     "swift-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true
+    "superpowers@claude-plugins-official": true,
+    "claude-hud@claude-hud": true
   },
   "extraKnownMarketplaces": {
     "omc": {
       "source": {
         "source": "git",
         "url": "https://github.com/Yeachan-Heo/oh-my-claudecode.git"
+      }
+    },
+    "claude-hud": {
+      "source": {
+        "source": "github",
+        "repo": "jarrodwatts/claude-hud"
       }
     }
   },
