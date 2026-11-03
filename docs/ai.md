@@ -154,8 +154,9 @@ those with `shellcheck`, which is not denied.
 
 ### Status line and quota routing
 
-`ai/claude/statusline.sh` (the `statusLine` command) renders the OMC HUD, and
-tees the payload to two side branches. The status line is byte-identical with
+`ai/claude/statusline.sh` (the `statusLine` command) renders
+[claude-hud](https://github.com/jarrodwatts/claude-hud), and feeds the payload
+to two side branches. The status line is byte-identical with
 or without them.
 
 1. **usagebar** — Claude's 5h/7d rate-limit windows and prompt-cache expiry are
@@ -177,6 +178,18 @@ or without them.
    and `omp` panes to route to. A `ccd` pane never writes the cache
    (`CC_PROVIDER` gates it), and a window past its `resets_at` counts as
    unknown, not as headroom.
+
+**claude-hud** is a plugin; `settings.json` registers its marketplace and
+enables `claude-hud@claude-hud`. Install it with
+`claude plugin marketplace add jarrodwatts/claude-hud` and
+`claude plugin install claude-hud@claude-hud` (or let the settings pull it in).
+The wrapper runs the launcher at `~/.claude/plugins/claude-hud/statusline.mjs`
+if present, else the newest `scripts/statusline.mjs` under
+`~/.claude/plugins/cache/*/claude-hud/<version>/`. Don't run `/hud install`: it
+rewrites the symlinked `settings.json`. Its config,
+`~/.claude/plugins/claude-hud/config.json`, is not versioned. It needs Node
+22.18 or newer (mise's global node). Without node or a launcher, or if the HUD
+crashes or prints nothing, the wrapper prints `<model> · <directory>` instead.
 
 `ai/claude/hud-ctx-fix.mjs` sits in front of the HUD: it measures context use
 against the 200k auto-compact window rather than the advertised 1M, and adds

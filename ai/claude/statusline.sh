@@ -13,14 +13,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 NODE="${HOME:-}/.local/share/mise/shims/node"
 [ -x "${NODE}" ] || NODE="$(command -v node 2>/dev/null || true)"
 CTX_FIX="${SCRIPT_DIR}/hud-ctx-fix.mjs"
-HUD="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}/hud/omc-hud.mjs"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
+
+# The claude-hud launcher: the copy `hud install` leaves in the plugin's own
+# directory if there is one (we never run it, as it rewrites settings.json),
+# else the newest installed plugin version. Non-semver directories are ignored.
+find_hud() {
+  local launcher="${CONFIG_DIR}/plugins/claude-hud/statusline.mjs"
+  if [ -f "${launcher}" ]; then
+    printf '%s\n' "${launcher}"
+    return 0
+  fi
+  printf '%s\n' "${CONFIG_DIR}"/plugins/cache/*/claude-hud/*/scripts/statusline.mjs |
+    awk -F/ '$(NF-2) ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ {print $(NF-2) "\t" $0}' |
+    sort -t. -k1,1n -k2,2n -k3,3n |
+    tail -n 1 |
+    cut -f2-
+}
+HUD="$(find_hud)"
 
 # usagebar (herdr/plugins.list) caches Claude's 5h/7d rate-limit windows and
 # the prompt-cache expiry from this stdin payload; nothing else reports them,
 # so without this branch the sidebar $limit and Claude rate-limit toasts stay
 # empty. It is a tee side-branch, not a pipeline stage: `usagebar statusline`
 # prints its own summary rather than passing JSON through, so chaining it
-# inline would feed omc-hud garbage and drop the provider label that
+# inline would feed the HUD garbage and drop the provider label that
 # herdr/team.sh asserts on.
 #
 # herdr installs a plugin to <plugin id>-<first 12 hex of sha256(plugin id)>,
@@ -58,8 +75,7 @@ cache_quota() {
 
 render() {
   "${NODE}" "${CTX_FIX}" |
-    "${NODE}" "${HUD}" |
-    perl -CSD -pe 's/Model:\x{a0}?\s?//g; s/session://g; s/ctx://g'
+    "${NODE}" "${HUD}"
 }
 
 # fallback PAYLOAD: "<model> · <dir>", or "claude" when jq is missing or the
@@ -86,7 +102,7 @@ fi
 printf '%s\n' "${payload}" | cache_quota
 
 out=""
-if [ -n "${NODE}" ] && [ -x "${NODE}" ] && [ -f "${CTX_FIX}" ] && [ -f "${HUD}" ]; then
+if [ -n "${NODE}" ] && [ -x "${NODE}" ] && [ -f "${CTX_FIX}" ] && [ -n "${HUD}" ] && [ -f "${HUD}" ]; then
   out="$(printf '%s\n' "${payload}" | render 2>/dev/null)" || out=""
 fi
 if [ -n "${out//[[:space:]]/}" ]; then

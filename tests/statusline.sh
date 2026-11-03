@@ -10,13 +10,13 @@ set -euo pipefail
 
 PAYLOAD='{"model":{"display_name":"Opus"},"workspace":{"current_dir":"/some/where/proj"},"rate_limits":{"five_hour":{"used_percentage":1}}}'
 
-# fixture: a HOME with a HUD file and a bin dir holding jq (and nothing else
-# from the caller's PATH). Sets H and BIN.
+# fixture: a HOME with a claude-hud launcher and a bin dir holding jq (and
+# nothing else from the caller's PATH). Sets H and BIN.
 fixture() {
   H="$(new_home)"
   BIN="${WORK}/bin.$$.$RANDOM"
-  mkdir -p "$BIN" "$H/.claude/hud"
-  : >"$H/.claude/hud/omc-hud.mjs"
+  mkdir -p "$BIN" "$H/.claude/plugins/claude-hud"
+  : >"$H/.claude/plugins/claude-hud/statusline.mjs"
   ln -s "$(command -v jq)" "$BIN/jq"
 }
 
@@ -93,6 +93,44 @@ case_unset_home_still_prints() {
   STATUS=0
   printf '%s' "$PAYLOAD" | env -u HOME PATH="$BIN:/usr/bin:/bin" \
     bash "${DOTFILES}/ai/claude/statusline.sh" >"${WORK}/last.out" 2>&1 || STATUS=$?
+  [ "$STATUS" -eq 0 ]
+  [ "$(cat "${WORK}/last.out")" = "Opus · proj" ]
+}
+
+# cache_launcher VERSION: an installed plugin version with no `hud install` copy.
+cache_launcher() {
+  mkdir -p "$H/.claude/plugins/cache/claude-hud/claude-hud/$1/scripts"
+  : >"$H/.claude/plugins/cache/claude-hud/claude-hud/$1/scripts/statusline.mjs"
+}
+
+case_launcher_copy_used() {
+  fixture
+  cache_launcher 0.15.0
+  # shellcheck disable=SC2016  # $1 expands in the stub, not here
+  stub_node 'cat >/dev/null; echo "$1"'
+  statusline "$PAYLOAD"
+  [ "$STATUS" -eq 0 ]
+  grep -q '/plugins/claude-hud/statusline.mjs' "${WORK}/last.out"
+}
+
+case_newest_cache_version_used() {
+  fixture
+  rm "$H/.claude/plugins/claude-hud/statusline.mjs"
+  cache_launcher 0.9.0
+  cache_launcher 0.15.0
+  cache_launcher 0.2.1-beta
+  # shellcheck disable=SC2016  # $1 expands in the stub, not here
+  stub_node 'cat >/dev/null; echo "$1"'
+  statusline "$PAYLOAD"
+  [ "$STATUS" -eq 0 ]
+  grep -q '/0.15.0/scripts/statusline.mjs' "${WORK}/last.out"
+}
+
+case_no_launcher_falls_back() {
+  fixture
+  rm "$H/.claude/plugins/claude-hud/statusline.mjs"
+  stub_node 'cat >/dev/null; echo HUD'
+  statusline "$PAYLOAD"
   [ "$STATUS" -eq 0 ]
   [ "$(cat "${WORK}/last.out")" = "Opus · proj" ]
 }
