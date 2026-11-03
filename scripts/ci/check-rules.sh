@@ -13,10 +13,10 @@
 # comments are skipped for the same reason: a comment explaining one of these
 # rules has to be able to name a prefix.
 #
-# The file list comes from `shell_files` below: the shell scripts
-# scripts/ci/list-shell-scripts.sh finds in the index, every zsh file, and the
-# same test applied to untracked files that are not gitignored. A `*.sh`/`*.zsh`
-# glob was not enough — it walked past zsh/zshrc, zsh/zshenv and the
+# The file list comes from `shell_files` below: the union of
+# scripts/ci/list-shell-scripts.sh and `list-shell-scripts.sh --zsh`, which
+# read tracked files and untracked ones that are not gitignored. A `*.sh`/`*.zsh`
+# glob was not enough - it walked past zsh/zshrc, zsh/zshenv and the
 # extensionless hooks in git/template/, and zsh/zshrc is read on every shell
 # start, the one place a hardcoded prefix would hurt most.
 #
@@ -57,15 +57,30 @@ HOMEBREW_RE='/opt/homebrew|/usr/local'
 
 # mise owns every runtime; a second manager's init hook in the shell is the
 # violation, whatever it is called.
-VERSION_MANAGER_RE='pyenv init|rbenv init|jenv init|nvm\.sh|asdf\.sh'
+VERSION_MANAGER_RE='pyenv init|rbenv init|jenv init|nodenv init|fnm env|volta setup|corepack enable|nvm\.sh|asdf\.sh'
 
 # Tracked-file suffixes that hold credentials. AGENTS.md names these three as
 # the files that must never be versioned; only declarative config under ai/ is.
+# is_credential_name below adds the credential files that are matched by name.
 CREDENTIAL_SUFFIXES=(
   '.claude.json'
   '.credentials.json'
   'github-copilot/apps.json'
 )
+
+# A path that names a credential file: Claude Code's local settings, the gh CLI
+# token file, key and certificate stores, and dotenv files (but not the
+# committed .env.example template).
+is_credential_name() {
+  case "$1" in
+    */gh/hosts.yml | gh/hosts.yml) return 0 ;;
+  esac
+  case "${1##*/}" in
+    .env.example) return 1 ;;
+    settings.local.json | *.pem | *.p12 | .env | .env.*) return 0 ;;
+  esac
+  return 1
+}
 
 # Tracked plus untracked-not-ignored, NUL-delimited so a path with a space or
 # a newline cannot split into two. `git ls-files` needs the repository root.
@@ -73,36 +88,13 @@ all_files() {
   git ls-files -z --cached --others --exclude-standard
 }
 
-# The test scripts/ci/list-shell-scripts.sh applies to a tracked path, applied
-# to one that is not tracked yet: `*.sh`, `*.zsh`, either extensionless zsh
-# file, or a file with no extension whose shebang names bash or sh.
-# It is written out a second time because that script reads the index, which
-# cannot see a file that has not been staged — and the file that has not been
-# staged is exactly the one this copy is here for. The two name each other in
-# their headers so a change to either has somewhere to land.
-is_shell_script() {
-  case "$1" in
-    *.sh | *.zsh | zsh/zshrc | zsh/zshenv) return 0 ;;
-    *.*) return 1 ;;
-  esac
-  head -n 1 "$1" 2>/dev/null | grep -qE '^#!.*\b(bash|sh)\b'
-}
-
-# Every shell file the Homebrew-prefix rule is about: the same source the CI
-# lint job's shellcheck pass reads, every zsh file, and the same test applied
-# to untracked files. That script leaves zsh to `zsh -n`, so the zsh files are
-# named here — those two extensionless ones included, since they are what a
-# shell reads. `sort -u` so a path cannot be listed twice and reported twice.
+# Every shell file the Homebrew-prefix rule is about: the bash/sh list and the
+# zsh list from the one script every check reads. `sort -u` so a path cannot be
+# listed twice and reported twice.
 shell_files() {
   {
     scripts/ci/list-shell-scripts.sh
-    git ls-files '*.zsh' zsh/zshrc zsh/zshenv
-    while IFS= read -r path; do
-      [ -n "$path" ] || continue
-      if is_shell_script "$path"; then
-        printf '%s\n' "$path"
-      fi
-    done < <(git ls-files --others --exclude-standard)
+    scripts/ci/list-shell-scripts.sh --zsh
   } | sort -u
 }
 
@@ -177,6 +169,10 @@ check_credentials() {
   # Tracked, not the working tree: the rule is about what is in the repository.
   # An ignored working-copy file (ai/claude/.credentials*) never gets here.
   while IFS= read -r -d '' path; do
+    if is_credential_name "$path"; then
+      found+=("$path")
+      continue
+    fi
     for suffix in "${CREDENTIAL_SUFFIXES[@]}"; do
       case "$path" in
         *"$suffix")

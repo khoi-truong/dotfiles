@@ -8,7 +8,7 @@
 #   scripts/ci/lint-local.sh --quick    the four that need no download
 #
 # `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
-# `zsh -n` over the workflow's own file set, and editorconfig-checker: the four that
+# `zsh -n` over `list-shell-scripts.sh --zsh`, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
 # rumdl, actionlint, zizmor, the two repo-rule scripts and the four
 # Python checks, and needs uv; a runner has them, a laptop may not.
@@ -245,7 +245,7 @@ check_shfmt() {
   local -a files=()
   while IFS= read -r file; do
     files+=("$file")
-  done < <(scripts/ci/list-shell-scripts.sh | grep -v '\.zsh$')
+  done < <(scripts/ci/list-shell-scripts.sh)
 
   if [ "${#files[@]}" -eq 0 ]; then
     printf 'lint-local: no shell scripts found to check\n'
@@ -264,7 +264,7 @@ check_zsh() {
   local file
   while IFS= read -r file; do
     files+=("$file")
-  done < <(git ls-files '*.zsh' 'zsh/zshrc' 'zsh/zshenv')
+  done < <(scripts/ci/list-shell-scripts.sh --zsh)
 
   if [ "${#files[@]}" -eq 0 ]; then
     printf 'lint-local: no zsh files found to check\n'
