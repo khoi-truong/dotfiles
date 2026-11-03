@@ -2,11 +2,17 @@
 # Claude Code statusLine, referenced from ai/claude/settings.json.
 #
 # This is a script rather than a one-liner in settings.json because the
-# pipeline needs bash (process substitution), and because the plugin path
-# below wants a comment that JSON cannot hold.
+# fallback logic needs bash, and because the plugin path below wants a comment
+# that JSON cannot hold.
+#
+# It never prints a blank line and always exits 0: when node or the HUD is
+# missing, crashes or prints nothing, it falls back to "<model> · <dir>".
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
 NODE="${HOME}/.local/share/mise/shims/node"
+[ -x "${NODE}" ] || NODE="$(command -v node 2>/dev/null || true)"
+CTX_FIX="${SCRIPT_DIR}/hud-ctx-fix.mjs"
 HUD="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/hud/omc-hud.mjs"
 
 # usagebar (herdr/plugins.list) caches Claude's 5h/7d rate-limit windows and
@@ -51,13 +57,41 @@ cache_quota() {
 }
 
 render() {
-  "${NODE}" "${HOME}/.dotfiles/ai/claude/hud-ctx-fix.mjs" |
+  "${NODE}" "${CTX_FIX}" |
     "${NODE}" "${HUD}" |
     perl -CSD -pe 's/Model:\x{a0}?\s?//g; s/session://g; s/ctx://g'
 }
 
+# fallback PAYLOAD: "<model> · <dir>", or "claude" when jq is missing or the
+# payload cannot be read.
+fallback() {
+  local model="" dir="" line=""
+  if command -v jq >/dev/null 2>&1; then
+    model="$(printf '%s' "$1" | jq -r '.model.display_name // empty' 2>/dev/null)" || model=""
+    dir="$(printf '%s' "$1" | jq -r '.workspace.current_dir // empty' 2>/dev/null)" || dir=""
+  fi
+  [ -z "${dir}" ] || dir="$(basename "${dir}")"
+  line="${model}"
+  if [ -n "${dir}" ]; then
+    line="${line:+${line} · }${dir}"
+  fi
+  printf '%s\n' "${line:-claude}"
+}
+
+payload="$(cat 2>/dev/null || true)"
+
 if [ -x "${USAGEBAR}" ]; then
-  tee >("${USAGEBAR}" statusline >/dev/null 2>&1) >(cache_quota) | render
-else
-  tee >(cache_quota) | render
+  printf '%s\n' "${payload}" | "${USAGEBAR}" statusline >/dev/null 2>&1 &
 fi
+printf '%s\n' "${payload}" | cache_quota
+
+out=""
+if [ -n "${NODE}" ] && [ -x "${NODE}" ] && [ -f "${CTX_FIX}" ] && [ -f "${HUD}" ]; then
+  out="$(printf '%s\n' "${payload}" | render 2>/dev/null)" || out=""
+fi
+if [ -n "${out}" ]; then
+  printf '%s\n' "${out}"
+else
+  fallback "${payload}"
+fi
+exit 0
