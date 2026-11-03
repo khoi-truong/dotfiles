@@ -92,10 +92,14 @@ all_files() {
 # zsh list from the one script every check reads. `sort -u` so a path cannot be
 # listed twice and reported twice.
 shell_files() {
-  {
-    scripts/ci/list-shell-scripts.sh
-    scripts/ci/list-shell-scripts.sh --zsh
-  } | sort -u
+  local bash_list zsh_list
+  bash_list="$(scripts/ci/list-shell-scripts.sh)" || return 1
+  zsh_list="$(scripts/ci/list-shell-scripts.sh --zsh)" || return 1
+  if [ -z "$bash_list" ] || [ -z "$zsh_list" ]; then
+    printf 'check-rules: list-shell-scripts.sh listed nothing\n' >&2
+    return 1
+  fi
+  printf '%s\n%s\n' "$bash_list" "$zsh_list" | sort -u
 }
 
 # A line whose first non-blank character is `#` is a comment. `$1` is the text
@@ -116,14 +120,15 @@ grep_text() {
 
 check_homebrew_prefix() {
   local -a files=() found=()
-  local path hit
+  local path hit list
+  list="$(shell_files)" || return 1
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     case " ${HOMEBREW_ALLOWLIST[*]} " in
       *" ${path} "*) continue ;;
     esac
     files+=("$path")
-  done < <(shell_files)
+  done <<<"$list"
 
   [ "${#files[@]}" -gt 0 ] || return 0
 

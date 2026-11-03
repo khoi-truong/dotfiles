@@ -10,7 +10,11 @@
 
 DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+# shellcheck disable=SC2154
+# bash 3.2 reports $? as 0 inside an EXIT trap when `set -eu` aborts on an
+# unbound variable, which would turn a crashed suite into a pass. run_suite sets
+# SUITE_DONE when it returns, so a clean 0 without it is a crash: exit 1.
+trap 'rc=$?; rm -rf "$WORK"; if [ "$rc" -eq 0 ] && [ -z "${SUITE_DONE:-}" ]; then rc=1; fi; exit "$rc"' EXIT
 
 # in_home HOME CMD [ARGS...]: run CMD with HOME set to the fixture and nothing
 # from the caller's environment that could point outside it. Output goes to
@@ -55,14 +59,6 @@ STUB
   PATH="${STUB_PREFIX}/bin:${PATH}"
 }
 
-# new_repo DIR: a fixture git repository that never prompts for a signature.
-new_repo() {
-  mkdir -p "$1"
-  git -C "$1" init -q
-  git -C "$1" config commit.gpgsign false
-  git -C "$1" config tag.gpgsign false
-}
-
 run_cases() {
   local failed=0 name status
   for name in "$@"; do
@@ -87,13 +83,25 @@ run_cases() {
   return "$failed"
 }
 
-# run_suite [CASE...]: the named cases, or every case_* function.
+# run_suite [CASE...]: the named cases, or every case_* function. It must be
+# the last command of a suite: its status is the suite's.
 run_suite() {
+  local status
+  select_cases "$@" && status=0 || status=$?
+  SUITE_DONE=1
+  return "$status"
+}
+
+select_cases() {
   local cases=() name
   if [ "$#" -gt 0 ]; then
     run_cases "$@"
   else
     while IFS= read -r name; do cases+=("$name"); done < <(declare -F | awk '$3 ~ /^case_/ {print $3}')
+    if [ "${#cases[@]}" -eq 0 ]; then
+      printf 'run_suite: no case_* functions defined\n' >&2
+      return 1
+    fi
     run_cases "${cases[@]}"
   fi
 }

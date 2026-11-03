@@ -55,7 +55,7 @@ for suite in tests/*.sh; do
   case "$suite" in
     tests/lib.sh | tests/run.sh) continue ;;
   esac
-  run_one "$(basename "$suite")" bash "$suite"
+  run_one "$(basename "$suite")" "$BASH" "$suite"
 done
 
 printf '\n==> wall time\n'

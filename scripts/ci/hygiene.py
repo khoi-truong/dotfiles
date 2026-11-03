@@ -55,8 +55,14 @@ def strip_jsonc(text: str) -> str:
 
 
 def is_jsonc(path: str) -> bool:
-    parts = path.replace(os.sep, "/").split("/")
-    return path.endswith(".jsonc") or (len(parts) >= 2 and parts[-2] == "vscode")
+    """*.jsonc anywhere, and any JSON under the repo-root vscode/ directory.
+
+    `path` is repo-relative, as `git ls-files` prints it.
+    """
+    norm = path.replace(os.sep, "/")
+    while norm.startswith("./"):
+        norm = norm[2:]
+    return norm.endswith(".jsonc") or norm.startswith("vscode/")
 
 
 def check_json(path: str, text: str) -> Optional[Tuple[int, str]]:
@@ -87,13 +93,15 @@ else:
 
 
 def conflict_markers(text: str) -> List[Tuple[int, str]]:
+    """Markers of an unresolved merge. A lone `=======` only counts after a
+    `<<<<<<< ` line, so a Markdown setext underline passes."""
     found: List[Tuple[int, str]] = []
+    opened = False
     for number, line in enumerate(text.splitlines(), 1):
-        if (
-            line.startswith("<<<<<<< ")
-            or line.rstrip() == "======="
-            or line.startswith(">>>>>>> ")
-        ):
+        if line.startswith("<<<<<<< "):
+            opened = True
+            found.append((number, "conflict marker"))
+        elif line.startswith(">>>>>>> ") or (opened and line.rstrip() == "======="):
             found.append((number, "conflict marker"))
     return found
 
@@ -103,10 +111,10 @@ def check_file(path: str) -> List[Finding]:
         return []
     with open(path, "rb") as handle:
         data = handle.read()
-    if b"\0" in data[:8192]:
-        return []
     if len(data) > MAX_BYTES:
         return [(path, 1, "file is over 1 MiB (%d bytes)" % len(data))]
+    if b"\0" in data[:8192]:
+        return []
     text = data.decode("utf-8", errors="replace")
     found = [(path, n, why) for n, why in conflict_markers(text)]
     problem: Optional[Tuple[int, str]] = None

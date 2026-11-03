@@ -73,12 +73,10 @@ jobs:
 
       - name: Verify shell scripts pass shellcheck
         run: |
+          list=$(scripts/ci/list-shell-scripts.sh)
+          [ -n "$list" ] || { echo "::error::list-shell-scripts.sh listed nothing"; exit 1; }
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(scripts/ci/list-shell-scripts.sh)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No shell scripts found."
-            exit 0
-          fi
+          while IFS= read -r file; do files+=("$file"); done <<<"$list"
           shellcheck -x "${files[@]}"
 
       # shfmt reads its style from .editorconfig, so it is run with no style flags.
@@ -94,12 +92,10 @@ jobs:
 
       - name: Verify shell scripts are formatted
         run: |
+          list=$(scripts/ci/list-shell-scripts.sh)
+          [ -n "$list" ] || { echo "::error::list-shell-scripts.sh listed nothing"; exit 1; }
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(scripts/ci/list-shell-scripts.sh)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No shell scripts found."
-            exit 0
-          fi
+          while IFS= read -r file; do files+=("$file"); done <<<"$list"
           shfmt -d "${files[@]}"
 
       - name: Set up zsh
@@ -107,8 +103,10 @@ jobs:
 
       - name: Verify zsh files parse
         run: |
+          list=$(scripts/ci/list-shell-scripts.sh --zsh)
+          [ -n "$list" ] || { echo "::error::list-shell-scripts.sh listed nothing"; exit 1; }
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(scripts/ci/list-shell-scripts.sh --zsh)
+          while IFS= read -r file; do files+=("$file"); done <<<"$list"
           # `zsh -n a b` parses only `a` and treats `b` as a positional
           # parameter, so each file needs its own invocation. Run them all and
           # keep going so one failed run names every unparseable file.
@@ -157,7 +155,7 @@ jobs:
           '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
 
       - name: Verify files parse and carry no conflict markers
-        run: git ls-files -z | xargs -0 python3 scripts/ci/hygiene.py
+        run: git ls-files -z | xargs -0 python3 -B -I scripts/ci/hygiene.py
 
       - name: Verify the hygiene check with unit tests
         run: python3 -B -I tests/hygiene_units.py

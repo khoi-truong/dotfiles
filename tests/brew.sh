@@ -17,7 +17,7 @@ case_plain_install_logs_bundle_install() {
   stub_brew
   run_module brew "$h"
   grep -q '^bundle install --no-upgrade' "$BREW_LOG"
-  ! grep -q 'cleanup' "$BREW_LOG"
+  if grep -q 'cleanup' "$BREW_LOG"; then return 1; fi
 }
 
 case_cleanup_answered_no_does_not_force() {
@@ -27,7 +27,7 @@ case_cleanup_answered_no_does_not_force() {
   printf 'n\n' >"${WORK}/answer"
   RUN_STDIN="${WORK}/answer" run_module brew "$h" --cleanup
   grep -q '^bundle cleanup$' "$BREW_LOG"
-  ! grep -q 'cleanup --force' "$BREW_LOG"
+  if grep -q 'cleanup --force' "$BREW_LOG"; then return 1; fi
 }
 
 case_cleanup_yes_forces() {
@@ -54,7 +54,7 @@ case_unknown_argument_fails() {
     return 1
   fi
   grep -q "unknown argument '--nonsense'" "${WORK}/last.out"
-  ! grep -q 'bundle' "$BREW_LOG"
+  if grep -q 'bundle' "$BREW_LOG"; then return 1; fi
 }
 
 run_suite "$@"
