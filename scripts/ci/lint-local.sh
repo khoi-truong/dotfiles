@@ -10,8 +10,8 @@
 # `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
 # `zsh -n` over `list-shell-scripts.sh --zsh`, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
-# rumdl, actionlint, zizmor, stylua, the repo-rule scripts, the hygiene check and the four
-# Python checks, and needs uv; a runner has them, a laptop may not.
+# rumdl, actionlint, zizmor, stylua, the repo-rule scripts, the hygiene check, the generated-policy
+# check and the four Python checks, and needs uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
 # rather than being skipped quietly. A check that cannot fail is worse than no
@@ -368,8 +368,8 @@ check_python() {
     # every `pytest.mark.parametrize` untyped, and the test function under it
     # with it. `ai/herdr/pyproject.toml` deliberately carries no
     # `ignore_missing_imports` for pytest — the fix is here, not there.
-    uvx ruff@0.16.8 check . ../../scripts/ci ../../lib ../../tests &&
-      uvx ruff@0.16.8 format --check . ../../scripts/ci ../../lib ../../tests &&
+    uvx ruff@0.16.8 check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests &&
+      uvx ruff@0.16.8 format --check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests &&
       uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
       uvx pytest@9.1.1
   ) &&
@@ -392,8 +392,8 @@ main() {
       # runs test.yml's pytest, so it is placed by that rule rather than by step
       # order: it is not free either — uvx fetches three tools the first
       # time — but uv caches what it fetches, and this run already needs uv for
-      # actionlint and zizmor, so it goes after the five checks that fetch
-      # nothing and before the three that fetch more.
+      # actionlint and zizmor, so it goes after the checks that fetch
+      # nothing (everything up to stylua) and before the three that fetch more.
       checks=(rules hygiene brewfile pins policy shellcheck shfmt zsh editorconfig stylua python markdown actionlint zizmor)
       ;;
     *)
