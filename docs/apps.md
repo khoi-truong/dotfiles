@@ -80,8 +80,12 @@ a missing one is skipped silently. Servers: `lua_ls`, `basedpyright` (else
 `yamlls`, `marksman`, `starpls` and `sourcekit`.
 
 Tree-sitter parsers are compiled with `tree-sitter-cli` (Brewfile). Icons need
-a Nerd Font; if your terminal font has none, set Symbols Nerd Font Mono
-(`font-symbols-only-nerd-font`) as its fallback font.
+a Nerd Font. The committed iTerm2 profile already uses Symbols Nerd Font Mono
+(`font-symbols-only-nerd-font`) as its non-ASCII font; in another terminal, set
+it as the fallback font.
+
+`vi`, `vim` and `vimdiff` are aliased to Neovim. Only macOS's own
+`/usr/bin/vim` remains, reachable as `command vim`.
 
 Leader is `Space`. Groups: `f` find, `g` git, `c` code, `d` debug, `t` test,
 `x` diagnostics. `-` opens the parent directory in oil.

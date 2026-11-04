@@ -36,7 +36,6 @@ brew "pinentry-mac"   # GUI passphrase prompt for gpg-agent
 brew "mas"
 brew "neovim"
 brew "tree-sitter-cli"
-brew "vim"
 brew "watchman"
 
 # build toolchains
