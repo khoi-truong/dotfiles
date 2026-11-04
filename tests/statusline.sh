@@ -99,7 +99,7 @@ case_layout_moves_duration_compactions_speed_ahead_of_tools() {
   statusline "$PAYLOAD"
   [ "$STATUS" -eq 0 ]
   shows '[Opus ◔ medium] │ proj git:(main)' \
-    'Context ▓▓▓░░ 36% │ Usage ▓░░░░ 5% (1h left) │ Cache until 03:00 PM │ ⏱ 1h23m │ Compactions: 2 │ 88.3 tok/s │ ◐ Bash │ ⚒ 5'
+    'Context ▓▓▓░░ 36% │ Usage ▓░░░░ 5% (1h left) │ Cache until 03:00 PM │ ⏱️ 1h23m │ Compactions: 2 │ ⚡ 88.3 tok/s │ ◐ Bash │ 🔧 5'
 }
 
 case_layout_keeps_colour_on_running_glyph() {
@@ -115,7 +115,7 @@ case_layout_drops_out_label() {
   stub_node
   hud "${BADGE}${SEP}${PROJECT}${SEP}${SPEED}" "${CONTEXT}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium] │ proj git:(main)' 'Context ▓▓▓░░ 36% │ 88.3 tok/s'
+  shows '[Opus ◔ medium] │ proj git:(main)' 'Context ▓▓▓░░ 36% │ ⚡ 88.3 tok/s'
 }
 
 case_layout_cache_reads_until() {
@@ -139,7 +139,7 @@ case_layout_duration_squeezed() {
   stub_node
   hud "${BADGE}${SEP}${DIM}⏱${VS16}  2d 4h 5m${OFF}" "${CONTEXT}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ⏱ 2d4h5m'
+  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ⏱️ 2d4h5m'
 }
 
 case_layout_short_duration() {
@@ -147,7 +147,7 @@ case_layout_short_duration() {
   stub_node
   hud "${BADGE}${SEP}${DIM}⏱${VS16}  <1m${OFF}" "${CONTEXT}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ⏱ <1m'
+  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ⏱️ <1m'
 }
 
 case_layout_tools_collapse_to_running_names_and_total() {
@@ -156,7 +156,7 @@ case_layout_tools_collapse_to_running_names_and_total() {
   hud "${BADGE}" \
     "${CONTEXT}${SEP}${YEL}◐${OFF} Edit${DIM}: a.ts${OFF} | ${YEL}◐${OFF} Bash${DIM}: ls${OFF} | ${GRN}✓${OFF} Read ${DIM}×3${OFF} | ${GRN}✓${OFF} Grep ${DIM}×4${OFF} | ${DIM}+1 more${OFF}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ◐ Edit, Bash │ ⚒ 7'
+  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ◐ Edit, Bash │ 🔧 7'
 }
 
 case_layout_tools_only_completed() {
@@ -164,7 +164,7 @@ case_layout_tools_only_completed() {
   stub_node
   hud "${BADGE}" "${CONTEXT}${SEP}${GRN}✓${OFF} Read ${DIM}×3${OFF}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ⚒ 3'
+  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ 🔧 3'
 }
 
 case_layout_agents_untouched() {
@@ -186,7 +186,7 @@ case_layout_wrapped_row_starting_with_duration() {
     "${CONTEXT}${SEP}${CACHE}"
   statusline "$PAYLOAD"
   shows '[Opus ◔ medium] │ proj git:(main)' \
-    'Context ▓▓▓░░ 36% │ Cache until 03:00 PM │ ⏱ 1h23m │ 88.3 tok/s'
+    'Context ▓▓▓░░ 36% │ Cache until 03:00 PM │ ⏱️ 1h23m │ ⚡ 88.3 tok/s'
 }
 
 case_layout_wrapped_row_starting_with_speed() {
@@ -194,7 +194,7 @@ case_layout_wrapped_row_starting_with_speed() {
   stub_node
   hud "${BADGE}${SEP}${PROJECT}" "${SPEED}" "${CONTEXT}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium] │ proj git:(main)' 'Context ▓▓▓░░ 36% │ 88.3 tok/s'
+  shows '[Opus ◔ medium] │ proj git:(main)' 'Context ▓▓▓░░ 36% │ ⚡ 88.3 tok/s'
 }
 
 case_layout_spilled_usage_and_cache_merge_into_context() {
@@ -206,7 +206,7 @@ case_layout_spilled_usage_and_cache_merge_into_context() {
     "${YEL}◐${OFF} Edit${DIM}: a.ts${OFF} | ${GRN}✓${OFF} Read ${DIM}×3${OFF}"
   statusline "$PAYLOAD"
   shows '[Opus ◔ medium] │ proj git:(main)' \
-    'Context ▓▓▓░░ 36% │ Usage ▓░░░░ 5% (1h left) │ Cache until 03:00 PM │ ◐ Edit │ ⚒ 3'
+    'Context ▓▓▓░░ 36% │ Usage ▓░░░░ 5% (1h left) │ Cache until 03:00 PM │ ◐ Edit │ 🔧 3'
 }
 
 case_layout_spilled_tools_wrapped_mid_group() {
@@ -216,7 +216,7 @@ case_layout_spilled_tools_wrapped_mid_group() {
     "${CONTEXT}${SEP}${YEL}◐${OFF} Edit${DIM}: a.ts${OFF} | ${GRN}✓${OFF} Read ${DIM}×3${OFF}" \
     "${GRN}✓${OFF} Grep ${DIM}×4${OFF}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ◐ Edit │ ⚒ 7'
+  shows '[Opus ◔ medium]' 'Context ▓▓▓░░ 36% │ ◐ Edit │ 🔧 7'
 }
 
 case_layout_without_context_row_appends_to_first() {
@@ -224,7 +224,7 @@ case_layout_without_context_row_appends_to_first() {
   stub_node
   hud "${BADGE}${SEP}${PROJECT}${SEP}${DURATION}"
   statusline "$PAYLOAD"
-  shows '[Opus ◔ medium] │ proj git:(main) │ ⏱ 1h23m'
+  shows '[Opus ◔ medium] │ proj git:(main) │ ⏱️ 1h23m'
 }
 
 # --- which HUD ---------------------------------------------------------
@@ -395,6 +395,23 @@ case_provider_pane_skips_cache() {
   statusline "$PAYLOAD" CC_PROVIDER=x
   [ "$STATUS" -eq 0 ]
   [ ! -e "$H/.claude/cache/pro-quota.json" ]
+}
+
+# cache_quota returning without reading its stdin closed the pipe under the
+# printf feeding it, which printed "write error: Broken pipe" whenever it lost
+# the race. A payload past the 64K pipe buffer makes the race certain, and an
+# ignored SIGPIPE (inherited, as on CI runners) turns it into that message.
+case_skipped_cache_drains_payload() {
+  fixture
+  local pad
+  pad=$(head -c 200000 /dev/zero | tr '\0' x)
+  STATUS=0
+  # shellcheck disable=SC2016 # $1 is the inner shell's.
+  printf '{"model":{"display_name":"Opus"},"pad":"%s"}' "$pad" |
+    env -u CC_PROVIDER_LABEL -u CLAUDE_CONFIG_DIR -u XDG_STATE_HOME HOME="$H" PATH="$BIN:/usr/bin:/bin" CC_PROVIDER=x \
+      bash -c 'trap "" PIPE; exec bash "$1"' _ "${DOTFILES}/ai/claude/statusline.sh" >"${WORK}/last.out" 2>&1 || STATUS=$?
+  [ "$STATUS" -eq 0 ]
+  ! grep -q 'Broken pipe' "${WORK}/last.out"
 }
 
 run_suite "$@"

@@ -37,7 +37,9 @@ alias egrep='egrep --color=auto'
 
 # --- shortcuts -------------------------------------------------------------
 alias g="git"
-alias vim="nvim"          # muscle memory; only nvim is installed
+alias vi="nvim"
+alias vim="nvim"          # muscle memory; /usr/bin/vim stays as `command vim`
+alias vimdiff="nvim -d"
 alias sudo='sudo '        # trailing space lets the next word be alias-expanded
 alias week='date +%V'
 alias map="xargs -n1"     # e.g. find . -name .gitattributes | map dirname
