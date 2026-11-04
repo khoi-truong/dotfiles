@@ -3,10 +3,11 @@
 #
 #   bash tests/run.sh
 #
-# The two Python unit suites run first, then every tests/*.sh except this file
+# The three Python unit suites run first, then every tests/*.sh except this file
 # and lib.sh. lib_units.py checks the journal under macOS's own /usr/bin/python3
-# (3.9), the oldest interpreter it must work on. hygiene_units.py needs
-# tomllib, so it runs under the first python3 on PATH that is 3.11 or newer.
+# (3.9), the oldest interpreter it must work on. hygiene_units.py and
+# policy_units.py need tomllib, so they run under the first python3 on PATH that
+# is 3.11 or newer.
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
@@ -46,9 +47,10 @@ done
 run_one lib_units.py "$system_python" -B -I tests/lib_units.py
 if [ -n "$modern_python" ]; then
   run_one hygiene_units.py "$modern_python" -B -I tests/hygiene_units.py
+  run_one policy_units.py "$modern_python" -B -I tests/policy_units.py
 else
-  printf '\n==> hygiene_units.py\nrun.sh: no python3 >= 3.11 on PATH\n' >&2
-  failed+=(hygiene_units.py)
+  printf '\n==> hygiene_units.py, policy_units.py\nrun.sh: no python3 >= 3.11 on PATH\n' >&2
+  failed+=(hygiene_units.py policy_units.py)
 fi
 
 for suite in tests/*.sh; do

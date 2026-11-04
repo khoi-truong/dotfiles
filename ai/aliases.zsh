@@ -7,6 +7,9 @@
 # Claude Code: cc/ccc/ccr (Pro) and the other-provider launchers.
 [[ -r ${DOTFILES}/ai/claude/providers.zsh ]] && source "${DOTFILES}/ai/claude/providers.zsh"
 
+# Copilot CLI deny-tool wrapper, generated from ai/profiles/policy.toml.
+[[ -r ${DOTFILES}/ai/copilot/deny-tools.zsh ]] && source "${DOTFILES}/ai/copilot/deny-tools.zsh"
+
 # oh-my-pi (DeepSeek)
 alias ompc="omp --continue"
 alias ompr="omp --resume"

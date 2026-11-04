@@ -1,0 +1,183 @@
+# Source of truth for the permission deny lists. Edit this, then run
+#   python3 scripts/gen-policy.py
+# and commit the result; `--check` (CI and lint-local) fails on drift.
+
+# Commands that read a file: a secret is denied to each of them.
+readers = [
+  "cat", "head", "tail", "less", "more", "bat", "jq", "grep", "rg",
+  "sed", "awk", "base64", "xxd", "strings", "cp", "scp", "open",
+]
+
+# Shells that could run a module's setup.sh.
+setup_shells = ["bash", "sh", "zsh", "/bin/bash", "/bin/sh"]
+
+[[command]]
+run = "sudo"
+copilot = "shell(sudo)"
+why = "Privileged commands are the user's to run."
+
+[[command]]
+run = "rm"
+flags = ["-rf", "-fr", "-Rf", "-fR", "-r -f", "--recursive --force"]
+targets = ["/", "/*", "~", "~/*", "$HOME", "$HOME/*"]
+why = "Recursive force-delete of the root or home directory."
+
+[[command]]
+run = "git push"
+flags = ["--force", "-f", "+", "--mirror", "--delete"]
+why = "Rewrites or deletes remote history; hand it to the user."
+
+[[command]]
+run = "git reset"
+flags = ["--hard"]
+copilot = "shell(git reset)"
+why = "Discards uncommitted work."
+
+[[command]]
+run = "git clean"
+flags = ["-fdx", "-xdf"]
+why = "Deletes untracked and ignored files."
+
+[[command]]
+run = "terraform apply"
+copilot = "shell(terraform)"
+why = "Changes real infrastructure."
+
+[[command]]
+run = "terraform destroy"
+copilot = "shell(terraform)"
+why = "Destroys real infrastructure."
+
+[[command]]
+run = "kubectl apply"
+copilot = "shell(kubectl)"
+why = "Changes a live cluster."
+
+[[command]]
+run = "kubectl delete"
+copilot = "shell(kubectl)"
+why = "Deletes from a live cluster."
+
+[[command]]
+run = "helm upgrade"
+copilot = "shell(helm)"
+why = "Changes a live release."
+
+[[command]]
+run = "helm uninstall"
+copilot = "shell(helm)"
+why = "Removes a live release."
+
+[[command]]
+run = "docker rm"
+why = "Removes containers."
+
+[[command]]
+run = "docker rmi"
+why = "Removes images."
+
+[[command]]
+run = "brew"
+flags = ["bundle"]
+why = "brew bundle (and cleanup) mutates the machine; AGENTS.md forbids it unasked."
+
+[[command]]
+run = "mise use"
+flags = ["-g", "--global"]
+why = "Rewrites the global toolchain; AGENTS.md forbids it unasked."
+
+[[command]]
+run = "mise u"
+flags = ["-g", "--global"]
+why = "Shorthand for mise use -g."
+
+[[command]]
+run = "mise i"
+why = "Shorthand for mise install."
+
+[[command]]
+run = "mise up"
+why = "Shorthand for mise upgrade."
+
+[[command]]
+run = "defaults"
+flags = ["write", "import"]
+copilot = "shell(defaults)"
+why = "Changes macOS settings; AGENTS.md forbids it unasked."
+
+[[secret]]
+path = "~/.claude.json"
+
+[[secret]]
+path = "~/.claude/.credentials.json"
+
+[[secret]]
+path = "~/.config/gh/hosts.yml"
+
+[[secret]]
+path = "~/.config/github-copilot/apps.json"
+
+[[secret]]
+path = "~/.ssh/id_*"
+
+[[read]]
+glob = "**/id_rsa"
+
+[[read]]
+glob = "**/id_ed25519"
+
+[[read]]
+glob = "**/.ssh/**"
+
+[[read]]
+glob = "**/*.key"
+
+[[read]]
+glob = "**/*.pem"
+
+[[read]]
+glob = "**/.env"
+
+[[read]]
+glob = "**/.env.*"
+
+[[read]]
+glob = "**/secrets/**"
+
+[[read]]
+glob = "./**/*.env"
+
+[[read]]
+glob = "./**/*.env.*"
+
+[[read]]
+glob = "./**/cacerts"
+
+[[read]]
+glob = "./.env"
+
+[[read]]
+glob = "./.env.*"
+
+# Rules that fit no shape above. `mise install*` and `mise upgrade*` stay
+# literal: a flag-style `mise * install*` would also block `mise exec -- npm install`.
+[[raw]]
+rule = "Bash(mise install*)"
+
+[[raw]]
+rule = "Bash(mise upgrade*)"
+
+[[raw]]
+rule = "Bash(:(){ :|:& };:)"
+
+[[raw]]
+rule = "Bash(curl * | sh)"
+
+[[raw]]
+rule = "Bash(curl * | bash)"
+
+[[raw]]
+rule = "Bash(wget * | sh)"
+
+[[raw]]
+rule = "Bash(wget * | bash)"
