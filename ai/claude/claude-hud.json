@@ -6,6 +6,8 @@
     "usage",
     "promptCache",
     "tools",
+    "skills",
+    "mcp",
     "agents",
     "todos"
   ],
@@ -24,6 +26,9 @@
     "showDuration": true,
     "showSpeed": true,
     "showTools": true,
+    "showSkills": true,
+    "showMcp": true,
+    "showSessionName": true,
     "showAgents": true,
     "showTodos": true,
     "showCompactions": true,

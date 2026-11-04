@@ -227,8 +227,9 @@ The layout is `ai/claude/claude-hud.json`, copied by `ai/setup.sh` to
 opens that file with `O_NOFOLLOW` and reports a symlink as "can't be read".
 `/hud` edits the copy, so fold changes you want back into the repo file; the
 next `ai/setup.sh` backs the edited copy up and replaces it. It shows the model with its effort,
-the project and git branch, a context bar, usage, the prompt-cache time, session
-duration, output speed, tools, compactions, agents and todos. Context, usage,
+the project and git branch, the session name, a context bar, usage, the
+prompt-cache time, session duration, output speed, tools, compactions, the
+skills and MCP servers used, agents and todos. Context, usage,
 cache and tools share one row, and the wrapper then tidies the HUD's rows:
 
 ```text
@@ -236,7 +237,7 @@ before  [Opus ◔ medium] │ proj git:(main) │ ⏱️  1h 23m │ out: 88.3 t
         Context ▓▓▓░░ 36% │ Cache ⏱ until 03:00 PM │ ◐ Bash: ls | ✓ Read ×3
         Compactions: 2
 after   [Opus ◔ medium] │ proj git:(main)
-        Context ▓▓▓░░ 36% │ Cache until 03:00 PM │ ⏱ 1h23m │ Compactions: 2 │ 88.3 tok/s │ ◐ Bash │ ⚒ 3
+        Context ▓▓▓░░ 36% │ Cache until 03:00 PM │ ⏱️ 1h23m │ Compactions: 2 │ ⚡ 88.3 tok/s │ ◐ Bash │ 🔧 3
 ```
 
 Duration, compactions and speed move onto the context row ahead of the tools,

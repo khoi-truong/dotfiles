@@ -73,10 +73,22 @@ QUOTA_CACHE="${CLAUDE_DIR}/cache/pro-quota.json"
 # A provider pane reports its own endpoint's limits, not the Pro window, so it
 # must never overwrite the cache. CC_PROVIDER is what ai/claude/providers.zsh
 # exports and `cc` unsets; ai/herdr/team.sh asserts on the same variable.
+# Reads the payload on stdin. Every early return drains it first: returning
+# unread would close the pipe under the caller's printf, which then fails with
+# "write error: Broken pipe" on stderr whenever it loses the race.
 cache_quota() {
-  [ -z "${CC_PROVIDER:-}" ] || return 0
-  command -v jq >/dev/null 2>&1 || return 0
-  mkdir -p "$(dirname "${QUOTA_CACHE}")" 2>/dev/null || return 0
+  [ -z "${CC_PROVIDER:-}" ] || {
+    cat >/dev/null
+    return 0
+  }
+  command -v jq >/dev/null 2>&1 || {
+    cat >/dev/null
+    return 0
+  }
+  mkdir -p "$(dirname "${QUOTA_CACHE}")" 2>/dev/null || {
+    cat >/dev/null
+    return 0
+  }
   tmp="${QUOTA_CACHE}.$$"
   # `select` drops a payload with no rate_limits, leaving an empty file that
   # the -s test rejects, so a stale-but-real cache survives a payload that
@@ -109,7 +121,7 @@ tidy() {
         }
       }
       if (running != "") running = "\033[33m◐\033[0m " running
-      total = total > 0 ? "⚒ " total : ""
+      total = total > 0 ? "🔧 " total : ""
       return running (running != "" && total != "" ? sep : "") total
     }
     # Tool parts, not agents: those end in an elapsed "(2m)".
@@ -132,14 +144,15 @@ tidy() {
       for (i = 1; i <= n; i++) {
         p = plain(part[i])
         if ((NR > 1 || i > 1) && p ~ /^⏱/) {
-          # "⏱️  1h 23m" (with its variation selector) reads as "⏱ 1h23m".
-          if (match(part[i], /⏱[^0-9<]*/)) part[i] = substr(part[i], 1, RSTART - 1) "⏱ " substr(part[i], RSTART + RLENGTH)
+          # "⏱️  1h 23m" reads as "⏱️ 1h23m".
+          if (match(part[i], /⏱[^0-9<]*/)) part[i] = substr(part[i], 1, RSTART - 1) "⏱️ " substr(part[i], RSTART + RLENGTH)
           while (match(part[i], /[0-9][dhm] [0-9]/)) part[i] = substr(part[i], 1, RSTART + 1) substr(part[i], RSTART + 3)
           duration = duration sep part[i]
         } else if ((NR > 1 || i > 1) && p ~ /^Compactions: /) compactions = compactions sep part[i]
         else if ((NR > 1 || i > 1) && p ~ /tok\/s$/) {
-          # The HUD has no option for its speed label.
-          sub(/out: /, "", part[i])
+          # The HUD has no option for its speed label: "out: 88.3 tok/s" reads
+          # as "⚡ 88.3 tok/s".
+          sub(/out: /, "⚡ ", part[i])
           speed = speed sep part[i]
         } else kept = kept (kept == "" ? "" : sep) part[i]
       }
