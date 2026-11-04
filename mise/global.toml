@@ -23,6 +23,8 @@ swiftlint   = "latest"
 shellcheck = "0.11.0"   # linters and hook tools live here, not in the Brewfile
 gitleaks   = "8.30.1"
 
+lua-language-server = "3.19.2"   # editor tool
+
 [settings]
 idiomatic_version_file_enable_tools = ["python", "ruby", "node", "java", "go"]
 
