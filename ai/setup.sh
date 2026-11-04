@@ -122,11 +122,18 @@ if command -v herdr >/dev/null 2>&1; then
     ok "restored trailing newline in ${settings#"${CURRENT_DIR}/"}"
   done
   # Plugins are pinned in herdr/plugins.toml; plugins.sh is sourced so its
-  # `link` calls stay inside this script's transaction. A bad manifest warns
-  # and the rest of setup carries on.
+  # `link` calls stay inside this script's transaction. A bad manifest or no
+  # Python 3.11 (2) warns and the rest of setup carries on; a failed link (1)
+  # fails setup, as it would anywhere else here.
   # shellcheck source=ai/herdr/plugins.sh
   . "${CURRENT_DIR}/herdr/plugins.sh"
-  herdr_plugins_apply || warn "herdr plugins not applied; see above."
+  plugins_rc=0
+  herdr_plugins_apply || plugins_rc=$?
+  case "${plugins_rc}" in
+    0) ;;
+    2) warn "herdr plugins not applied; see above." ;;
+    *) exit "${plugins_rc}" ;;
+  esac
   ok "herdr $(herdr --version 2>/dev/null || echo installed)"
 else
   warn "herdr not found — installed by brew/setup.sh."

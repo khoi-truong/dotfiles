@@ -169,7 +169,7 @@ case_invalid_manifest_apply_warns() {
 bogus = 1"
   local rc=0
   apply "$(new_home)" || rc=$?
-  [ "$rc" -eq 1 ]
+  [ "$rc" -eq 2 ]
   grep -q 'bogus' "${WORK}/last.out"
 }
 
@@ -192,9 +192,11 @@ case_old_python_skips() {
   printf '#!/bin/sh\nexit 1\n' >"${WORK}/oldpy"
   chmod +x "${WORK}/oldpy"
   export DOTFILES_PYTHON="${WORK}/oldpy"
-  apply "$(new_home)"
-  grep -q 'Python 3.11' "${WORK}/last.out"
   local rc=0
+  apply "$(new_home)" || rc=$?
+  [ "$rc" -eq 2 ]
+  grep -q 'Python 3.11' "${WORK}/last.out"
+  grep -q 'new shell' "${WORK}/last.out"
   in_home "$(new_home)" bash "$PLUGINS_SH" --check || rc=$?
   [ "$rc" -eq 2 ]
 }
@@ -207,6 +209,66 @@ case_check_linked_plugin_is_drift() {
   in_home "$(new_home)" bash "$PLUGINS_SH" --check || rc=$?
   [ "$rc" -eq 1 ]
   grep -q 'manifest cloudmanic/herdr-plus@v0.1.24' "${WORK}/last.out"
+}
+
+case_first_failed_link_stops() {
+  stub_herdr
+  manifest '[[plugin]]
+id = "persiyanov.reviewr"
+repo = "persiyanov/herdr-reviewr"
+ref = "v0.38.0"
+why = "x"
+
+[[plugin]]
+id = "usagebar"
+repo = "senna-lang/herdr-agent-usage"
+ref = "v0.5.14"
+why = "x"'
+  list_line persiyanov.reviewr persiyanov/herdr-reviewr v0.38.0
+  list_line usagebar senna-lang/herdr-agent-usage v0.5.14
+  local rc=0
+  export LINK_LOG="${WORK}/link.log"
+  : >"$LINK_LOG"
+  # The function runs under `||`, as in ai/setup.sh, where errexit is off.
+  # shellcheck disable=SC2016
+  in_home "$(new_home)" bash -c '. "$1/lib/common.sh"; . "$1/ai/herdr/plugins.sh"
+    link() { echo "$1" >>"$LINK_LOG"; return 1; }
+    herdr_plugins_apply || exit $?' _ "${DOTFILES}" || rc=$?
+  [ "$rc" -eq 1 ]
+  [ "$(wc -l <"${WORK}/link.log")" -eq 1 ]
+}
+
+case_mise_python_fallback() {
+  stub_herdr
+  manifest "$ONE"
+  mkdir -p "${WORK}/fake"
+  printf '#!/bin/sh\nexit 1\n' >"${WORK}/fake/python3"
+  printf '#!/bin/sh\necho "%s"\n' "$(command -v python3)" >"${WORK}/fake/mise"
+  chmod +x "${WORK}/fake/python3" "${WORK}/fake/mise"
+  PATH="${WORK}/fake:${PATH}"
+  unset DOTFILES_PYTHON
+  apply "$(new_home)"
+  grep -q 'install cloudmanic/herdr-plus' "${WORK}/herdr.log"
+}
+
+case_drift_match_is_anchored() {
+  stub_herdr
+  manifest '[[plugin]]
+id = "usagebar"
+repo = "senna-lang/herdr-agent-usage"
+ref = "v0.5.14"
+why = "x"
+
+[[plugin]]
+id = "x.usagebar"
+repo = "x/usagebar"
+ref = "v1.0.0"
+why = "x"'
+  list_line usagebar senna-lang/herdr-agent-usage v0.5.14
+  list_line x.usagebar x/usagebar v9.9.9
+  apply "$(new_home)"
+  # Only the sibling drifted: one warning, not a second for usagebar.
+  [ "$(grep -c 'usagebar: installed' "${WORK}/last.out")" -eq 1 ]
 }
 
 run_suite "$@"

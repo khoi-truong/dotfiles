@@ -4,6 +4,9 @@
 #   bash ai/herdr/plugins.sh            install what is missing, link templates
 #   bash ai/herdr/plugins.sh --check    report drift from the manifest, change nothing
 #
+# herdr_plugins_apply returns 0 ok, 1 a link failed (stop), 2 manifest error or no
+# usable Python (warn and carry on).
+#
 # Sourced by ai/setup.sh, which calls herdr_plugins_apply so the `link` calls
 # stay inside setup's transaction. plugins.py reads the manifest and needs
 # Python 3.11+: DOTFILES_PYTHON, else the first python3 on PATH. Too old or
@@ -20,23 +23,35 @@ herdr_plugin_installed() {
     grep -q '"plugins":\[[^]]'
 }
 
-# Echoes a Python >= 3.11, or returns 1. Checks sys.version_info, not -V.
+# True when "$1" runs as a Python >= 3.11. Checks sys.version_info, not -V.
+herdr_python_ok() {
+  command -v "$1" >/dev/null 2>&1 &&
+    "$1" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null
+}
+
+# Echoes a Python >= 3.11, or returns 1. DOTFILES_PYTHON, else python3 on PATH,
+# else mise's: on a fresh machine ./setup.sh runs before mise's shims are on
+# PATH, so python3 is the macOS 3.9 one.
 herdr_plugins_python() {
   local py="${DOTFILES_PYTHON:-python3}"
-  command -v "${py}" >/dev/null 2>&1 &&
-    "${py}" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null &&
+  if herdr_python_ok "${py}"; then
     printf '%s\n' "${py}"
+    return 0
+  fi
+  [ -z "${DOTFILES_PYTHON:-}" ] && command -v mise >/dev/null 2>&1 || return 1
+  py="$(mise which python3 2>/dev/null)" || return 1
+  herdr_python_ok "${py}" && printf '%s\n' "${py}"
 }
 
 herdr_plugins_apply() {
   local py rows drifted plugin repo ref needs tool plugin_config item missing
   if ! py="$(herdr_plugins_python)"; then
-    warn "herdr plugins need Python 3.11+ (DOTFILES_PYTHON or python3) — skipping."
-    return 0
+    warn "herdr plugins need Python 3.11+ (DOTFILES_PYTHON, python3 or mise's) — skipping; re-run in a new shell once mise is active."
+    return 2
   fi
   if ! rows="$("${py}" "${HERDR_PLUGINS_DIR}/plugins.py" rows)"; then
     warn "herdr plugins manifest is invalid — skipping plugins."
-    return 1
+    return 2
   fi
   # Installed at a ref other than the manifest's: reported per plugin below.
   drifted="$(herdr plugin list 2>/dev/null | "${py}" "${HERDR_PLUGINS_DIR}/plugins.py" check || true)"
@@ -84,7 +99,7 @@ herdr_plugins_apply() {
         continue
       fi
     else
-      item="$(printf '%s\n' "${drifted}" | grep -F "${plugin}: installed " || true)"
+      item="$(printf '%s\n' "${drifted}" | awk -v p="${plugin}: installed " 'index($0, p) == 1' || true)"
       if [ -n "${item}" ]; then
         warn "${item}"
         warn "to bump: herdr plugin uninstall ${plugin}, then re-run ai/setup.sh."
@@ -97,7 +112,7 @@ herdr_plugins_apply() {
     fi
     for item in "${HERDR_PLUGINS_DIR}"/plugins/"${plugin}"/*; do
       [ -e "$item" ] || continue
-      link "$item" "${plugin_config}/$(basename "$item")"
+      link "$item" "${plugin_config}/$(basename "$item")" || return 1
     done
   done 3<<<"${rows}"
 }
@@ -106,7 +121,7 @@ herdr_plugins_apply() {
 herdr_plugins_check() {
   local py
   if ! py="$(herdr_plugins_python)"; then
-    printf 'herdr plugins need Python 3.11+ (DOTFILES_PYTHON or python3)\n' >&2
+    printf 'herdr plugins need Python 3.11+ (DOTFILES_PYTHON, python3 or mise)\n' >&2
     return 2
   fi
   herdr plugin list | "${py}" "${HERDR_PLUGINS_DIR}/plugins.py" check
