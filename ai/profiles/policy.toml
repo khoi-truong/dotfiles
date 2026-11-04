@@ -19,12 +19,14 @@ why = "Privileged commands are the user's to run."
 [[command]]
 run = "rm"
 flags = ["-rf", "-fr", "-Rf", "-fR", "-r -f", "--recursive --force"]
-targets = ["/", "/*", "~", "~/*", "$HOME", "$HOME/*"]
+targets = [
+  "/", "~", "~/", "$HOME", '"/"', '"$HOME"', "${HOME}", '"${HOME}"', '"$HOME"/',
+]
 why = "Recursive force-delete of the root or home directory."
 
 [[command]]
 run = "git push"
-flags = ["--force", "-f", "+", "--mirror", "--delete"]
+flags = ["--force", "-f", "+", "--mirror", "--delete", "-d", ":"]
 why = "Rewrites or deletes remote history; hand it to the user."
 
 [[command]]
@@ -75,11 +77,6 @@ why = "Removes containers."
 [[command]]
 run = "docker rmi"
 why = "Removes images."
-
-[[command]]
-run = "brew"
-flags = ["bundle"]
-why = "brew bundle (and cleanup) mutates the machine; AGENTS.md forbids it unasked."
 
 [[command]]
 run = "mise use"
@@ -161,6 +158,21 @@ glob = "./.env.*"
 
 # Rules that fit no shape above. `mise install*` and `mise upgrade*` stay
 # literal: a flag-style `mise * install*` would also block `mise exec -- npm install`.
+[[raw]]
+rule = "Bash(rm -rf /*)"
+
+[[raw]]
+rule = "Bash(rm -rf ~/*)"
+
+[[raw]]
+rule = "Bash(brew bundle*)"
+
+[[raw]]
+rule = "Bash(brew * bundle)"
+
+[[raw]]
+rule = "Bash(brew * bundle *)"
+
 [[raw]]
 rule = "Bash(mise install*)"
 
