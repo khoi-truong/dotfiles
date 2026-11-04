@@ -20,7 +20,7 @@
     "effortFormat": "full",
     "showProject": true,
     "showContextBar": true,
-    "showUsage": true,
+    "showUsage": false,
     "sevenDayThreshold": 0,
     "showPromptCache": true,
     "showDuration": true,
