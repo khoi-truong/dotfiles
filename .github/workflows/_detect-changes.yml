@@ -50,6 +50,7 @@ jobs:
               - 'tests/**'
               - 'scripts/restore.sh'
               - 'scripts/ci/hygiene.py'
+              - 'scripts/gen-policy.py'
               - 'brew/setup.sh'
               - 'mise/setup.sh'
               - '**.plist'

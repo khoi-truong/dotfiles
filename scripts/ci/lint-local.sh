@@ -10,8 +10,8 @@
 # `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
 # `zsh -n` over `list-shell-scripts.sh --zsh`, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
-# rumdl, actionlint, zizmor, stylua, the repo-rule scripts, the hygiene check and the four
-# Python checks, and needs uv; a runner has them, a laptop may not.
+# rumdl, actionlint, zizmor, stylua, the repo-rule scripts, the hygiene check, the generated-policy
+# check and the four Python checks, and needs uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
 # rather than being skipped quietly. A check that cannot fail is worse than no
@@ -201,6 +201,13 @@ check_pins() {
   python3 -I scripts/ci/check-tool-pins.py
 }
 
+# The deny lists in ai/claude/settings.json and ai/copilot/deny-tools.zsh against
+# ai/profiles/policy.toml, the same check lint.yml's `python` job runs.
+check_policy() {
+  require_tool python3 policy || return 1
+  python3 -I scripts/gen-policy.py --check
+}
+
 check_markdown() {
   require_tool uvx rumdl || return 1
   uvx rumdl@0.3.2 check .
@@ -361,8 +368,8 @@ check_python() {
     # every `pytest.mark.parametrize` untyped, and the test function under it
     # with it. `ai/herdr/pyproject.toml` deliberately carries no
     # `ignore_missing_imports` for pytest — the fix is here, not there.
-    uvx ruff@0.16.8 check . ../../scripts/ci ../../lib ../../tests &&
-      uvx ruff@0.16.8 format --check . ../../scripts/ci ../../lib ../../tests &&
+    uvx ruff@0.16.8 check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests &&
+      uvx ruff@0.16.8 format --check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests &&
       uvx --with pytest==9.1.1 mypy@2.3.1 --strict &&
       uvx pytest@9.1.1
   ) &&
@@ -385,9 +392,9 @@ main() {
       # runs test.yml's pytest, so it is placed by that rule rather than by step
       # order: it is not free either — uvx fetches three tools the first
       # time — but uv caches what it fetches, and this run already needs uv for
-      # actionlint and zizmor, so it goes after the five checks that fetch
-      # nothing and before the three that fetch more.
-      checks=(rules hygiene brewfile pins shellcheck shfmt zsh editorconfig stylua python markdown actionlint zizmor)
+      # actionlint and zizmor, so it goes after the checks that fetch
+      # nothing (everything up to stylua) and before the three that fetch more.
+      checks=(rules hygiene brewfile pins policy shellcheck shfmt zsh editorconfig stylua python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2

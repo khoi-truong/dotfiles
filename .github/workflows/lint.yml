@@ -263,6 +263,9 @@ jobs:
       - name: Verify tool pins match mise and pyproject
         run: python3 -I scripts/ci/check-tool-pins.py
 
+      - name: Verify generated permission policy is current
+        run: python3 -I scripts/gen-policy.py --check
+
       # uv comes from mise on a laptop; a runner has no mise, so it is installed
       # here. `pipx` because this file already runs a pinned Python tool that way
       # (zizmor, above), and `astral-sh/setup-uv` would be one more third-party
@@ -291,14 +294,14 @@ jobs:
 
       # From `ai/herdr`: ruff and mypy read `pyproject.toml` from the directory
       # they are run in, and that is where it is. scripts/ci has no ruff config of
-      # its own, so its Python gets ruff's defaults.
+      # its own, so its Python (and scripts/gen-policy.py) gets ruff's defaults.
       - name: Check for Python lint findings
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 check . ../../scripts/ci ../../lib ../../tests
+        run: uvx ruff@0.16.8 check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests
 
       - name: Verify Python files are formatted
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 format --check . ../../scripts/ci ../../lib ../../tests
+        run: uvx ruff@0.16.8 format --check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests
 
       # `--with pytest` because the tests import it, and an import mypy cannot
       # resolve makes the test function under each decorator untyped — which

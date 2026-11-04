@@ -136,6 +136,38 @@ fold in anything wanted; `scripts/restore.sh` undoes the run.
 
 ### Deny guards
 
+The deny list is generated. `ai/profiles/policy.toml` is the source; edit it,
+run `python3 scripts/gen-policy.py`, and commit both. The generator rewrites
+only `.permissions.deny` in `ai/claude/settings.json` (JSON has no comments, so
+this is the only mark that the list is generated) and
+`ai/copilot/deny-tools.zsh`. `python3 scripts/gen-policy.py --check` writes
+nothing and exits 1 on drift; CI (`lint.yml`) and `scripts/ci/lint-local.sh`
+run it. It needs Python 3.11 for `tomllib`.
+Add denies in `ai/profiles/policy.toml`, never in `settings.json`: the
+generator drops hand-added and `/permissions`-added denies, and `--check` flags
+them. Module discovery reads the working tree, so an untracked `foo/setup.sh`
+makes a local `--check` stricter than CI.
+
+| Policy entry | Renders |
+| --- | --- |
+| `[[command]]` `run`, no `flags` | `Bash(run)` and `Bash(run *)` |
+| with `flags` | per flag, `Bash(run f*)` and `Bash(run * f*)` (flag in any position) |
+| with `flags` and `targets` | per flag and target, the four spellings with and without `*` around the flag |
+| `[[secret]]` | `Read(path)` plus a `Bash(reader *name*)` for every entry in `readers` |
+| `[[read]]` | `Read(glob)` |
+| `[[raw]]` | the rule verbatim, for what fits no shape |
+
+Every `[[command]]` needs a one-line `why`; an optional `copilot` is a Copilot
+`--deny-tool` spec. Runs of `*` collapse to one inside `Bash(...)` only, and
+duplicates keep their first position. Setup scripts are discovered: every
+top-level `*/setup.sh` gets a rule, so a new module is denied once the
+generator is re-run (`--check` fails until then).
+
+The Copilot wrapper, `ai/copilot/deny-tools.zsh`, is sourced from
+`ai/aliases.zsh` and passes the `copilot` specs as `--deny-tool` flags. It
+exists only in an interactive zsh: a `copilot` started by herdr or any other
+process that does not source the shell config bypasses it.
+
 `ai/claude/settings.json` also denies the commands AGENTS.md forbids without
 being asked. Run them yourself with `!`:
 
