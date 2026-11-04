@@ -78,14 +78,6 @@ if [ -d "${HOME}/.pi" ]; then
   warn "${HOME}/.pi is left over from pi; delete it once nothing there is needed."
 fi
 
-# True when `herdr plugin list` reports the given plugin id. `herdr plugin
-# config-dir` cannot answer this: it only computes a path and exits 0 for any
-# string, whether the plugin exists or not.
-herdr_plugin_installed() {
-  herdr plugin list --plugin "$1" --json 2>/dev/null |
-    grep -q '"plugins":\[[^]]'
-}
-
 # --- herdr -----------------------------------------------------------------
 # Terminal workspace manager for agents (brew/Brewfile). The config is
 # versioned; logs, the socket, plugin binaries and plugin state stay local.
@@ -129,49 +121,12 @@ if command -v herdr >/dev/null 2>&1; then
     printf '\n' >>"${settings}"
     ok "restored trailing newline in ${settings#"${CURRENT_DIR}/"}"
   done
-  # Plugins are installed here, pinned to a release tag by herdr/plugins.list.
-  # `herdr plugin` has no update command — reinstalling is updating — and an
-  # unpinned install re-fetches the default branch, so leaving the ref off
-  # would silently move a plugin to current HEAD. This script is re-run after
-  # every `brew upgrade herdr`, after a plugin install and on a new machine, so
-  # that drift would be routine.
-  #
-  # Installs stop for the manifest preview (no --yes) because plugins run
-  # unsandboxed as your user. Once a plugin is installed, this links the
-  # versioned templates under herdr/plugins/<plugin id>/ into its config dir;
-  # a plugin with no template dir simply gets nothing linked.
-  #
-  # "Installed?" is asked with `plugin list`, not `plugin config-dir`:
-  # config-dir just computes a path and succeeds for any string, installed or
-  # not, so testing it would skip every install. An uninstalled id lists as an
-  # empty plugins array.
-  #
-  # The list is read on fd 3, not stdin: the install prompt reads from stdin,
-  # and would otherwise swallow the next plugin's line as its answer.
-  while read -r plugin repo ref <&3; do
-    case "${plugin}" in '' | \#*) continue ;; esac
-    if ! herdr_plugin_installed "${plugin}"; then
-      info "herdr plugin ${plugin} not installed — installing ${repo}@${ref}."
-      info "Read the manifest preview; this is not passed --yes."
-      if ! herdr plugin install "${repo}" --ref "${ref}"; then
-        warn "herdr plugin ${repo} install failed or was declined — skipping."
-        continue
-      fi
-      if ! herdr_plugin_installed "${plugin}"; then
-        warn "herdr plugin ${plugin} still not listed after install — skipping."
-        continue
-      fi
-    fi
-    plugin_config="$(herdr plugin config-dir "${plugin}" 2>/dev/null)" || plugin_config=""
-    if [ -z "${plugin_config}" ]; then
-      warn "herdr plugin ${plugin} has no config dir — skipping."
-      continue
-    fi
-    for item in "${CURRENT_DIR}"/herdr/plugins/"${plugin}"/*; do
-      [ -e "$item" ] || continue
-      link "$item" "${plugin_config}/$(basename "$item")"
-    done
-  done 3<"${CURRENT_DIR}/herdr/plugins.list"
+  # Plugins are pinned in herdr/plugins.toml; plugins.sh is sourced so its
+  # `link` calls stay inside this script's transaction. A bad manifest warns
+  # and the rest of setup carries on.
+  # shellcheck source=ai/herdr/plugins.sh
+  . "${CURRENT_DIR}/herdr/plugins.sh"
+  herdr_plugins_apply || warn "herdr plugins not applied; see above."
   ok "herdr $(herdr --version 2>/dev/null || echo installed)"
 else
   warn "herdr not found — installed by brew/setup.sh."

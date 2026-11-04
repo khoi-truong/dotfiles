@@ -72,18 +72,34 @@ binary (`[update] version_check = false` silences the nag). Re-run
 | reviewr | Mark lines, comment, `s` sends the comments into the agent's pane |
 | usagebar | Context, prompt-cache and provider-limit meters in the sidebar |
 
-**Pinned list.** `ai/herdr/plugins.list` has one `<plugin id> <owner/repo>
-<tag>` per line; `ai/setup.sh` installs each at its tag. Both id and repo are
-needed: `config-dir` wants the id, `install` wants the repo, and they are
-unrelated (`persiyanov/herdr-reviewr` is `persiyanov.reviewr`). The pin
-matters: `herdr plugin` has no update command, and an unpinned install
-re-fetches the default branch on every run.
+**Manifest.** `ai/herdr/plugins.toml` has one `[[plugin]]` table per plugin;
+`ai/setup.sh` runs `ai/herdr/plugins.sh`, which installs each enabled one at
+its tag. `plugins.py` (stdlib, Python 3.11+) reads it and rejects an unknown
+key, a missing key, a ref that is not `vMAJOR.MINOR.PATCH`, a repo that is not
+`owner/name` and a duplicate id; setup then warns and carries on.
+
+| Key | Meaning |
+| --- | --- |
+| `id` | The plugin's own id; `config-dir` and `plugin list` want it |
+| `repo` | `owner/name`; `install` wants it. Unrelated to the id (`persiyanov/herdr-reviewr` is `persiyanov.reviewr`) |
+| `ref` | Release tag. The pin matters: an unpinned install re-fetches the default branch on every run |
+| `needs` | Commands that must be on PATH; a plugin missing one is skipped with a warning (default `[]`) |
+| `enabled` | `false` drops it from install and from `--check` (default `true`) |
+| `why` | What it is for (required) |
 
 **Config templates** under `ai/herdr/plugins/<plugin id>/` are linked into the
 plugin's `herdr plugin config-dir` once it is installed.
 
-**Bump a plugin:** edit its tag in `plugins.list`,
-`herdr plugin uninstall <id>`, then re-run `sh ai/setup.sh`.
+**Drift.** `bash ai/herdr/plugins.sh --check` compares `herdr plugin list`
+with the manifest and changes nothing. It prints one line per enabled plugin
+that is not installed or is installed at another ref, and exits 1 (2 for a bad
+manifest or no Python 3.11+). Setup never reinstalls a plugin at another ref;
+it warns.
+
+**Bump a plugin:** edit its `ref` in `plugins.toml`,
+`herdr plugin uninstall <id>`, then re-run `sh ai/setup.sh`. `herdr plugin
+update` exists but is not told the ref in the manifest, so don't use it for a
+pinned bump.
 
 > [!IMPORTANT]
 > First install stops for the manifest preview — never pass `--yes`. Plugins
