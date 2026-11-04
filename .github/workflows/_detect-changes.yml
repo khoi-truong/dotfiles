@@ -10,6 +10,9 @@ on:
       herdr:
         description: "'true' when anything the herdr test suite reads changed"
         value: ${{ jobs.detect-changes.outputs.herdr }}
+      nvim:
+        description: "'true' when anything the Neovim test reads changed"
+        value: ${{ jobs.detect-changes.outputs.nvim }}
 
 permissions: {}
 
@@ -25,6 +28,7 @@ jobs:
       # Push to main (or a manual run) always runs everything.
       macos: ${{ github.event_name != 'pull_request' || steps.changed.outputs.macos == 'true' }}
       herdr: ${{ github.event_name != 'pull_request' || steps.changed.outputs.herdr == 'true' }}
+      nvim: ${{ github.event_name != 'pull_request' || steps.changed.outputs.nvim == 'true' }}
     steps:
       - name: Detect changed paths
         id: changed
@@ -54,5 +58,10 @@ jobs:
             herdr:
               - 'ai/herdr/**'
               - 'lib/**'
+              - '.github/workflows/test.yml'
+              - '.github/workflows/_detect-changes.yml'
+            nvim:
+              - 'nvim/**'
+              - 'tests/nvim.sh'
               - '.github/workflows/test.yml'
               - '.github/workflows/_detect-changes.yml'

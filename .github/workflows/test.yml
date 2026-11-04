@@ -78,6 +78,55 @@ jobs:
           HERDR_TESTS_STRICT: "1"
         run: bash ai/herdr/tests/run.sh
 
+  nvim:
+    name: Run Neovim IDE test
+    needs: detect-changes
+    if: needs.detect-changes.outputs.nvim == 'true'
+    # Linux: nothing in the config or its test needs macOS.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Neovim
+        uses: rhysd/action-setup-vim@febef33995d6649302e9d88dda81e071b68f16a7 # v1.6.1
+        with:
+          neovim: true
+          version: stable
+
+      # Throwaway XDG directories, with the repo's config linked in as
+      # ~/.config/nvim would be.
+      - name: Create the XDG directories
+        run: |
+          mkdir -p "$RUNNER_TEMP/xdg/config"
+          ln -s "$GITHUB_WORKSPACE/nvim" "$RUNNER_TEMP/xdg/config/nvim"
+          {
+            echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg/config"
+            echo "XDG_DATA_HOME=$RUNNER_TEMP/xdg/data"
+            echo "XDG_STATE_HOME=$RUNNER_TEMP/xdg/state"
+            echo "XDG_CACHE_HOME=$RUNNER_TEMP/xdg/cache"
+          } >>"$GITHUB_ENV"
+
+      - name: Restore plugins from the lockfile
+        run: nvim --headless "+Lazy! restore" +qa
+
+      # Full mode: every check must run. A `skip` line means a plugin check did
+      # not, so it fails the job like a `FAIL` line does.
+      - name: Run the Neovim IDE test
+        run: |
+          rc=0
+          nvim --headless -l nvim/tests/ide.lua | tee "$RUNNER_TEMP/ide.out" || rc=$?
+          if grep -q '^skip' "$RUNNER_TEMP/ide.out"; then
+            echo "::error title=Skipped checks::the IDE test skipped checks in full mode"
+            rc=1
+          fi
+          exit "$rc"
+
   python:
     name: Run herdr Python tests
     needs: detect-changes

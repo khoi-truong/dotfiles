@@ -10,7 +10,7 @@
 # `--quick` is shellcheck and shfmt over `scripts/ci/list-shell-scripts.sh`,
 # `zsh -n` over `list-shell-scripts.sh --zsh`, and editorconfig-checker: the four that
 # fail on the edits that actually happen in this repo. The full run adds
-# rumdl, actionlint, zizmor, the repo-rule scripts, the hygiene check and the four
+# rumdl, actionlint, zizmor, stylua, the repo-rule scripts, the hygiene check and the four
 # Python checks, and needs uv; a runner has them, a laptop may not.
 #
 # A linter that is missing, or that cannot be downloaded, FAILS this script
@@ -42,6 +42,8 @@ set -euo pipefail
 # the executable it provides are named differently.
 ACTIONLINT_PY_VERSION=1.7.12.24
 ZIZMOR_VERSION=1.30.1
+
+STYLUA_VERSION=2.6.0
 
 EC_VERSION=v4.0.1
 EC_BASE_URL="https://github.com/editorconfig-checker/editorconfig-checker/releases/download/${EC_VERSION}"
@@ -222,6 +224,23 @@ check_actionlint() {
   PATH="$(dirname "$sc"):$PATH" uvx --from "actionlint-py@${ACTIONLINT_PY_VERSION}" actionlint -color
 }
 
+# stylua is a plain binary; mise.toml pins it, so find_tool takes
+# whichever is on PATH or under mise. Only the pinned version counts: a floating
+# one is a green local run that CI then fails.
+check_stylua() {
+  local st got
+  if ! st=$(find_tool stylua); then
+    printf 'lint-local: stylua is not installed, so the nvim config went unchecked\n' >&2
+    return 1
+  fi
+  got="$("$st" --version)"
+  if [ "$got" != "stylua ${STYLUA_VERSION}" ]; then
+    printf 'lint-local: %s is installed, lint.yml pins stylua %s\n' "$got" "$STYLUA_VERSION" >&2
+    return 1
+  fi
+  "$st" --check nvim
+}
+
 check_zizmor() {
   require_tool uvx zizmor || return 1
   uvx "zizmor@${ZIZMOR_VERSION}" --persona=regular .github/workflows
@@ -368,7 +387,7 @@ main() {
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules hygiene brewfile pins shellcheck shfmt zsh editorconfig python markdown actionlint zizmor)
+      checks=(rules hygiene brewfile pins shellcheck shfmt zsh editorconfig stylua python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2
