@@ -71,7 +71,7 @@ HERDR_DIR="$(cd "$(dirname "${_self}")" && pwd)"
 # and a path only its own `python3` calls have a use for has no business in
 # their environment. A caller's own PYTHONPATH is kept, after ours.
 herdr_py() {
-  PYTHONPATH="${HERDR_DIR}/lib${PYTHONPATH:+:${PYTHONPATH}}" python3 "$@"
+  PYTHONPATH="${HERDR_DIR}/lib:${HERDR_DIR}/../claude${PYTHONPATH:+:${PYTHONPATH}}" python3 "$@"
 }
 
 # The checkout the configuration is read from, which is the one this file is in

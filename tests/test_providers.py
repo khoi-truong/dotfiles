@@ -11,11 +11,11 @@ one warning rather than the `ccd` command.
 The shell cases need a zsh and a `python3` the cache generator can use — the one
 PATH holds, at 3.11 or newer, because the reader is stdlib `tomllib`; they skip
 without either. Nothing here reads the ambient environment: every case
-runs in a tree built under `tmp_path`, so `HERDR_TEAM_ROOT` and `DOTFILES` — both
+runs in a tree built under `tmp_path`, so the orchestrator's root variable and `DOTFILES` — both
 exported by the herdr pane this suite is usually run from — cannot reach the
 file under test.
 
-`run.sh` is the end-to-end suite and keeps the frozen texts that say a `team.sh`
+The orchestrator's own end-to-end suite keeps the frozen texts that say a
 reading this registry still spawns what it spawned before; what is pinned here
 is the generation that feeds it.
 """
@@ -32,7 +32,7 @@ from typing import Any
 import providers
 import pytest
 
-DOTFILES = Path(__file__).resolve().parents[3]
+DOTFILES = Path(__file__).resolve().parents[1]
 REGISTRY = DOTFILES / "ai/providers.toml"
 PROVIDERS_ZSH = DOTFILES / "ai/claude/providers.zsh"
 
@@ -334,15 +334,13 @@ def isolated(tmp_path: Path) -> Path:
     """A checkout holding only what a shell start touches.
 
     Copies rather than symlinks, and that is the point: `providers.py` resolves
-    its own path to find the registry, so a symlinked `lib/` would read the
+    its own path to find the registry, so a symlinked `ai/claude` would read the
     shipped file however the copy under test was edited — the one thing the
     cases below are about.
     """
     root = tmp_path / "dotfiles"
-    lib = root / "ai/herdr/lib"
     (root / "ai/claude").mkdir(parents=True)
-    lib.mkdir(parents=True)
-    shutil.copy(DOTFILES / "ai/herdr/lib/providers.py", lib / "providers.py")
+    shutil.copy(DOTFILES / "ai/claude/providers.py", root / "ai/claude/providers.py")
     shutil.copy(REGISTRY, root / "ai/providers.toml")
     shutil.copy(PROVIDERS_ZSH, root / "ai/claude/providers.zsh")
     return root
@@ -435,7 +433,7 @@ def test_an_edited_generator_is_regenerated(tmp_path: Path) -> None:
     root = isolated(tmp_path)
     start(root, "cc-providers")
     before = fingerprint(cache_of(root))
-    os.utime(root / "ai/herdr/lib/providers.py", None)
+    os.utime(root / "ai/claude/providers.py", None)
     start(root, "cc-providers")
     assert fingerprint(cache_of(root)) != before
 

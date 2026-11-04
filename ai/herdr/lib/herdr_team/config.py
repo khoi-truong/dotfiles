@@ -44,7 +44,7 @@ Values may name three things the reader expands:
 None of that is TOML's, so nothing is expanded at parse time and
 `show --sources` can still print the value as it was written.
 
-Run as `python3 -m herdr_team.config <verb>` with `lib/` on PYTHONPATH:
+Run as `python3 -m herdr_team.config <verb>` with `lib/` and `ai/claude` (for `providers`) on PYTHONPATH:
 
     env                      the HERDR_TEAM_* knobs, `KEY=value`, shell-quoted
     show [--sources]         every resolved key, and which layer set it

@@ -95,7 +95,8 @@ bash tests/run.sh                  # every suite below, with per-suite wall time
 `/usr/bin/python3`), `tests/hygiene_units.py` (the parse checks) and
 `tests/policy_units.py` (the policy generator), both needing Python 3.11+, and every `tests/*.sh` suite: `git.sh` and `restore.sh` (setup
 journaling and rollback), `common.sh` (`lib/common.sh` helpers), `brew.sh` and
-`mise.sh` (their `setup.sh` against a stub `brew` or `mise` on `PATH`). Each
+`mise.sh` (their `setup.sh` against a stub `brew` or `mise` on `PATH`),
+`herdr_plugins.sh` (`ai/herdr/plugins.sh` against a stub `herdr`). Each
 shell suite takes `bash tests/<suite>.sh [case_name]`. All of them run in a
 `mktemp -d` `HOME`, never the real one, and never call a real `brew` or `mise`.
 

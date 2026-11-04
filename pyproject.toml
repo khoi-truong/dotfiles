@@ -15,7 +15,8 @@ python-downloads = "never"
 venvPath = "."
 venv = ".venv"
 executionEnvironments = [
-  { root = "ai/herdr", extraPaths = ["ai/herdr/lib"] },
+  { root = "ai/herdr", extraPaths = ["ai/herdr/lib", "ai/claude"] },
+  { root = "tests", extraPaths = ["ai/claude"] },
 ]
 
 # lib/ and tests/ at the repo root run under the system python3 that macOS
@@ -23,6 +24,9 @@ executionEnvironments = [
 [tool.ruff]
 target-version = "py39"
 extend-exclude = ["ai"]
+# ai/claude/providers.py is linted by name from ai/herdr (CI) and reads TOML with
+# tomllib, a 3.11 module; without this it is sorted as a third-party import.
+per-file-target-version = { "ai/claude/providers.py" = "py311" }
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
@@ -31,3 +35,9 @@ select = ["E4", "E7", "E9", "F", "I"]
 python_version = "3.10"
 strict = true
 files = ["lib", "tests", "scripts/ci/hygiene.py", "scripts/gen-policy.py"]
+# tests/test_providers.py imports ai/claude/providers.py, a 3.11 reader; ai/herdr's
+# mypy config (3.11) checks both.
+exclude = ["tests/test_providers\\.py"]
+
+[tool.pytest.ini_options]
+pythonpath = ["ai/claude"]

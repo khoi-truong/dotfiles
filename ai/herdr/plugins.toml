@@ -1,0 +1,43 @@
+# herdr plugins, installed by ai/herdr/plugins.sh (run from ai/setup.sh) and
+# read by plugins.py. One [[plugin]] table each:
+#
+#   id       the plugin's own id, from its herdr-plugin.toml. `herdr plugin
+#            config-dir` and `plugin list` want this; look it up, never guess.
+#   repo     owner/name, what `herdr plugin install` wants. Unrelated to id
+#            (persiyanov/herdr-reviewr is persiyanov.reviewr).
+#   ref      release tag, vMAJOR.MINOR.PATCH. Always pinned: an unpinned
+#            install fetches the default branch, so every re-run of
+#            ai/setup.sh would silently move the plugin to current HEAD.
+#   needs    commands that must be on PATH to install; a plugin missing one is
+#            skipped with a warning. Default [].
+#   enabled  false drops the entry from install and from `plugins.sh --check`.
+#            Default true.
+#   why      what it is for (required).
+#
+# Check for drift between this file and what is installed (changes nothing):
+#   bash ai/herdr/plugins.sh --check
+#
+# To bump one: edit `ref`, then reinstall it at the new tag with
+# `herdr plugin uninstall <id>` and a re-run of ai/setup.sh. `herdr plugin
+# update` exists, but it is not told the ref in this file, so it is not the
+# way to land a pinned bump. Versioned config templates, if any, live in
+# ai/herdr/plugins/<id>/ and are linked on every run.
+
+[[plugin]]
+id = "cloudmanic.herdr-plus"
+repo = "cloudmanic/herdr-plus"
+ref = "v0.1.24"
+needs = ["go"]
+why = "Worktree layouts and project picker"
+
+[[plugin]]
+id = "persiyanov.reviewr"
+repo = "persiyanov/herdr-reviewr"
+ref = "v0.38.0"
+why = "Mark lines, comment, send the comments into the agent's pane"
+
+[[plugin]]
+id = "usagebar"
+repo = "senna-lang/herdr-agent-usage"
+ref = "v0.5.14"
+why = "Context, prompt-cache and provider-limit meters in the sidebar"

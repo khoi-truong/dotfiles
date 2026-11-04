@@ -7,11 +7,11 @@
 # this table rather than in team.toml — `HERDR_TEAM_PROVIDER_CAP` counts panes
 # per key, and a key is what an entry is.
 #
-# Three readers, all through ai/herdr/lib/providers.py:
+# Three readers, all through ai/claude/providers.py:
 #   * ai/claude/providers.zsh, through the cache it regenerates, so `ccd` and
 #     the `claude-<name>` commands exist in a shell
 #   * the `credential = "<name>"` field of ai/herdr/team.toml's profiles
-#   * `team.sh config lint` and `doctor`, which check those refs resolve
+#   * the orchestrator's `config lint` and `doctor`, which check those refs resolve
 #
 # No secret is ever written down here. `key` is `env:VAR`: the value lives in
 # ai/env.local.zsh, dumped from 1Password by ai/setup.sh, or in a login this

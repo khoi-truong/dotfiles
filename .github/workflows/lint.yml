@@ -297,11 +297,11 @@ jobs:
       # its own, so its Python (and scripts/gen-policy.py) gets ruff's defaults.
       - name: Check for Python lint findings
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests
+        run: uvx ruff@0.16.8 check . ../claude/providers.py ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests
 
       - name: Verify Python files are formatted
         working-directory: ai/herdr
-        run: uvx ruff@0.16.8 format --check . ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests
+        run: uvx ruff@0.16.8 format --check . ../claude/providers.py ../../scripts/ci ../../scripts/gen-policy.py ../../lib ../../tests
 
       # `--with pytest` because the tests import it, and an import mypy cannot
       # resolve makes the test function under each decorator untyped — which

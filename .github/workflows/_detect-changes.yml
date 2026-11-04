@@ -58,6 +58,10 @@ jobs:
               - '.github/workflows/_detect-changes.yml'
             herdr:
               - 'ai/herdr/**'
+              - 'ai/claude/providers.py'
+              - 'ai/claude/providers.zsh'
+              - 'ai/providers.toml'
+              - 'tests/test_providers.py'
               - 'lib/**'
               - '.github/workflows/test.yml'
               - '.github/workflows/_detect-changes.yml'
