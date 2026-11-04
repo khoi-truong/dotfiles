@@ -66,8 +66,12 @@ the `nvim/lazy-lock.json` that `:Lazy update` rewrites lands in the repo: commit
 it.
 
 First launch clones lazy.nvim and then every plugin, so it needs git and
-network. If the clone fails you get one error line and an editor with the core
-config and keymaps. `DOTFILES_NVIM_OFFLINE=1 nvim` skips plugins altogether.
+network. If the clone fails (or takes over 60 seconds) you get one warning line
+and an editor with the core config and keymaps; with no network it retries on
+each launch. An interrupted install is detected the same way: if lazy.nvim is
+missing or fails to load you get one `plugins incomplete` line and the core
+config. Run `:Lazy restore` with network to repair it.
+`DOTFILES_NVIM_OFFLINE=1 nvim` skips plugins altogether.
 
 There is no mason. Language servers, formatters, linters and debug adapters
 come from mise or brew, and each is used only when its executable is on `PATH`;
@@ -86,6 +90,8 @@ Test it headless with
 `DOTFILES_NVIM_OFFLINE=1 nvim --headless -l nvim/tests/ide.lua` (core checks
 only) or `bash tests/nvim.sh`. Without the offline flag it also checks every
 plugin, so restore the lockfile first with `nvim --headless "+Lazy! restore" +qa`.
+The test never installs anything and skips the plugin checks if lazy.nvim is
+missing; run it once more with `HERDR_ENV=1` to cover the disabled plugins.
 
 ## VS Code
 

@@ -127,6 +127,22 @@ jobs:
           fi
           exit "$rc"
 
+      # HERDR_ENV=1 disables some plugins by cond; the lockfile must still match.
+      - name: Run the Neovim IDE test under herdr
+        env:
+          HERDR_ENV: "1"
+        run: |
+          rc=0
+          nvim --headless -l nvim/tests/ide.lua | tee "$RUNNER_TEMP/ide-herdr.out" || rc=$?
+          if grep -q '^skip' "$RUNNER_TEMP/ide-herdr.out"; then
+            echo "::error title=Skipped checks::the IDE test skipped checks in full mode"
+            rc=1
+          fi
+          exit "$rc"
+
+      - name: Verify the lockfile is unchanged
+        run: git diff --exit-code nvim/lazy-lock.json
+
   python:
     name: Run herdr Python tests
     needs: detect-changes

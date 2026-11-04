@@ -73,4 +73,82 @@ case_ide_offline() {
   ! grep -q '^FAIL' "$out"
 }
 
+# Run nvim in a throwaway XDG tree ($1) with plugins on and github.com pointed at
+# a closed local port, so a clone fails at once and offline. Output is
+# stdout+stderr; the exit code is nvim's. Further args go to nvim.
+nvim_unreachable() {
+  local x="$1"
+  shift
+  mkdir -p "$x/config"
+  ln -sfn "${DOTFILES}/nvim" "$x/config/nvim"
+  env -u DOTFILES_NVIM_OFFLINE XDG_CONFIG_HOME="$x/config" XDG_DATA_HOME="$x/data" \
+    XDG_STATE_HOME="$x/state" XDG_CACHE_HOME="$x/cache" GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0=url.http://127.0.0.1:9/.insteadOf GIT_CONFIG_VALUE_0=https://github.com/ \
+    nvim --headless "$@" 2>&1
+}
+
+need_nvim() {
+  command -v nvim >/dev/null 2>&1 && return 0
+  echo "skip: nvim not installed"
+  return 1
+}
+
+lines_matching() { printf '%s\n' "$1" | grep -c -- "$2" || true; }
+
+case_clone_failure_is_one_line() {
+  local x out rc=0
+  need_nvim || return 0
+  x="$(mktemp -d "${WORK}/xdg.XXXXXX")"
+  out="$(nvim_unreachable "$x" +qa)" || rc=$?
+  [ "$rc" = 0 ] &&
+    [ "$(lines_matching "$out" 'could not install lazy.nvim')" = 1 ] &&
+    ! printf '%s' "$out" | grep -q 'stack traceback'
+}
+
+case_half_finished_clone_is_retried() {
+  local x out rc=0
+  need_nvim || return 0
+  x="$(mktemp -d "${WORK}/xdg.XXXXXX")"
+  mkdir -p "$x/data/nvim/lazy/lazy.nvim/.git"
+  out="$(nvim_unreachable "$x" +qa)" || rc=$?
+  [ "$rc" = 0 ] &&
+    [ "$(lines_matching "$out" 'could not install lazy.nvim')" = 1 ] &&
+    [ ! -e "$x/data/nvim/lazy/lazy.nvim" ]
+}
+
+case_broken_lazy_falls_back_to_core() {
+  local x out rc=0
+  need_nvim || return 0
+  x="$(mktemp -d "${WORK}/xdg.XXXXXX")"
+  mkdir -p "$x/data/nvim/lazy/lazy.nvim/lua/lazy"
+  echo 'error("boom")' >"$x/data/nvim/lazy/lazy.nvim/lua/lazy/init.lua"
+  out="$(nvim_unreachable "$x" +qa)" || rc=$?
+  [ "$rc" = 0 ] &&
+    [ "$(lines_matching "$out" 'plugins incomplete (.*boom.*)')" = 1 ] &&
+    ! printf '%s' "$out" | grep -q 'stack traceback'
+}
+
+case_clone_timeout_is_a_failure() {
+  local x out rc=0 bin
+  need_nvim || return 0
+  x="$(mktemp -d "${WORK}/xdg.XXXXXX")"
+  bin="$(mktemp -d "${WORK}/bin.XXXXXX")"
+  printf '#!/bin/sh\nexec sleep 30\n' >"$bin/git"
+  chmod +x "$bin/git"
+  out="$(PATH="$bin:$PATH" DOTFILES_NVIM_CLONE_TIMEOUT_MS=500 nvim_unreachable "$x" +qa)" || rc=$?
+  [ "$rc" = 0 ] &&
+    [ "$(lines_matching "$out" 'could not install lazy.nvim (timed out')" = 1 ]
+}
+
+case_ide_test_installs_nothing() {
+  local x out rc=0
+  need_nvim || return 0
+  x="$(mktemp -d "${WORK}/xdg.XXXXXX")"
+  out="$(nvim_unreachable "$x" -l "${DOTFILES}/nvim/tests/ide.lua")" || rc=$?
+  [ "$rc" = 0 ] &&
+    ! printf '%s' "$out" | grep -q 'could not install' &&
+    printf '%s' "$out" | grep -q '^skip plugin checks' &&
+    [ ! -e "$x/data/nvim/lazy" ]
+}
+
 run_suite "$@"

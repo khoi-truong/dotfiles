@@ -2,6 +2,9 @@
 -- $XDG_CONFIG_HOME/nvim:
 --   DOTFILES_NVIM_OFFLINE=1 nvim --headless -l nvim/tests/ide.lua   (core checks, plugin checks skip)
 --   nvim --headless -l nvim/tests/ide.lua                           (plugins restored: nothing skips)
+-- It never clones or installs anything (DOTFILES_NVIM_NO_INSTALL=1, below), so
+-- restore first with `nvim --headless "+Lazy! restore" +qa` and, after the run,
+-- check that nvim/lazy-lock.json is unchanged. Also run it with HERDR_ENV=1.
 local failed = false
 
 local function out(line)
@@ -26,17 +29,18 @@ local function check(name, cond, why)
 end
 
 local config = vim.fn.stdpath("config")
+vim.env.DOTFILES_NVIM_NO_INSTALL = "1" -- inherited by the child nvims too
 vim.go.loadplugins = true -- off under -l, and lazy.nvim does nothing without it
 vim.opt.rtp:prepend(config)
 dofile(config .. "/init.lua")
 
--- Run a child nvim and return its combined output. `env` entries are added to
+-- Run a child nvim and return its combined output. `extra` entries are added to
 -- the parent environment; `path` replaces PATH when given.
-local function child(args, path)
+local function child(args, path, extra)
   local cmd = { vim.v.progpath, "--headless" }
   vim.list_extend(cmd, args)
-  local env = { PATH = path, HOME = vim.env.HOME }
-  local res = vim.system(cmd, { text = true, env = path and env or nil }):wait(30000)
+  local env = vim.tbl_extend("force", { PATH = path, HOME = vim.env.HOME }, extra or {})
+  local res = vim.system(cmd, { text = true, env = (path or extra) and env or nil }):wait(30000)
   return (res.stdout or "") .. (res.stderr or ""), res.code
 end
 
@@ -117,26 +121,64 @@ do
   vim.fn.delete(empty, "rf")
 end
 
--- Old Neovim: warn once, load no plugins.
+-- Old Neovim: warn once, never reach the plugin layer. Offline mode is switched
+-- off in the child, so config.lazy would run if init.lua got that far; the
+-- preloads record any attempt to require it (or lazy.nvim itself).
 do
   local text = child({
     "--cmd",
-    "lua local has = vim.fn.has; vim.fn.has = function(f) if f == 'nvim-0.12' then return 0 end return has(f) end",
+    "lua local has = vim.fn.has; vim.fn.has = function(f) if f == 'nvim-0.12' then return 0 end return has(f) end"
+      .. "; _G.required = {}; for _, m in ipairs({ 'config.lazy', 'lazy' }) do"
+      .. " package.preload[m] = function() table.insert(_G.required, m); return {} end end",
     "-c",
-    "lua io.stdout:write('lazy=' .. tostring(package.loaded.lazy ~= nil) .. '\\n')",
+    "lua io.stdout:write('required=[' .. table.concat(_G.required, ',') .. ']\\n')",
     "-c",
     "qa!",
-  })
+  }, nil, { DOTFILES_NVIM_OFFLINE = "0" })
   local warnings = select(2, text:gsub("needs Neovim 0%.12%+", ""))
   check("old nvim warns once", warnings == 1, text)
-  check("old nvim loads no plugins", text:find("lazy=false", 1, true) ~= nil, text)
+  check("old nvim loads no plugins", text:find("required=[]", 1, true) ~= nil, text)
 end
+
+-- The plugins the config is meant to have. Adding or dropping one is a change to
+-- this list, the specs and the lockfile together.
+local allowed = {
+  "blink.cmp",
+  "conform.nvim",
+  "fzf-lua",
+  "gitsigns.nvim",
+  "gruvbox.nvim",
+  "lazy.nvim",
+  "lazydev.nvim",
+  "lualine.nvim",
+  "mini.nvim",
+  "neotest",
+  "neotest-golang",
+  "neotest-python",
+  "nvim-dap",
+  "nvim-dap-go",
+  "nvim-dap-python",
+  "nvim-dap-ui",
+  "nvim-lint",
+  "nvim-lspconfig",
+  "nvim-nio",
+  "nvim-treesitter",
+  "nvim-treesitter-textobjects",
+  "oil.nvim",
+  "plenary.nvim",
+  "trouble.nvim",
+  "vim-tmux-navigator",
+  "which-key.nvim",
+}
 
 -- Plugins: only checked when lazy.nvim is loaded.
 local function plugin_checks()
   local lazy_config = require("lazy.core.config")
   local plugins = require("lazy").plugins()
-  local names = {}
+  local names = {} -- every spec, including ones disabled by cond (HERDR_ENV=1)
+  for name in pairs(lazy_config.spec.disabled) do
+    names[name] = true
+  end
 
   check(
     "lazy spec has no errors",
@@ -239,11 +281,19 @@ local function plugin_checks()
 
   local lock = vim.json.decode(table.concat(vim.fn.readfile(config .. "/lazy-lock.json"), "\n"))
   check("lockfile has no herdr-splits", lock["herdr-splits.nvim"] == nil)
-  for name in pairs(lock) do
-    check("lockfile row has a spec: " .. name, names[name] == true, "no spec")
+  for _, name in ipairs(allowed) do
+    check("spec has " .. name, names[name] == true, "no spec")
+    check("lockfile has a row for " .. name, lock[name] ~= nil, "no row")
+  end
+  local allow = {}
+  for _, name in ipairs(allowed) do
+    allow[name] = true
   end
   for name in pairs(names) do
-    check("spec has a lockfile row: " .. name, lock[name] ~= nil, "no row")
+    check("spec is allowed: " .. name, allow[name] == true, "not in the allowlist")
+  end
+  for name in pairs(lock) do
+    check("lockfile row is allowed: " .. name, allow[name] == true, "not in the allowlist")
   end
 end
 
