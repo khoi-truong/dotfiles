@@ -16,6 +16,7 @@ venvPath = "."
 venv = ".venv"
 executionEnvironments = [
   { root = "ai/herdr", extraPaths = ["ai/herdr/lib", "ai/claude"] },
+  { root = "tests", extraPaths = ["ai/claude"] },
 ]
 
 # lib/ and tests/ at the repo root run under the system python3 that macOS
@@ -33,7 +34,7 @@ select = ["E4", "E7", "E9", "F", "I"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["lib", "tests", "scripts/ci/hygiene.py", "scripts/gen-policy.py", "ai/herdr/plugins.py"]
+files = ["lib", "tests", "scripts/ci/hygiene.py", "scripts/gen-policy.py"]
 # tests/test_providers.py imports ai/claude/providers.py, a 3.11 reader; ai/herdr's
 # mypy config (3.11) checks both.
 exclude = ["tests/test_providers\\.py"]
