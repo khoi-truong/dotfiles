@@ -196,7 +196,7 @@ def covers(pattern: str, rule: str) -> bool:
     if pat is None or target is None or pat[0] != target[0]:
         return False
     if pat[0] == "Bash":
-        stars = {"*": ".*"}
+        stars = {"*": ".*", "**": ".*", "**/": ".*/"}
         glob, text = pat[1], target[1]
     else:
         stars = {"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*"}
