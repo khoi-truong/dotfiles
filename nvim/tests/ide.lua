@@ -26,6 +26,7 @@ local function check(name, cond, why)
 end
 
 local config = vim.fn.stdpath("config")
+vim.go.loadplugins = true -- off under -l, and lazy.nvim does nothing without it
 vim.opt.rtp:prepend(config)
 dofile(config .. "/init.lua")
 
@@ -132,13 +133,124 @@ do
 end
 
 -- Plugins: only checked when lazy.nvim is loaded.
-local plugin_checks = { "plugins loaded" }
-if package.loaded.lazy then
-  -- Filled in by the plugin layer.
-else
-  for _, name in ipairs(plugin_checks) do
-    skip(name, "plugins not installed")
+local function plugin_checks()
+  local lazy_config = require("lazy.core.config")
+  local plugins = require("lazy").plugins()
+  local names = {}
+
+  check(
+    "lazy spec has no errors",
+    #lazy_config.spec.notifs == 0,
+    vim.inspect(lazy_config.spec.notifs)
+  )
+  for _, plugin in ipairs(plugins) do
+    names[plugin.name] = true
+    check("installed " .. plugin.name, plugin._.installed == true, "not installed")
   end
+
+  local modules = {
+    "gruvbox",
+    "lualine",
+    "which-key",
+    "mini.ai",
+    "mini.surround",
+    "mini.pairs",
+    "mini.icons",
+    "fzf-lua",
+    "oil",
+    "nvim-treesitter",
+    "nvim-treesitter-textobjects",
+    "lspconfig",
+    "lazydev",
+    "blink.cmp",
+    "conform",
+    "lint",
+    "gitsigns",
+    "trouble",
+    "dap",
+    "dapui",
+    "nio",
+    "dap-python",
+    "dap-go",
+    "neotest",
+    "plenary",
+    "neotest-python",
+    "neotest-golang",
+  }
+  for _, module in ipairs(modules) do
+    local loaded, err = pcall(require, module)
+    check("require " .. module, loaded, tostring(err))
+  end
+
+  check("colorscheme gruvbox", vim.g.colors_name == "gruvbox", tostring(vim.g.colors_name))
+
+  local maps = {
+    [" ff"] = "n",
+    [" fg"] = "n",
+    [" fb"] = "n",
+    ["-"] = "n",
+    [" cf"] = "n",
+    [" xx"] = "n",
+    [" db"] = "n",
+    [" dc"] = "n",
+    [" tt"] = "n",
+    [" gb"] = "n",
+  }
+  for lhs, mode in pairs(maps) do
+    local map = vim.fn.maparg(lhs, mode, false, true)
+    check(
+      "map " .. lhs .. " desc",
+      type(map.desc) == "string" and map.desc ~= "",
+      "missing map or desc"
+    )
+  end
+
+  local conform = require("conform")
+  check("conform lua formatter", conform.formatters_by_ft.lua[1] == "stylua")
+
+  -- Language files in a PATH with no language tools raise nothing.
+  local dir = vim.fn.tempname()
+  vim.fn.mkdir(dir, "p")
+  local script = dir .. "/open.lua"
+  vim.uv.fs_symlink(vim.fn.exepath("git"), dir .. "/git") -- gitsigns needs git, which is not a language tool
+  local files = {}
+  for _, name in ipairs({ "a.go", "a.py", "a.swift", "a.lua" }) do
+    files[#files + 1] = dir .. "/" .. name
+    vim.fn.writefile({ "x" }, dir .. "/" .. name)
+  end
+  vim.fn.writefile({
+    "local before = vim.fn.execute('messages')",
+    "vim.v.errmsg = ''",
+    "for _, f in ipairs(" .. vim.inspect(files) .. ") do",
+    "  vim.cmd('edit ' .. f)",
+    "  vim.cmd('silent write')",
+    "  vim.cmd('doautocmd FileType')",
+    "end",
+    "vim.wait(500)",
+    "local after = vim.fn.execute('messages')",
+    "io.stdout:write(('errmsg=[%s]\\n'):format(vim.v.errmsg))",
+    "io.stdout:write(('messages-same=%s\\n'):format(tostring(before == after)))",
+    "io.stdout:write('messages-after=' .. after .. '\\n')",
+  }, script)
+  local text = child({ "-c", "luafile " .. script, "-c", "qa!" }, dir)
+  check("language files raise no error", text:find("errmsg=[]", 1, true) ~= nil, text)
+  check("language files add no messages", text:find("messages-same=true", 1, true) ~= nil, text)
+  vim.fn.delete(dir, "rf")
+
+  local lock = vim.json.decode(table.concat(vim.fn.readfile(config .. "/lazy-lock.json"), "\n"))
+  check("lockfile has no herdr-splits", lock["herdr-splits.nvim"] == nil)
+  for name in pairs(lock) do
+    check("lockfile row has a spec: " .. name, names[name] == true, "no spec")
+  end
+  for name in pairs(names) do
+    check("spec has a lockfile row: " .. name, lock[name] ~= nil, "no row")
+  end
+end
+
+if package.loaded.lazy then
+  plugin_checks()
+else
+  skip("plugin checks", "plugins not installed")
 end
 
 if failed then

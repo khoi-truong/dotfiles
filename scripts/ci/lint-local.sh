@@ -50,7 +50,7 @@ EC_BASE_URL="https://github.com/editorconfig-checker/editorconfig-checker/releas
 # don't align on multiples of 2 (see .markdownlint-cli2.jsonc MD013/MD060);
 # gitconfig, plists and vendored Xcode templates use their own tab/format
 # conventions.
-EC_EXCLUDE='\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
+EC_EXCLUDE='\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/|^nvim/lazy-lock\.json$'
 
 cd "$(git rev-parse --show-toplevel)"
 # PATH first, then mise: a non-interactive shell may not have mise activated.

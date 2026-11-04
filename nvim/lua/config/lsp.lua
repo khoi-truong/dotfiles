@@ -106,6 +106,11 @@ local servers = {
   },
 }
 
+local lspconfig = vim.fn.stdpath("data") .. "/lazy/nvim-lspconfig"
+if vim.uv.fs_stat(lspconfig) then
+  vim.opt.rtp:append(lspconfig)
+end
+
 for _, group in ipairs(servers) do
   for _, server in ipairs(group) do
     local configured = vim.lsp.config[server.name] or {}

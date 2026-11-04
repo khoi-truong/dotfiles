@@ -152,7 +152,7 @@ jobs:
       - name: Check for editorconfig violations
         run: >
           ec -exclude
-          '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
+          '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/|^nvim/lazy-lock\.json$'
 
       - name: Verify files parse and carry no conflict markers
         run: git ls-files -z | xargs -0 python3 -B -I scripts/ci/hygiene.py

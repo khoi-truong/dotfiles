@@ -29,12 +29,9 @@ if not vim.uv.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
-local config = vim.fn.stdpath("config")
-local has_specs = #vim.fn.glob(config .. "/lua/plugins/*.lua", false, true) > 0
-
 require("lazy").setup({
-  spec = has_specs and { { import = "plugins" } } or {},
-  lockfile = config .. "/lazy-lock.json",
+  spec = { { import = "plugins" } },
+  lockfile = vim.fn.stdpath("config") .. "/lazy-lock.json",
   checker = { enabled = false },
   change_detection = { notify = false },
 })
