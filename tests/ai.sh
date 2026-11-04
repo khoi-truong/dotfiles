@@ -28,8 +28,8 @@ case_claude_hud_config_passes_hygiene() {
   python3 -B -I "${DOTFILES}/scripts/ci/hygiene.py" "${DOTFILES}/ai/claude/claude-hud.json" >"${WORK}/last.out" 2>&1
 }
 
-case_claude_hud_config_is_linked() {
-  grep -q 'claude/claude-hud.json.*plugins/claude-hud/config.json' "${DOTFILES}/ai/setup.sh"
+case_claude_hud_config_is_copied() {
+  grep -q '^copy .*claude/claude-hud.json.*plugins/claude-hud/config.json' "${DOTFILES}/ai/setup.sh"
 }
 
 case_deny_has_guards() {

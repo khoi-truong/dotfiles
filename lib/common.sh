@@ -87,6 +87,29 @@ backup() {
   _transaction backup "$@"
 }
 
+# copy <source> <target> [mode] — install a regular-file copy, for tools that
+# refuse to read through a symlink. Idempotent: an identical regular file is
+# left alone. Anything else at the target (a symlink, a different file) is
+# backed up first, so `scripts/restore.sh` puts it back. Default mode 600.
+copy() {
+  local src="$1" dst="$2" mode="${3:-600}"
+  if [ ! -f "${src}" ]; then
+    warn "copy: source missing: ${src}"
+    return 0
+  fi
+  if [ -f "${dst}" ] && [ ! -L "${dst}" ] && cmp -s "${src}" "${dst}"; then
+    chmod "${mode}" "${dst}"
+    ok "${dst}"
+    return 0
+  fi
+  if [ -e "${dst}" ] || [ -L "${dst}" ]; then
+    backup "${dst}"
+  fi
+  mkdir -p "$(dirname "${dst}")"
+  install -m "${mode}" "${src}" "${dst}"
+  ok "${dst} (copied from ${src})"
+}
+
 _transaction() {
   if is_macos; then
     xcode-select -p >/dev/null 2>&1 || die "python3 missing: run xcode-select --install"
