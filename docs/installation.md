@@ -21,15 +21,15 @@ The details behind the [getting-started steps in the README](../README.md#gettin
 
 1. Installs Homebrew if it is missing: the official installer, downloaded to a
    file and run interactively. With no terminal, or under `CI`, it stops instead.
-2. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`,
-   `tmux/tmux.conf` and `vim/vimrc` into `$HOME`, sets `~/.ssh` to 700, moves an
+2. Links `zsh/zshenv`, `zsh/zshrc`, `ssh/config`, `curl/curlrc`
+   and `tmux/tmux.conf` into `$HOME`, sets `~/.ssh` to 700, moves an
    existing `~/.zsh_history` into `zsh/local/history`, and removes the redundant
    `~/.zcompdump*` and `~/.zsh_sessions`.
 3. Runs `<module>/setup.sh` for each module. Only `macos/` asks for `sudo`, itself.
 
 |             | Modules                                                  |
 | ----------- | -------------------------------------------------------- |
-| **default** | `git` `gh` `brew` `mise` `macos` `gpg` `iterm` `ai` `misc` |
+| **default** | `git` `gh` `brew` `mise` `nvim` `macos` `gpg` `iterm` `ai` `misc` |
 | **opt-in**  | `vscode` `xcode` `terminal`                              |
 
 Every module script also runs on its own, e.g. `bash git/setup.sh`.
@@ -66,8 +66,9 @@ journal is never pruned.
 | `git/lazygit.yml`                                       | lazygit's Application Support dir       |
 | `gh/config.yml`                                         | `~/.config/gh/config.yml`               |
 | `ssh/config`                                            | `~/.ssh/config`                         |
-| `curl/curlrc`, `tmux/tmux.conf`, `vim/vimrc`            | `~/.curlrc`, `~/.tmux.conf`, `~/.vimrc` |
+| `curl/curlrc`, `tmux/tmux.conf`                         | `~/.curlrc`, `~/.tmux.conf`             |
 | `mise/global.toml`                                      | `~/.config/mise/config.toml`            |
+| `nvim/`                                                 | `~/.config/nvim`                        |
 | `ai/claude/{settings.json,CLAUDE.md}`                   | `~/.claude/`                            |
 | `ai/shared/skills/*`                                    | `~/.claude/skills/` (one link per skill) |
 | `ai/omp/*`, `ai/shared/skills`                          | `~/.omp/agent/`                         |

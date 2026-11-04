@@ -35,6 +35,7 @@ brew "gnupg"
 brew "pinentry-mac"   # GUI passphrase prompt for gpg-agent
 brew "mas"
 brew "neovim"
+brew "tree-sitter-cli"
 brew "vim"
 brew "watchman"
 
@@ -111,6 +112,7 @@ cask "font-inconsolata"
 cask "font-sf-compact"
 cask "font-sf-mono"
 cask "font-sf-pro"
+cask "font-symbols-only-nerd-font"
 
 # ------------------------------------------------------------------ mas -----
 # Requires being signed into the App Store first (`mas account`).

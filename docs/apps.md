@@ -4,6 +4,7 @@
 - [macOS preferences](#macos-preferences)
 - [iTerm2](#iterm2)
 - [Terminal.app](#terminalapp)
+- [Neovim](#neovim)
 - [VS Code](#vs-code)
 - [Xcode](#xcode)
 - [Stats](#stats)
@@ -56,6 +57,35 @@ as repo diffs — commit them from the repo.
 Opt-in (`./setup.sh terminal`); iTerm2 is the daily driver. Imports
 `terminal/Gruvbox.terminal` through `osascript` and sets UTF-8 as the only
 encoding.
+
+## Neovim
+
+Needs Neovim 0.12 or newer; on an older one `init.lua` prints one warning line
+and loads only the core options. `nvim/` is linked whole to `~/.config/nvim`, so
+the `nvim/lazy-lock.json` that `:Lazy update` rewrites lands in the repo: commit
+it.
+
+First launch clones lazy.nvim and then every plugin, so it needs git and
+network. If the clone fails you get one error line and an editor with the core
+config and keymaps. `DOTFILES_NVIM_OFFLINE=1 nvim` skips plugins altogether.
+
+There is no mason. Language servers, formatters, linters and debug adapters
+come from mise or brew, and each is used only when its executable is on `PATH`;
+a missing one is skipped silently. Servers: `lua_ls`, `basedpyright` (else
+`pyright`), `ruff`, `gopls`, `rust_analyzer`, `ts_ls`, `bashls`, `jsonls`,
+`yamlls`, `marksman`, `starpls` and `sourcekit`.
+
+Tree-sitter parsers are compiled with `tree-sitter-cli` (Brewfile). Icons need
+a Nerd Font; if your terminal font has none, set Symbols Nerd Font Mono
+(`font-symbols-only-nerd-font`) as its fallback font.
+
+Leader is `Space`. Groups: `f` find, `g` git, `c` code, `d` debug, `t` test,
+`x` diagnostics. `-` opens the parent directory in oil.
+
+Test it headless with
+`DOTFILES_NVIM_OFFLINE=1 nvim --headless -l nvim/tests/ide.lua` (core checks
+only) or `bash tests/nvim.sh`. Without the offline flag it also checks every
+plugin, so restore the lockfile first with `nvim --headless "+Lazy! restore" +qa`.
 
 ## VS Code
 
