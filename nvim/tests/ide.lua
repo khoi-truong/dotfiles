@@ -190,6 +190,17 @@ local function plugin_checks()
     check("installed " .. plugin.name, plugin._.installed == true, "not installed")
   end
 
+  -- blink must be up before any LSP client starts, so its capabilities reach them.
+  check("blink loaded at startup", package.loaded["blink.cmp"] ~= nil, "not loaded yet")
+  local star = vim.lsp.config["*"] or {}
+  local completion =
+    vim.tbl_get(star, "capabilities", "textDocument", "completion", "completionItem")
+  check(
+    "lsp capabilities from blink",
+    completion ~= nil and completion.snippetSupport == true,
+    vim.inspect(completion)
+  )
+
   local modules = {
     "gruvbox",
     "lualine",

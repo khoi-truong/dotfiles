@@ -11,7 +11,9 @@ return {
   {
     "saghen/blink.cmp",
     version = "1.*",
-    event = { "InsertEnter", "CmdlineEnter" },
+    -- Loaded at startup: its plugin/ file sets the LSP capabilities, which must be
+    -- in place before the first client starts.
+    lazy = false,
     opts = {
       keymap = { preset = "default" },
       fuzzy = { implementation = "prefer_rust_with_warning" },
@@ -27,9 +29,5 @@ return {
         },
       },
     },
-    config = function(_, opts)
-      require("blink.cmp").setup(opts)
-      vim.lsp.config("*", { capabilities = require("blink.cmp").get_lsp_capabilities() })
-    end,
   },
 }
