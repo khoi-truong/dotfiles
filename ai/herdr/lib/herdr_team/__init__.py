@@ -12,7 +12,7 @@ rest — `status`, `collect`, `collect_plan`, `report`, `wait`, `loop`,
 is that same shape with one caller instead of a verb: `pro_window_used` in
 `team.sh` runs it, and it reads the Pro 5h quota cache.
 
-`team.sh` reaches them by setting `PYTHONPATH` to `lib/` on those calls, so
+`team.sh` reaches them by setting `PYTHONPATH` to `lib/` and `../claude` (for `providers`) on those calls, so
 this package is never installed and has no `__init__` of its own beyond this
 file. Nothing here is re-exported: an import that named `herdr_team.plan_rows`
 would be a second way to reach the one reader, which is the thing this package
