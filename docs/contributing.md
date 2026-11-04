@@ -78,9 +78,7 @@ Shell scripts (everything `scripts/ci/list-shell-scripts.sh` prints except
 (2-space indent, indented `case` bodies, `||` and `&&` at the end of the line).
 Never run it on `zsh/*.zsh`. rumdl and shfmt are pinned in `mise.toml`; install
 them with `mise install`, then run `rumdl check .` and `shfmt -d <files>` (or
-`shfmt -w` to fix). `.git-blame-ignore-revs` lists the one-time reformat;
-`git config blame.ignoreRevsFile .git-blame-ignore-revs` makes local blame skip
-it (GitHub reads the file by name).
+`shfmt -w` to fix).
 
 ## Checking changes
 
