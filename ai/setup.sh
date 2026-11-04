@@ -31,8 +31,10 @@ link "${CURRENT_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
 
 # claude-hud reads its layout from here; the plugin itself is installed from
 # the marketplace in settings.json, never with `/hud install` (it rewrites
-# settings.json).
-link "${CURRENT_DIR}/claude/claude-hud.json" "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/plugins/claude-hud/config.json"
+# settings.json). A copy, not a link: claude-hud opens config.json with
+# O_NOFOLLOW and reports a symlink as "can't be read". `/hud` edits the copy,
+# so fold anything wanted back into claude/claude-hud.json.
+copy "${CURRENT_DIR}/claude/claude-hud.json" "${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/plugins/claude-hud/config.json"
 
 # Shared skills — one symlink per skill dir so OMC-managed skills
 # (~/.claude/skills/wiki, …) are left untouched. omp gets the whole directory

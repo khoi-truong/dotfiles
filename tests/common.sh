@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/common.sh helpers (brew_prefix, link, backup) under a throwaway HOME.
+# lib/common.sh helpers (brew_prefix, link, backup, copy) under a throwaway HOME.
 #
 #   bash tests/common.sh              every case_*
 #   bash tests/common.sh <case_name>  that case only
@@ -77,6 +77,43 @@ case_backup_moves_aside_and_records() {
   [ -n "$manifest" ]
   grep -q '/victim' "$manifest"
   grep -rq keep "$h/.local/state/dotfiles/backups"
+}
+
+case_copy_replaces_symlink_with_regular_file() {
+  local h
+  h="$(new_home)"
+  echo '{"a":1}' >"${WORK}/src"
+  mkdir -p "$h/cfg"
+  ln -s "${WORK}/src" "$h/cfg/config.json"
+  in_common "$h" copy "${WORK}/src" "$h/cfg/config.json"
+  [ -f "$h/cfg/config.json" ] && [ ! -L "$h/cfg/config.json" ]
+  cmp -s "${WORK}/src" "$h/cfg/config.json"
+  [ "$(stat -f %Lp "$h/cfg/config.json" 2>/dev/null || stat -c %a "$h/cfg/config.json")" = 600 ]
+  grep -q '/cfg/config.json' "$(find "$h/.local/state/dotfiles/backups" -name manifest.jsonl)"
+}
+
+case_copy_identical_rerun_leaves_journal() {
+  local h before after
+  h="$(new_home)"
+  echo x >"${WORK}/src"
+  in_common "$h" copy "${WORK}/src" "$h/dst"
+  # A first copy onto nothing journals nothing, so give journal a dir to list.
+  mkdir -p "$h/.local/state"
+  before="$(journal "$h")"
+  in_common "$h" copy "${WORK}/src" "$h/dst"
+  after="$(journal "$h")"
+  [ "$before" = "$after" ]
+  [ -f "$h/dst" ] && [ ! -L "$h/dst" ]
+}
+
+case_copy_backs_up_edited_copy() {
+  local h
+  h="$(new_home)"
+  echo new >"${WORK}/src"
+  echo edited >"$h/dst"
+  in_common "$h" copy "${WORK}/src" "$h/dst"
+  [ "$(cat "$h/dst")" = new ]
+  grep -rq edited "$h/.local/state/dotfiles/backups"
 }
 
 run_suite "$@"

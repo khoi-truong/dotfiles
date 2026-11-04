@@ -190,8 +190,11 @@ needs Node 22.18 or newer (mise's global node). Without node or the plugin, or
 if the HUD crashes or prints nothing, the wrapper prints `<model> <directory>`
 instead (the provider label stands in for the model).
 
-The layout is `ai/claude/claude-hud.json`, linked by `ai/setup.sh` to
-`~/.claude/plugins/claude-hud/config.json`. It shows the model with its effort,
+The layout is `ai/claude/claude-hud.json`, copied by `ai/setup.sh` to
+`~/.claude/plugins/claude-hud/config.json`. It is a copy because claude-hud
+opens that file with `O_NOFOLLOW` and reports a symlink as "can't be read".
+`/hud` edits the copy, so fold changes you want back into the repo file; the
+next `ai/setup.sh` backs the edited copy up and replaces it. It shows the model with its effort,
 the project and git branch, a context bar, usage, the prompt-cache time, session
 duration, output speed, tools, compactions, agents and todos. Context, usage,
 cache and tools share one row, and the wrapper then tidies the HUD's rows:
