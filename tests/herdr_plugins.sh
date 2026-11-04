@@ -229,11 +229,15 @@ why = "x"'
   local rc=0
   export LINK_LOG="${WORK}/link.log"
   : >"$LINK_LOG"
-  # The function runs under `||`, as in ai/setup.sh, where errexit is off.
+  # Called the way ai/setup.sh calls it: under `set -e`, in an `||` list, where
+  # errexit is off inside the function.
   # shellcheck disable=SC2016
-  in_home "$(new_home)" bash -c '. "$1/lib/common.sh"; . "$1/ai/herdr/plugins.sh"
+  in_home "$(new_home)" bash -c 'set -euo pipefail
+    . "$1/lib/common.sh"; . "$1/ai/herdr/plugins.sh"
     link() { echo "$1" >>"$LINK_LOG"; return 1; }
-    herdr_plugins_apply || exit $?' _ "${DOTFILES}" || rc=$?
+    rc=0
+    herdr_plugins_apply || rc=$?
+    exit "$rc"' _ "${DOTFILES}" || rc=$?
   [ "$rc" -eq 1 ]
   [ "$(wc -l <"${WORK}/link.log")" -eq 1 ]
 }
@@ -269,6 +273,43 @@ why = "x"'
   apply "$(new_home)"
   # Only the sibling drifted: one warning, not a second for usagebar.
   [ "$(grep -c 'usagebar: installed' "${WORK}/last.out")" -eq 1 ]
+}
+
+case_listed_without_ref_keeps_repo() {
+  stub_herdr
+  manifest "$ONE"
+  printf -- '- cloudmanic.herdr-plus (Name) enabled [github:cloudmanic/herdr-plus]\n' >"${WORK}/herdr.list"
+  local rc=0
+  in_home "$(new_home)" bash "$PLUGINS_SH" --check || rc=$?
+  [ "$rc" -eq 1 ]
+  grep -q 'installed cloudmanic/herdr-plus@,' "${WORK}/last.out"
+}
+
+case_repo_subdir_accepted() {
+  stub_herdr
+  manifest "${ONE//cloudmanic\/herdr-plus/cloudmanic/herdr-plus/sub}"
+  list_line cloudmanic.herdr-plus cloudmanic/herdr-plus/sub v0.1.24
+  in_home "$(new_home)" bash "$PLUGINS_SH" --check
+}
+
+case_check_herdr_missing() {
+  manifest "$ONE"
+  mkdir -p "${WORK}/nobin"
+  ln -s "$(command -v bash)" "${WORK}/nobin/bash"
+  local rc=0
+  in_home "$(new_home)" env PATH="${WORK}/nobin:/usr/bin:/bin" bash "$PLUGINS_SH" --check || rc=$?
+  [ "$rc" -eq 2 ]
+  grep -q 'herdr not found' "${WORK}/last.out"
+}
+
+case_check_list_fails() {
+  stub_herdr
+  manifest "$ONE"
+  printf '#!/bin/sh\nexit 1\n' >"${WORK}/bin/herdr"
+  local rc=0
+  in_home "$(new_home)" bash "$PLUGINS_SH" --check || rc=$?
+  [ "$rc" -eq 2 ]
+  grep -q 'plugin list failed' "${WORK}/last.out"
 }
 
 run_suite "$@"

@@ -23,7 +23,7 @@ from typing import Any
 KEYS = {"id", "repo", "ref", "needs", "enabled", "why"}
 REQUIRED = ("id", "repo", "ref", "why")
 REF_RE = re.compile(r"v\d+\.\d+\.\d+")
-REPO_RE = re.compile(r"[\w.-]+/[\w.-]+")
+REPO_RE = re.compile(r"[\w.-]+/[\w.-]+(/[\w.-]+)*")
 LISTED_RE = re.compile(r"^- (\S+) .*\[([^\]]*)\]\s*$")
 
 
@@ -71,7 +71,9 @@ def _entry(index: int, raw: object) -> Plugin:
         if not isinstance(raw[key], str) or not raw[key]:
             raise ManifestError(f"{label}: {key!r} must be a non-empty string")
     if not REPO_RE.fullmatch(raw["repo"]):
-        raise ManifestError(f"{label}: 'repo' must be owner/name, got {raw['repo']!r}")
+        raise ManifestError(
+            f"{label}: 'repo' must be owner/name[/subdir], got {raw['repo']!r}"
+        )
     if not REF_RE.fullmatch(raw["ref"]):
         raise ManifestError(
             f"{label}: 'ref' must be a vMAJOR.MINOR.PATCH tag, got {raw['ref']!r}"
@@ -119,8 +121,8 @@ def parse_listed(text: str) -> dict[str, tuple[str, str]]:
             continue
         source = match.group(2)
         repo, ref = "", ""
-        if source.startswith("github:") and "@" in source:
-            repo, ref = source[len("github:") :].split("@", 1)
+        if source.startswith("github:"):
+            repo, _, ref = source[len("github:") :].partition("@")
         listed[match.group(1)] = (repo, ref)
     return listed
 

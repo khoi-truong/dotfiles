@@ -117,14 +117,22 @@ herdr_plugins_apply() {
   done 3<<<"${rows}"
 }
 
-# Exit 0 clean, 1 drift, 2 bad manifest or no usable Python.
+# Exit 0 clean, 1 drift, 2 bad manifest, no usable Python, or herdr missing/failing.
 herdr_plugins_check() {
-  local py
+  local py listed
+  command -v herdr >/dev/null 2>&1 || {
+    printf 'herdr not found\n' >&2
+    return 2
+  }
   if ! py="$(herdr_plugins_python)"; then
     printf 'herdr plugins need Python 3.11+ (DOTFILES_PYTHON, python3 or mise)\n' >&2
     return 2
   fi
-  herdr plugin list | "${py}" "${HERDR_PLUGINS_DIR}/plugins.py" check
+  listed="$(herdr plugin list)" || {
+    printf 'herdr plugin list failed\n' >&2
+    return 2
+  }
+  printf '%s\n' "${listed}" | "${py}" "${HERDR_PLUGINS_DIR}/plugins.py" check
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
