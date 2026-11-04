@@ -100,14 +100,14 @@ function cc-providers {
 #
 # No cc_provider call is written here. Providers are `[provider.<name>]`
 # entries in ai/providers.toml — one definition, read by this cache, by
-# ai/herdr/team.toml's `credential` fields and by `team.sh config` — and the
+# ai/herdr/team.toml's `credential` fields and by the orchestrator's `config` — and the
 # calls are generated from it: reading TOML at every shell start is out of the
 # question, so the shell compares two mtimes instead and pays the 100 ms only
 # in the shell that follows an edit.
 #
 # A start costs three builtins. A start that regenerates forks python3, writes
 # a temp file, checks it with `zsh -n` and `mv`s it into place, because a wave
-# of team.sh's `zsh -ic` probes can arrive at once and a reader must never see
+# of the orchestrator's `zsh -ic` probes can arrive at once and a reader must never see
 # half a file. Failure is not fatal and never silent: one warning, and the
 # previous cache stays exactly as it was, so a registry nobody can parse costs
 # a line on stderr rather than the `ccd` command. With no cache at all the
@@ -117,7 +117,7 @@ function cc-providers {
 # the next start retries only once one of the two files it reads has moved past
 # it. A registry that will not parse therefore costs a python3 per edit rather
 # than per shell. The interpreter is the python3 PATH holds — mise puts it there,
-# and it is the one herdr_team's reader runs — at 3.11 or newer, because the
+# and it is the one the orchestrator's reader runs — at 3.11 or newer, because the
 # reader is stdlib `tomllib` and an older python3 cannot open the registry at
 # all. There is no fallback to /usr/bin/python3: on this machine that is 3.9, a
 # shim under the Command Line Tools whose only job is to say so, and picking it
@@ -152,7 +152,7 @@ function _cc_python_path {
 # directory test would miss exactly the change this is for.
 function _cc_registry_newer {
   [[ ${DOTFILES}/ai/providers.toml -nt $1 ]] ||
-    [[ ${DOTFILES}/ai/herdr/lib/providers.py -nt $1 ]]
+    [[ ${DOTFILES}/ai/claude/providers.py -nt $1 ]]
 }
 
 # _cc_cache_refresh — rewrite the cache from the registry, atomically.
@@ -170,7 +170,7 @@ function _cc_cache_refresh {
   trap 'rm -f "$tmp" "${tmp}.err"' INT
   # stderr goes to its own file, not into the cache: a python3 warning on the way
   # to a perfectly good cache would be sourced as zsh by the next line.
-  if ! PYTHONPATH=${DOTFILES}/ai/herdr/lib "$py" -m providers zsh \
+  if ! PYTHONPATH=${DOTFILES}/ai/claude "$py" -m providers zsh \
       >"$tmp" 2>"${tmp}.err"; then
     IFS= read -r line <"${tmp}.err"
     print -u2 "cc_provider: cannot regenerate ${_cc_cache}: ${line:-no output}"

@@ -37,7 +37,8 @@ python_version = "3.11"
 strict = true
 # One entry point, so `mypy` with no arguments here checks the same files a
 # bare `uvx mypy` does from this directory in CI and on a laptop.
-files = ["lib", "tests"]
+files = ["lib", "tests", "../../tests/test_providers.py"]
+mypy_path = ["lib", "../claude"]
 # Nothing here exempts pytest. The tests import it and mypy is run with it
 # alongside — `uvx --with pytest==… mypy@… --strict` — rather than with
 # `ignore_missing_imports`, because a decorator mypy cannot see makes the test
@@ -47,7 +48,7 @@ files = ["lib", "tests"]
 [tool.pytest.ini_options]
 # `lib/` on the path for the same reason `team.sh` sets PYTHONPATH to it: the
 # package is imported from the checkout, never installed.
-pythonpath = ["lib"]
+pythonpath = ["lib", "../claude"]
 testpaths = ["tests"]
 # `tests/fixtures/` holds plan and handoff documents, not tests. Pytest finds
 # nothing to collect there; naming only `test_*.py` keeps it from looking.

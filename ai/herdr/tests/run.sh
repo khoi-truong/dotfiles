@@ -4077,15 +4077,16 @@ team_of() {
 # cfg_checkout <dir> — a checkout-shaped tree holding the three things the
 # configuration is read from and nothing else: a copy of team.sh, so the
 # `_CHECKOUT` resolved beside it is ${dir} rather than this checkout; the
-# shipped team.toml; and `lib/` symlinked at the real package, so what runs is
-# the module under test rather than a copy of it that a later edit here would
+# shipped team.toml; and `lib/` and the registry reader symlinked at the real
+# files, so what runs is the module under test rather than a copy of it that a later edit here would
 # leave behind. The local layer, and the Run the fixture is in, are the case's
 # to write.
 cfg_checkout() {
-  mkdir -p "$1/ai/herdr"
+  mkdir -p "$1/ai/herdr" "$1/ai/claude"
   cp "${TEAM}" "$1/ai/herdr/team.sh"
   cp "${DOTFILES}/ai/herdr/team.toml" "$1/ai/herdr/team.toml"
   ln -sfn "${DOTFILES}/ai/herdr/lib" "$1/ai/herdr/lib"
+  ln -sfn "${DOTFILES}/ai/claude/providers.py" "$1/ai/claude/providers.py"
   chmod +x "$1/ai/herdr/team.sh"
 }
 
@@ -4673,9 +4674,9 @@ cache_home="${TMP}/cache-home"
 mkdir -p "${cache_tree}/ai/claude" "${cache_tree}/ai/herdr" "${cache_home}"
 cp "${DOTFILES}/ai/claude/providers.zsh" "${cache_tree}/ai/claude/providers.zsh"
 cp "${DOTFILES}/ai/providers.toml" "${cache_tree}/ai/providers.toml"
-# `lib/` symlinked at the real package, so what generates the cache is the
+# The reader symlinked at the real file, so what generates the cache is the
 # module under test rather than a copy a later edit here would leave behind.
-ln -sfn "${DOTFILES}/ai/herdr/lib" "${cache_tree}/ai/herdr/lib"
+ln -sfn "${DOTFILES}/ai/claude/providers.py" "${cache_tree}/ai/claude/providers.py"
 
 # cc_shell <dir-to-prepend> — one start against that tree: a PATH whose python3
 # is that directory's, a cache directory of its own so this case can neither see

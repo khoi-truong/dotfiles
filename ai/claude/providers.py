@@ -8,19 +8,19 @@ their `credential` field and never restate one, so a key moves in one place.
 
 Three readers, none of which parses TOML itself:
 
-- `herdr_team.config` — lint and doctor, which check a profile's
+- the agent-team orchestrator's config layer — lint and doctor, which check a profile's
     `credential` resolves and that the ceiling is a number
 - ai/claude/providers.zsh — through a cache regenerated from here, because a
     shell start may not spend a subprocess on parsing
-- `team.sh` — never directly; `config env` and `config resolve` are the only
+- the orchestrator's launcher — never directly; `config env` and `config resolve` are the only
     shapes it reads
 
-`read_toml` is shared with `herdr_team.config` rather than duplicated, so a
+`read_toml` is shared with the orchestrator's config layer rather than duplicated, so a
 file that will not parse is reported the same way whichever layer it is:
 `<path>:<line>:<column>: <reason>`, which is what makes a broken
 `team.local.toml` name its own line instead of failing as a bare traceback.
 
-Run as `python3 -m providers <verb>` with `lib/` on PYTHONPATH:
+Run as `python3 -m providers <verb>` with `ai/claude` on PYTHONPATH:
 
     get <name>            one entry as `key=value` lines, dotted, shell-quoted
     lint                  schema findings for the registry, one per line
@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any
 
 # `tomllib` is 3.11's, and it is why nothing here has a dependency: mise owns the
-# python this runs on, `team.sh` refuses an older one before it reads anything,
+# python this runs on, the orchestrator refuses an older one before it reads anything,
 # and a parser vendored into the checkout would be a second copy of one the
 # standard library already carries.
 
@@ -57,13 +57,13 @@ __all__ = [
     "zsh",
 ]
 
-# This file's own directory, `lib/`: the one path every caller already has —
-# `team.sh` sets PYTHONPATH to it, pytest's config names the same, and the cache
-# generator in providers.zsh passes it explicitly.
-_LIB = Path(__file__).resolve().parent
+# This file's own directory, `ai/claude`: the one path every caller already has —
+# the orchestrator puts it on PYTHONPATH, pytest's config names the same, and the
+# cache generator in providers.zsh passes it explicitly.
+_DIR = Path(__file__).resolve().parent
 
-# ai/providers.toml, two levels up from `lib/`, through `herdr/`.
-TOML = _LIB.parents[1] / "providers.toml"
+# ai/providers.toml, one level up.
+TOML = _DIR.parent / "providers.toml"
 
 # A url and a key, a url and a key, or neither. `anthropic` and `openai` are
 # wire protocols this checkout can inject into a launch; `login` is a
@@ -87,7 +87,7 @@ ENTRY_KEYS = frozenset(
 )
 
 # What a top-level key of the file may be. Nothing else belongs in a registry
-# that team.sh reads on every spawn.
+# that the orchestrator reads on every spawn.
 ROOT_KEYS = frozenset({"schema", "provider"})
 
 # `key` names where a secret is *read*, never the secret. Both forms here are

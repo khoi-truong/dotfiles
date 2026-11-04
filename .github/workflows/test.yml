@@ -149,8 +149,9 @@ jobs:
     name: Run herdr Python tests
     needs: detect-changes
     if: needs.detect-changes.outputs.herdr == 'true'
-    # Linux, unlike the job above: the unit tests read `ai/herdr/lib/` and
-    # `ai/herdr/tests/`, which are standard-library Python, and `team.sh` — the
+    # Linux, unlike the job above: the unit tests read `ai/herdr/lib/`,
+    # `ai/herdr/tests/`, `ai/claude/providers.py` and `tests/test_providers.py`,
+    # which are standard-library Python, and `team.sh` — the
     # only thing that needs macOS — is not involved. ruff and mypy over the same
     # files are lint.yml's `python` job.
     runs-on: ubuntu-24.04
@@ -186,3 +187,8 @@ jobs:
       - name: Run the Python unit tests
         working-directory: ai/herdr
         run: uvx pytest@9.1.1
+
+      # From the root, where `pyproject.toml` puts `ai/claude` on the path: the
+      # provider registry reader lives beside providers.zsh, not under ai/herdr.
+      - name: Run the provider registry unit tests
+        run: uvx pytest@9.1.1 -q tests/test_providers.py
