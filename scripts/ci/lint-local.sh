@@ -201,6 +201,13 @@ check_pins() {
   python3 -I scripts/ci/check-tool-pins.py
 }
 
+# The deny lists in ai/claude/settings.json and ai/copilot/deny-tools.zsh against
+# ai/profiles/policy.toml, the same check lint.yml's `python` job runs.
+check_policy() {
+  require_tool python3 policy || return 1
+  python3 -I scripts/gen-policy.py --check
+}
+
 check_markdown() {
   require_tool uvx rumdl || return 1
   uvx rumdl@0.3.2 check .
@@ -387,7 +394,7 @@ main() {
       # time — but uv caches what it fetches, and this run already needs uv for
       # actionlint and zizmor, so it goes after the five checks that fetch
       # nothing and before the three that fetch more.
-      checks=(rules hygiene brewfile pins shellcheck shfmt zsh editorconfig stylua python markdown actionlint zizmor)
+      checks=(rules hygiene brewfile pins policy shellcheck shfmt zsh editorconfig stylua python markdown actionlint zizmor)
       ;;
     *)
       printf 'lint-local: unknown option: %s\n' "$1" >&2
