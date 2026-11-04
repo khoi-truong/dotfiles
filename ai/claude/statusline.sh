@@ -49,7 +49,7 @@ plain() {
   printf '%s\n' "${model:-Claude}${dir:+ ${dir}}"
 }
 
-# usagebar (herdr/plugins.list) caches Claude's 5h/7d rate-limit windows and
+# usagebar (herdr/plugins.toml) caches Claude's 5h/7d rate-limit windows and
 # the prompt-cache expiry from this stdin payload; nothing else reports them,
 # so without this branch the sidebar $limit and Claude rate-limit toasts stay
 # empty. It is a tee side-branch, not a pipeline stage: `usagebar statusline`

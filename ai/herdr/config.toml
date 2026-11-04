@@ -39,7 +39,7 @@ delivery = "terminal"
 [ui.sound]
 enabled = true
 
-# Sidebar rows. `$*` tokens come from the usagebar plugin (plugins.list), the
+# Sidebar rows. `$*` tokens come from the usagebar plugin (plugins.toml), the
 # rest are herdr built-ins.
 #
 # `workspace` and `tab` are the built-ins, and they say different things:
