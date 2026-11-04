@@ -113,7 +113,9 @@ jobs:
           } >>"$GITHUB_ENV"
 
       - name: Restore plugins from the lockfile
-        run: nvim --headless "+Lazy! restore" +qa
+        run: |
+          nvim --headless "+Lazy! restore" +qa
+          bash scripts/ci/check-nvim-lock.sh nvim/lazy-lock.json "$XDG_DATA_HOME/nvim/lazy"
 
       # Full mode: every check must run. A `skip` line means a plugin check did
       # not, so it fails the job like a `FAIL` line does.

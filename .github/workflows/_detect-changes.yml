@@ -63,5 +63,6 @@ jobs:
             nvim:
               - 'nvim/**'
               - 'tests/nvim.sh'
+              - 'scripts/ci/check-nvim-lock.sh'
               - '.github/workflows/test.yml'
               - '.github/workflows/_detect-changes.yml'

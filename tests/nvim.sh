@@ -151,4 +151,42 @@ case_ide_test_installs_nothing() {
     [ ! -e "$x/data/nvim/lazy" ]
 }
 
+# scripts/ci/check-nvim-lock.sh against fake plugin checkouts.
+lock_fixture() {
+  local d="$1" c
+  mkdir -p "$d/lazy/good" "$d/lazy/stale"
+  for n in good stale; do
+    git -C "$d/lazy/$n" init -q
+    git -C "$d/lazy/$n" -c user.name=t -c user.email=t@example.com \
+      -c commit.gpgsign=false commit -q --allow-empty -m one
+  done
+  c="$(git -C "$d/lazy/good" rev-parse HEAD)"
+  printf '{ "good": { "branch": "main", "commit": "%s" } }\n' "$c" >"$d/lock.json"
+}
+
+case_lock_check_passes_on_match() {
+  local d
+  d="$(mktemp -d "${WORK}/lock.XXXXXX")"
+  lock_fixture "$d"
+  bash "${DOTFILES}/scripts/ci/check-nvim-lock.sh" "$d/lock.json" "$d/lazy"
+}
+
+case_lock_check_fails_on_missing_dir() {
+  local d
+  d="$(mktemp -d "${WORK}/lock.XXXXXX")"
+  lock_fixture "$d"
+  printf '{ "good": { "commit": "x" }, "gone": { "commit": "y" } }\n' >"$d/lock2.json"
+  ! bash "${DOTFILES}/scripts/ci/check-nvim-lock.sh" "$d/lock2.json" "$d/lazy" 2>"$d/err" &&
+    grep -q '^missing: gone' "$d/err"
+}
+
+case_lock_check_fails_on_wrong_head() {
+  local d
+  d="$(mktemp -d "${WORK}/lock.XXXXXX")"
+  lock_fixture "$d"
+  printf '{ "stale": { "commit": "0000000000000000000000000000000000000000" } }\n' >"$d/lock2.json"
+  ! bash "${DOTFILES}/scripts/ci/check-nvim-lock.sh" "$d/lock2.json" "$d/lazy" 2>"$d/err" &&
+    grep -q '^mismatch: stale' "$d/err"
+}
+
 run_suite "$@"
