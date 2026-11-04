@@ -58,6 +58,10 @@ SOURCES = {
     ],
     "shellcheck": [(".github/workflows/lint.yml", r'SHELLCHECK_VERSION:\s*"([^"]+)"')],
     "shfmt": [(".github/workflows/lint.yml", r'SHFMT_VERSION:\s*"([^"]+)"')],
+    "stylua": [
+        (".github/workflows/lint.yml", r'STYLUA_VERSION:\s*"([^"]+)"'),
+        ("scripts/ci/lint-local.sh", r"^STYLUA_VERSION=(\S+)"),
+    ],
     "rumdl": [
         (".github/workflows/lint.yml", r"\brumdl@([0-9][^\s]*)"),
         ("scripts/ci/lint-local.sh", r"\brumdl@([0-9][^\s]*)"),

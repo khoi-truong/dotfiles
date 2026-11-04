@@ -32,7 +32,7 @@ defaults:
   run:
     shell: bash
 
-# Versions of shellcheck, shfmt, rumdl, editorconfig-checker, ruff and uv must equal mise.toml
+# Versions of shellcheck, shfmt, stylua, rumdl, editorconfig-checker, ruff and uv must equal mise.toml
 # and mise/global.toml, and pytest's must equal pyproject.toml; the python job's
 # pins check (scripts/ci/check-tool-pins.py, which also covers secrets.yml's
 # gitleaks and test.yml) fails when they drift.
@@ -139,6 +139,20 @@ jobs:
       - name: Check for markdown lint findings
         run: uvx rumdl@0.3.2 check .
 
+      # The version mise.toml pins, checked by scripts/ci/check-tool-pins.py.
+      - name: Set up StyLua
+        env:
+          STYLUA_VERSION: "2.6.0"
+        run: |
+          curl -fsSL -o stylua.zip "https://github.com/JohnnyMorganz/StyLua/releases/download/v${STYLUA_VERSION}/stylua-linux-x86_64.zip"
+          echo "a485f72bbfa22e4642e77a84b5edc2611a5cab7477b34e2e709dd8f78e919895  stylua.zip" | sha256sum -c -
+          unzip -q stylua.zip stylua
+          sudo install -m 755 stylua /usr/local/bin/stylua
+          stylua --version
+
+      - name: Verify Lua files are formatted
+        run: stylua --check nvim
+
       - name: Set up editorconfig-checker
         run: |
           curl -fsSL -o ec.tar.gz https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v4.0.1/editorconfig-checker-linux-amd64.tar.gz
@@ -152,7 +166,7 @@ jobs:
       - name: Check for editorconfig violations
         run: >
           ec -exclude
-          '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/'
+          '\.md$|\.plist$|\.xccolortheme$|\.terminal$|^git/gitconfig$|^xcode/templates/|^nvim/lazy-lock\.json$'
 
       - name: Verify files parse and carry no conflict markers
         run: git ls-files -z | xargs -0 python3 -B -I scripts/ci/hygiene.py

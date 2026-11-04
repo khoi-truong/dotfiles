@@ -60,12 +60,13 @@ How files are linked, where secrets come from, and troubleshooting:
 | `macos/` | `defaults write` preferences | ✓ | [Apps](docs/apps.md#macos-preferences) |
 | `gpg/` | `gpg.conf`, `gpg-agent.conf` (commit signing) | ✓ | [Git](docs/git.md#signing) |
 | `iterm/` | iTerm2 preferences | ✓ | [Apps](docs/apps.md#iterm2) |
+| `nvim/` | Neovim 0.12 IDE config: lazy.nvim, native LSP, tree-sitter | ✓ | [Apps](docs/apps.md#neovim) |
 | `ai/` | Claude Code, oh-my-pi, Copilot CLI, herdr, shared skills | ✓ | [AI](docs/ai.md), [herdr](docs/herdr.md) |
 | `misc/` | Small apps (Stats menu-bar monitor) | ✓ | [Apps](docs/apps.md#stats) |
 | `vscode/` | Settings, keybindings, snippets, extensions | opt-in | [Apps](docs/apps.md#vs-code) |
 | `xcode/` | Colour themes, file templates | opt-in | [Apps](docs/apps.md#xcode) |
 | `terminal/` | Terminal.app theme | opt-in | [Apps](docs/apps.md#terminalapp) |
-| `ssh/` `curl/` `tmux/` `vim/` | Single config files, linked by the root `setup.sh` | always | [Shell](docs/shell.md#tmux) |
+| `ssh/` `curl/` `tmux/` | Single config files, linked by the root `setup.sh` | always | [Shell](docs/shell.md#tmux) |
 | `lib/` `scripts/` | Shared shell helpers, CI scripts | — | [Contributing](docs/contributing.md) |
 
 Opt-in modules need a GUI app that may not be installed, or only matter on some

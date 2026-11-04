@@ -17,7 +17,7 @@ export DOTFILES
 require_macos
 
 # Run on every bootstrap.
-DEFAULT_MODULES=(git gh brew mise macos gpg iterm ai misc)
+DEFAULT_MODULES=(git gh brew mise nvim macos gpg iterm ai misc)
 
 # Opt-in: GUI apps that aren't always installed, or one-off machines.
 OPTIONAL_MODULES=(vscode xcode terminal)
@@ -80,7 +80,6 @@ link "${DOTFILES}/ssh/config" "${HOME}/.ssh/config"
 chmod 700 "${HOME}/.ssh"
 link "${DOTFILES}/curl/curlrc" "${HOME}/.curlrc"
 link "${DOTFILES}/tmux/tmux.conf" "${HOME}/.tmux.conf"
-link "${DOTFILES}/vim/vimrc" "${HOME}/.vimrc"
 
 # Redundant state: history and the completion dump both live in zsh/local/.
 # An existing history is appended to the real one, not lost.
