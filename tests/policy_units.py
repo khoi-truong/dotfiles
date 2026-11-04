@@ -187,7 +187,9 @@ class Case(unittest.TestCase):
         self.assertFalse(self.covered("Bash(git push origin HEAD:main)"))
 
     def test_covers_paths(self) -> None:
-        self.assertTrue(gen.covers("Read(**/.ssh/**)", "Read(~/.ssh/id_*)"))
+        self.assertFalse(gen.covers("Read(**/.ssh/**)", "Read(~/.ssh/id_*)"))
+        self.assertFalse(gen.covers("Read(**/.env)", "Read(~/.env)"))
+        self.assertTrue(gen.covers("Read(~/.ssh/**)", "Read(~/.ssh/id_*)"))
         self.assertFalse(gen.covers("Read(~/.ssh/*)", "Read(~/.ssh/a/b)"))
         self.assertTrue(gen.covers("Read(**/.env*)", "Read(./.env)"))
         self.assertFalse(gen.covers("Read(**/.env)", "Read(./.env.local)"))

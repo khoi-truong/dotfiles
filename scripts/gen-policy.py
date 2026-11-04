@@ -174,20 +174,39 @@ def _split(rule: str) -> tuple[str, str] | None:
     return tool, inner[:-1]
 
 
+def _anchor(path: str) -> tuple[str, str]:
+    """Split a Read path into (anchor, rest): home, absolute, settings, cwd."""
+    if path.startswith("~/"):
+        return "home", path[2:]
+    if path.startswith("//"):
+        return "absolute", path[2:]
+    if path.startswith("/"):
+        return "settings", path[1:]
+    return "cwd", path[2:] if path.startswith("./") else path
+
+
 def covers(pattern: str, rule: str) -> bool:
     """True when `pattern` matches the text of `rule`.
 
-    Bash: `*` is any run of characters. Other tools use path globs: `**` is
-    any run, `*` stays within one path segment.
+    Bash: `*` is any run of characters. Other tools use path globs: the
+    anchors (`~/`, `//`, `/`, cwd) must agree, then `**` is any run and `*`
+    stays within one path segment.
     """
     pat, target = _split(pattern), _split(rule)
     if pat is None or target is None or pat[0] != target[0]:
         return False
-    stars = {"*": ".*"} if pat[0] == "Bash" else {"**": ".*", "*": "[^/]*"}
+    if pat[0] == "Bash":
+        stars = {"*": ".*"}
+        glob, text = pat[1], target[1]
+    else:
+        stars = {"**/": "(?:.*/)?", "**": ".*", "*": "[^/]*"}
+        (pat_anchor, glob), (rule_anchor, text) = _anchor(pat[1]), _anchor(target[1])
+        if pat_anchor != rule_anchor:
+            return False
     regex = "".join(
-        stars.get(tok, re.escape(tok)) for tok in re.split(r"(\*\*|\*)", pat[1])
+        stars.get(tok, re.escape(tok)) for tok in re.split(r"(\*\*/|\*\*|\*)", glob)
     )
-    return re.fullmatch(regex, target[1]) is not None
+    return re.fullmatch(regex, text) is not None
 
 
 def discover_modules(root: str) -> list[str]:
