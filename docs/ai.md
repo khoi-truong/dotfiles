@@ -143,6 +143,10 @@ this is the only mark that the list is generated) and
 `ai/copilot/deny-tools.zsh`. `python3 scripts/gen-policy.py --check` writes
 nothing and exits 1 on drift; CI (`lint.yml`) and `scripts/ci/lint-local.sh`
 run it. It needs Python 3.11 for `tomllib`.
+Add denies in `ai/profiles/policy.toml`, never in `settings.json`: the
+generator drops hand-added and `/permissions`-added denies, and `--check` flags
+them. Module discovery reads the working tree, so an untracked `foo/setup.sh`
+makes a local `--check` stricter than CI.
 
 | Policy entry | Renders |
 | --- | --- |
